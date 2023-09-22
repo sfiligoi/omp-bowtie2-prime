@@ -1,0 +1,390 @@
+<div id="rightside" style="padding-left: 20px">
+  <h2>Site Map</h2>
+  <div class="box">
+    <ul>
+      <li><a href="index.shtml">Home</a></li>
+      <li><a href="news.shtml">News archive</a></li>
+      <li><a href="manual.shtml">Manual</a></li>
+      <li><a href="manual.shtml#getting-started-with-bowtie-2-lambda-phage-example">Getting started</a></li>
+      <li><a href="faq.shtml">Frequently Asked Questions</a></li>
+      <li><a href="other_tools.shtml">Tools that use Bowtie</a></li>
+    </ul>
+  </div>
+  <h2>Latest Release</h2>
+  <div class="box">
+     <table width="100%">
+        <tr>
+        <td colspan="2"><a href="http://bioconda.github.io/recipes/bowtie2/README.html"><img src="https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat-square"/></a></td>
+        </tr>
+      <tr>
+      <td>
+        <a href="https://sourceforge.net/projects/bowtie-bio/files/bowtie2/2.5.1">Bowtie2 v2.5.1</a>
+      </td>
+      <td align="right">
+        01/17/23&nbsp;
+      </td>
+      </tr>
+      <tr>
+      <td colspan="2">
+        <p style="font-size: x-small; line-height: 130%">Please cite: Langmead B, Salzberg S. <a href="http://www.nature.com/nmeth/journal/v9/n4/full/nmeth.1923.html">Fast gapped-read alignment with Bowtie 2</a>. <i><a href="http://www.nature.com/nmeth">Nature Methods</a></i>. 2012, 9:357-359.</p>
+      </td>
+      </tr>
+     </table>
+  </div>
+  <h2>Links</h2>
+  <div class="box">
+    <ul>
+      <li><a href="https://github.com/BenLangmead/bowtie2">Bowtie GitHub repository</a></li>
+      <li><a href="https://github.com/BenLangmead/bowtie2/issues">Report an issue</a></li>
+      <li><a href="http://bowtie-bio.sourceforge.net">Bowtie</a></li>
+      <li><a href="https://scholar.google.com/scholar?oi=bibs&hl=en&cites=4636016874467197548,6107215684849002">Papers citing Bowtie 2</a></li>
+    </ul>
+  </div>
+  <h2>Indexes</h2>
+  <div class="box">
+    <table width="100%">
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/GRCh38_noalt_as.zip"><i>H. sapiens</i>, GRCh38 no-alt analysis set</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/GRCh38_noalt_decoy_as.zip"><i>H. sapiens</i>, GRCh38 no-alt +decoy set</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/grch38_1kgmaj.zip"><i>H. sapiens</i>, GRCh38 + major SNVs</a>
+        </td>
+        <td align="right">
+            NCBI+1KG
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2" style="font-size: x-small">&nbsp;&nbsp;<a href="https://github.com/BenLangmead/bowtie-majref">How we built this</a>, <a href="ftp://ftp.ccb.jhu.edu/pub/data/bowtie_indexes/grch38_1kgmaj.fa.gz">FASTA</a>
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/GRCh37.zip"><i>H. sapiens</i>, GRCh37</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/Ash1v1.7.zip"><i>H. sapiens</i>, Ash1v1.7</a>
+        </td>
+        <td align="right">
+            JHU
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/Ash1_v2.0.zip"><i>H. sapiens</i>, Ash1v2.0</a>
+        </td>
+        <td align="right">
+            JHU
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/chm13v2.0.zip"><i>H. sapiens</i>, CHM13 v2</a>
+        </td>
+        <td align="right">
+            <a href="https://github.com/nanopore-wgs-consortium/CHM13">T2T</a>
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/chm13.draft_v1.0_plusY.zip"><i>H. sapiens</i>, CHM13 v1, plus Y</a>
+        </td>
+        <td align="right">
+            <a href="https://github.com/nanopore-wgs-consortium/CHM13">T2T</a>
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/hg19.zip"><i>H. sapiens</i>, hg19</a>
+        </td>
+        <td align="right">
+            UCSC
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/hg18.zip"><i>H. sapiens</i>, hg18</a>
+        </td>
+        <td align="right">
+            UCSC
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/GRCm38.zip"><i>M. Musculus</i>, GRCm38</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/GRCm39.zip"><i>M. Musculus</i>, GRCm39</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/mm10.zip"><i>M. Musculus</i>, mm10</a>
+        </td>
+        <td align="right">
+            UCSC
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/mm9.zip"><i>M. Musculus</i>, mm9</a>
+        </td>
+        <td align="right">
+            UCSC
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/Clint_PTRv2.zip"><i>P. troglodytes</i>, Clint_PTRv2</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/CHIMP2.1.4.zip"><i>P. troglodytes</i>, CHIMP2.1.4</a>
+        </td>
+        <td align="right">
+            Ensembl
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/Mmul_10.zip"><i>M. mulatta</i>, MMul_10</a>
+        </td>
+        <td align="right">
+            Ensembl
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/ARS-UCD1.2.zip"><i>B. taurus</i>, ARS-UCD1.2</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/Sscrofa11.1.zip"><i>S. scrofa</i>, Sscrofa11.1</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/CanFam3.1.zip"><i>C. familiaris</i>, CanFam3.1</a>
+        </td>
+        <td align="right">
+            Ensembl
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/canfam4.zip"><i>C. familiaris</i>, CanFam4</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/rn4.zip"><i>R. norvegicus</i>, rn4</a>
+        </td>
+        <td align="right">
+            UCSC
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/Rnor_6.0.zip"><i>R. norvegicus</i>, Rnor6.0</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/GRCg6a.zip"><i>G. gallus</i>, GRCg6a</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/Galgal4.zip"><i>G. gallus</i>, Galgal4</a>
+        </td>
+        <td align="right">
+            Ensembl
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/GRCz11.zip"><i>D. rerio</i>, GRCz11</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/GRCz10.zip"><i>D. rerio</i>, GRCz10</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/AGPv4.zip"><i>Z. mays</i>, AGPv4</a>
+        </td>
+        <td align="right">
+            Ensembl
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/Zm-B73-REFERENCE-NAM-5.0.zip"><i>Z. mays</i>, B73 RefGenV5</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/Build_4.0.zip"><i>O. sativa</i>, Build_4.0</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/TAIR10.zip"><i>A. thaliana</i>, TAIR10</a>
+        </td>
+        <td align="right">
+            Ensembl
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/BDGP6.zip"><i>D. melanogaster</i>, BDGP6</a>
+        </td>
+        <td align="right">
+            Ensembl
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/Dmel_A4_1.0.zip"><i>D. melanogaster</i>, Dmel A4 1.0</a>
+        </td>
+        <td align="right">
+            NCBI
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/WBcel235.zip"><i>C. elegans</i>, WBcel235</a>
+        </td>
+        <td align="right">
+            Ensembl
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+            <a href="https://genome-idx.s3.amazonaws.com/bt/R64-1-1.zip"><i>S. cerevisiae</i>, R64-1-1</a>
+        </td>
+        <td align="right">
+            Ensembl
+        </td>
+      </tr>
+    </table>
+    <p style="font-size: x-small; line-height: 130%">
+    All indexes are <tt>.bt2</tt> format and are compatible with both Bowtie 2 and with Bowtie as of v1.2.3</p>
+    <p style="font-size: x-small; line-height: 130%">
+    Index storage is thanks to <a href="https://aws.amazon.com/opendata/">AWS Public Datasets</a> program.  See the <a href="https://benlangmead.github.io/aws-indexes/bowtie">Index zone</a> page for details on the best ways to obtain this data, including from the AWS cloud.</p>
+  </div>
+  <h2>Publications</h2>
+  <div class="box">
+    <ul>
+      <li style="font-size: x-small; line-height: 130%">Langmead B, Salzberg S. <a href="http://www.nature.com/nmeth/journal/v9/n4/full/nmeth.1923.html"><b>Fast gapped-read alignment with Bowtie 2</b></a>. <i><a href="http://www.nature.com/nmeth">Nature Methods</a></i>. 2012, 9:357-359.<br/><br/></li>
+      <li style="font-size: x-small; line-height: 130%">Langmead B, Wilks C, Antonescu V, Charles R. <a href="https://doi.org/10.1093/bioinformatics/bty648"><b>Scaling read aligners to hundreds of threads on general-purpose processors</b></a>. <i><a href="https://academic.oup.com/bioinformatics">Bioinformatics</a></i> Vol 35, Iss 3, 2019, pp 421–432.
+    </ul>
+  </div>
+  <h2>Contributors</h2>
+  <div class="box">
+    <ul>
+      <li><a href="http://www.langmead-lab.org">Ben Langmead</a></li>
+      <li>Daehwan Kim</li>
+      <li>Rone Charles</li>
+      <li>Nae-Chyun Chen</li>
+      <li>Chris Wilks</li>
+      <li>Valentin Antonescu</li>
+    </ul>
+  </div>
+</div> <!-- End of "rightside" -->
+
