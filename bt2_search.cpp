@@ -2985,20 +2985,6 @@ static void multiseedSearchWorker() {
 	OutFileBuf*             metricsOfb = multiseed_metricsOfb;
 
 	{
-#ifdef PER_THREAD_TIMING
-		uint64_t ncpu_changeovers = 0;
-		uint64_t nnuma_changeovers = 0;
-
-		int current_cpu = 0, current_node = 0;
-		get_cpu_and_node(current_cpu, current_node);
-
-		std::stringstream ss;
-		std::string msg;
-		ss << "thread: " << tid << " time: ";
-		msg = ss.str();
-		Timer timer(std::cout, msg.c_str());
-#endif
-
 		// Sinks: these are so that we can print tables encoding counts for
 		// events of interest on a per-read, per-seed, per-join, or per-SW
 		// level.  These in turn can be used to diagnose performance
@@ -3178,18 +3164,6 @@ static void multiseedSearchWorker() {
 				if(sam_print_xt) {
 					gettimeofday(&prm.tv_beg, &prm.tz_beg);
 				}
-#ifdef PER_THREAD_TIMING
-				int cpu = 0, node = 0;
-				get_cpu_and_node(cpu, node);
-				if(cpu != current_cpu) {
-					ncpu_changeovers++;
-					current_cpu = cpu;
-				}
-				if(node != current_node) {
-					nnuma_changeovers++;
-					current_node = node;
-				}
-#endif
 				// Try to align this read
 				while(retry) {
 					retry = false;
@@ -4106,13 +4080,6 @@ static void multiseedSearchWorker() {
 		if(dpLog    != NULL) dpLog->close();
 		if(dpLogOpp != NULL) dpLogOpp->close();
 
-#ifdef PER_THREAD_TIMING
-		ss.str("");
-		ss.clear();
-		ss << "thread: " << tid << " cpu_changeovers: " << ncpu_changeovers << std::endl
-		   << "thread: " << tid << " node_changeovers: " << nnuma_changeovers << std::endl;
-		std::cout << ss.str();
-#endif
 	}
 
 	return;

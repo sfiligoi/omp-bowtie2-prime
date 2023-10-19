@@ -148,10 +148,6 @@ ifeq (1, $(USE_SRA))
   endif
 endif
 
-ifeq (1,$(WITH_THREAD_PROFILING))
-  CXXFLAGS += -DPER_THREAD_TIMING=1
-endif
-
 ifeq (1,$(WITH_AFFINITY))
   CXXFLAGS += -DWITH_AFFINITY=1
 endif
