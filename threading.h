@@ -36,11 +36,6 @@
 #define MUTEX_T spin_lock
 #endif
 
-struct thread_tracking_pair {
-	int tid;
-	std::atomic<int>* done;
-};
-
 #if defined(_TTHREAD_WIN32_)
 #define SLEEP(x) Sleep(x)
 #else

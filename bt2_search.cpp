@@ -97,8 +97,6 @@ static bool phred64Quals; // quality chars are phred, but must subtract 64 (not 
 static bool integerQuals; // quality strings are space-separated strings of integers, not ASCII
 static int nthreads;      // number of pthreads operating concurrently
 static int thread_ceiling;// maximum number of threads user wants bowtie to use
-static string thread_stealing_dir; // keep track of pids in this directory
-static bool thread_stealing;// true iff thread stealing is in use
 static int outType;       // style of output
 static bool noRefNames;   // true -> print reference indexes; not names
 static uint32_t khits;    // number of hits per read; >1 is much slower
@@ -308,8 +306,6 @@ static void resetOptions() {
 	integerQuals	    = false;	// quality strings are space-separated strings of integers, not ASCII
 	nthreads	    = 1;	// number of pthreads operating concurrently
 	thread_ceiling	    = 0;	// max # threads user asked for
-	thread_stealing_dir = "";	// keep track of pids in this directory
-	thread_stealing	    = false;	// true iff thread stealing is in use
 	FNAME_SIZE	    = 4096;
 	outType		    = OUTPUT_SAM;	// style of output
 	noRefNames	    = false;	// true -> print reference indexes; not names
@@ -1168,7 +1164,7 @@ static void parseOption(int next_option, const char *arg) {
 		thread_ceiling = parseInt(0, "--thread-ceiling must be at least 0", arg);
 		break;
 	case ARG_THREAD_PIDDIR:
-		thread_stealing_dir = arg;
+                // NOOP, deprecated
 		break;
 	case ARG_FILEPAR:
 		fileParallel = true;
@@ -2960,17 +2956,6 @@ void get_cpu_and_node(int& cpu, int& node) {
 }
 #endif
 
-class ThreadCounter {
-public:
-	ThreadCounter() {
-		thread_counter.fetch_add(1);
-	}
-
-	~ThreadCounter() {
-		thread_counter.fetch_sub(1);
-	}
-};
-
 /**
  * Called once per thread.  Sets up per-thread pointers to the shared global
  * data structures, creates per-thread structures, then enters the alignment
@@ -2986,11 +2971,9 @@ public:
  *   + If not identical, continue
  * -
  */
-//void multiseedSearchWorker::operator()() const {
-static void multiseedSearchWorker(void *vp) {
-	//int tid = *((int*)vp);
-	thread_tracking_pair *p = (thread_tracking_pair*) vp;
-	int tid = p->tid;
+ /* Work in progress: There is only one such invocation, parallelization inside */
+static void multiseedSearchWorker() {
+	int tid = 0;
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
 	PatternSourceReadAheadFactory& readahead_factory =  *multiseed_readahead_factory;
@@ -4131,16 +4114,17 @@ static void multiseedSearchWorker(void *vp) {
 		std::cout << ss.str();
 #endif
 	}
-	p->done->fetch_add(1);
 
 	return;
 }
 
+#ifdef ENABLE_2P5
+
+// NOTE: Unsupported, likely does not work
+
 //void multiseedSearchWorker_2p5::operator()() const {
-static void multiseedSearchWorker_2p5(void *vp) {
-	//int tid = *((int*)vp);
-	thread_tracking_pair *p = (thread_tracking_pair*) vp;
-	int tid = p->tid;
+static void multiseedSearchWorker_2p5() {
+	int tid = 0;
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
 	PatternSourceReadAheadFactory& readahead_factory =  *multiseed_readahead_factory;
@@ -4472,10 +4456,11 @@ static void multiseedSearchWorker_2p5(void *vp) {
 
 	// One last metrics merge
 	MERGE_METRICS(metrics);
-	p->done->fetch_add(1);
 
 	return;
 }
+
+#endif
 
 #ifndef _WIN32
 /**
@@ -4612,42 +4597,6 @@ static int read_dir(const char* dirname, int* num_pids) {
 	return lowest_pid;
 }
 
-template<typename T>
-static void steal_threads(int pid, int orig_nthreads, EList<int>& tids, EList<T*>& threads)
-{
-	int ncpu = thread_ceiling;
-	if(thread_ceiling <= nthreads) {
-		return;
-	}
-	int num_pids = 0;
-	int lowest_pid = read_dir(thread_stealing_dir.c_str(), &num_pids);
-	if(lowest_pid != pid) {
-		return;
-	}
-	int in_use = ((num_pids-1) * orig_nthreads) + nthreads;
-	if(in_use < ncpu) {
-		nthreads++;
-		tids.push_back(nthreads);
-		threads.push_back(new T(multiseedSearchWorker, (void*)&tids.back()));
-		cerr << "pid " << pid << " started new worker # " << nthreads << endl;
-	}
-}
-
-template<typename T>
-static void thread_monitor(int pid, int orig_threads, EList<int>& tids, EList<T*>& threads)
-{
-	for(int j = 0; j < 10; j++) {
-		sleep(1);
-	}
-	int steal_ctr = 1;
-	while(thread_counter > 0) {
-		steal_threads(pid, orig_threads, tids, threads);
-		steal_ctr++;
-		for(int j = 0; j < 10; j++) {
-			sleep(1);
-		}
-	}
-}
 #endif
 /**
  * Called once per alignment job.  Sets up global pointers to the
@@ -4692,12 +4641,6 @@ static void multiseedSearch(
 	sigaddset(&set, SIGPIPE);
 	pthread_sigmask(SIG_BLOCK, &set, NULL);
 #endif
-	EList<int> tids;
-	EList<std::thread*> threads(nthreads);
-	EList<thread_tracking_pair> tps;
-	tps.resize(std::max(nthreads, thread_ceiling));
-	threads.reserveExact(std::max(nthreads, thread_ceiling));
-	tids.reserveExact(std::max(nthreads, thread_ceiling));
 	{
 		// Load the other half of the index into memory
 		assert(!ebwtFw.isInMemory());
@@ -4738,48 +4681,19 @@ static void multiseedSearch(
 	{
 		Timer _t(cerr, "Multiseed full-index search: ", timing);
 
-#ifndef _WIN32
-		int pid = 0;
-		if(thread_stealing) {
-			pid = getpid();
-			write_pid(thread_stealing_dir.c_str(), pid);
-			thread_counter = 0;
-		}
-#endif
+		{
 
-		for(int i = 0; i < nthreads; i++) {
-			tids.push_back(i);
-			tps[i].tid = i;
-			tps[i].done = &all_threads_done;
-
-			if(bowtie2p5) {
-				threads.push_back(new std::thread(multiseedSearchWorker_2p5, (void*)&tps[i]));
+#ifdef ENABLE_2P5
+			if(bowtie2p5) { // WARNING: generally unsupported
+				multiseedSearchWorker_2p5();
 			} else {
-				threads.push_back(new std::thread(multiseedSearchWorker, (void*)&tps[i]));
+#endif
+				multiseedSearchWorker();
+#ifdef ENABLE_2P5
 			}
-			threads[i]->detach();
-			SLEEP(10);
-		}
-
-#ifndef _WIN32
-		if(thread_stealing) {
-			int orig_threads = nthreads;
-			thread_monitor(pid, orig_threads, tids, threads);
-		}
 #endif
-
-		while(all_threads_done < nthreads) {
-			SLEEP(10);
-		}
-		for (int i = 0; i < nthreads; ++i) {
-			delete threads[i];
 		}
 
-#ifndef _WIN32
-		if(thread_stealing) {
-			del_pid(thread_stealing_dir.c_str(), pid);
-		}
-#endif
 	}
 	if(!metricsPerRead && (metricsOfb != NULL || metricsStderr)) {
 		metrics.reportInterval(metricsOfb, metricsStderr, true, NULL);
@@ -4901,9 +4815,9 @@ static void driver(
 	}
 	OutputQueue oq(
 		*fout,                           // out file buffer
-		reorder && (nthreads > 1 || thread_stealing), // whether to reorder
+		reorder && (nthreads > 1), // whether to reorder
 		nthreads,                        // # threads
-		nthreads > 1 || thread_stealing, // whether to be thread-safe
+		nthreads > 1 , // whether to be thread-safe
 		readsPerBatch,                   // size of output buffer of reads
 		skipReads);                      // first read will have this rdid
 	{
@@ -5143,15 +5057,6 @@ int bowtie(int argc, const char **argv) {
 			// Get index basename (but only if it wasn't specified via --index)
 			if(bt2index.empty()) {
 				cerr << "No index, query, or output file specified!" << endl;
-				printUsage(cerr);
-				return 1;
-			}
-
-#ifndef _WIN32
-			thread_stealing = thread_ceiling > nthreads;
-#endif
-			if(thread_stealing && thread_stealing_dir.empty()) {
-				cerr << "When --thread-ceiling is specified, must also specify --thread-piddir" << endl;
 				printUsage(cerr);
 				return 1;
 			}
