@@ -3112,7 +3112,7 @@ static void multiseedSearchWorker() {
 		   PatternSourceReadAhead psrah(readahead_factory);
 		   PatternSourcePerThread* const ps = psrah.ptr();
 		   bool firstPS = true;
-                   do {
+                   do { //while (ps->nextReadPairReady())
 			pair<bool, bool> ret = firstPS ? 
 						psrah.readResult() : // nextReadPair was already called in the psrah constructor
 						ps->nextReadPair();
@@ -3136,7 +3136,6 @@ static void multiseedSearchWorker() {
 			}
 			if(rdid >= skipReads && rdid < qUpto && sample) {
 				// Align this read/pair
-				bool retry = true;
 				//
 				// Check if there is metrics reporting for us to do.
 				//
@@ -3164,7 +3163,13 @@ static void multiseedSearchWorker() {
 				if(sam_print_xt) {
 					gettimeofday(&prm.tv_beg, &prm.tz_beg);
 				}
+			} else if(rdid >= qUpto) {
+				done = true;
+				break;
+			}
+			if(rdid >= skipReads && rdid < qUpto && sample) {
 				// Try to align this read
+				bool retry = true;
 				while(retry) {
 					retry = false;
 					ca.nextRead(); // clear the cache
@@ -4060,10 +4065,6 @@ static void multiseedSearchWorker() {
 				assert(!retry || msinkwrap.empty());
 			} // while(retry)
 		} // if(rdid >= skipReads && rdid < qUpto)
-		else if(rdid >= qUpto) {
-			done = true;
-			break;
-		}
 		if(metricsPerRead) {
 			MERGE_METRICS(metricsPt);
 			nametmp = ps->read_a().name;
