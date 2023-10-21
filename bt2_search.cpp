@@ -2956,6 +2956,19 @@ void get_cpu_and_node(int& cpu, int& node) {
 }
 #endif
 
+static inline bool have_next_read(std::unique_ptr<PatternSourceReadAhead> &g_psrah) {
+  PatternSourcePerThread* ps = g_psrah.get()->ptr();
+  bool have_read = ps->nextReadPairReady();
+  if (!have_read) {
+     // finished current batch, but there may be more
+     g_psrah.reset(); // destroy the old object before allocating the new one
+     g_psrah.reset(new PatternSourceReadAhead(*multiseed_readahead_factory));
+     ps = g_psrah.get()->ptr();
+     have_read = ps->nextReadPairReady();
+  }
+  return have_read;
+}
+
 /**
  * Called once per thread.  Sets up per-thread pointers to the shared global
  * data structures, creates per-thread structures, then enters the alignment
@@ -3107,23 +3120,20 @@ static void multiseedSearchWorker() {
 		rndArb.init((uint32_t)time(0));
 		int mergei = 0;
 		int mergeival = 16;
-		bool done = false;
-		while(!done) {
-		   PatternSourceReadAhead psrah(readahead_factory);
-		   PatternSourcePerThread* const ps = psrah.ptr();
-		   bool firstPS = true;
-                   do { //while (ps->nextReadPairReady())
-			pair<bool, bool> ret = firstPS ? 
-						psrah.readResult() : // nextReadPair was already called in the psrah constructor
-						ps->nextReadPair();
-			firstPS = false;
-			bool success = ret.first;
-			done = ret.second;
-			if(!success && done) {
+                std::unique_ptr<PatternSourceReadAhead> g_psrah(new PatternSourceReadAhead(readahead_factory));
+                do { //while have_next_read(g_psrah)
+                        pair<bool, bool> ret = g_psrah.get()->nextReadPair();
+			{
+			  bool success = ret.first;
+			  bool done = ret.second;
+			  if(!success && done) {
 				break;
-			} else if(!success) {
+			  } else if(!success) {
 				continue;
+			  }
 			}
+
+			PatternSourcePerThread* const ps = g_psrah.get()->ptr();
 			TReadId rdid = ps->read_a().rdid;
 			bool sample = true;
 			if(arbitraryRandom) {
@@ -3164,7 +3174,6 @@ static void multiseedSearchWorker() {
 					gettimeofday(&prm.tv_beg, &prm.tz_beg);
 				}
 			} else if(rdid >= qUpto) {
-				done = true;
 				break;
 			}
 			if(rdid >= skipReads && rdid < qUpto && sample) {
@@ -4072,8 +4081,7 @@ static void multiseedSearchWorker() {
 				metricsOfb, metricsStderr, true, &nametmp);
 			metricsPt.reset();
 		}
-	   } while (ps->nextReadPairReady()); // must read the whole cached buffer
-	} // while(true)
+		} while (have_next_read(g_psrah)); // must read the whole cached buffer
 
 		// One last metrics merge
 		MERGE_METRICS(metrics);

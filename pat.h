@@ -1411,17 +1411,29 @@ class PatternSourceReadAhead {
 public:
 	PatternSourceReadAhead(PatternSourceReadAheadFactory& fact) :
 		fact_(fact),
-		re_(fact.nextReadPair()) {}
+		re_(fact.nextReadPair()),
+                isFirst(true) {}
 
 	~PatternSourceReadAhead() {
 		fact_.returnUnready(re_);
 	}
 
-	const std::pair<bool, bool>& readResult() const { return re_.readResult;}
 	PatternSourcePerThread* ptr() {return re_.ps;}
+	const std::pair<bool, bool>& readResult() const { return re_.readResult;}
+
+	std::pair<bool, bool> nextReadPair() {
+           if (isFirst) {
+              // nextReadPair was already called in the constructor
+              isFirst = false;
+              return re_.readResult;
+           } else {
+              return re_.ps->nextReadPair();
+           }
+        }
 private:
 	PatternSourceReadAheadFactory& fact_;
 	PatternSourceReadAheadFactory::ReadElement re_;
+        bool isFirst;
 };
 
 #ifdef USE_SRA
