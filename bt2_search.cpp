@@ -1115,8 +1115,10 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_PHRED64: phred64Quals = true; break;
 	case ARG_PHRED33: solexaQuals = false; phred64Quals = false; break;
 	case ARG_OVERHANG: gReportOverhangs = true; break;
-	case ARG_NO_CACHE: msNoCache = true; break;
-	case ARG_USE_CACHE: msNoCache = false; break;
+	case ARG_NO_CACHE: msNoCache = true; break;  // default
+	case ARG_USE_CACHE: 
+		cerr << "WARNING: USE_CACHE not supported" << endl; 
+		break;
 	case ARG_LOCAL_SEED_CACHE_SZ:
 		seedCacheLocalMB = (uint32_t)parseInt(1, "--local-seed-cache-sz arg must be at least 1", arg);
 		break;
@@ -1813,7 +1815,6 @@ static Ebwt*                    multiseed_ebwtFw;
 static Ebwt*                    multiseed_ebwtBw;
 static Scoring*                 multiseed_sc;
 static BitPairReference*        multiseed_refs;
-static AlignmentCache*          multiseed_ca; // seed cache
 static AlnSink*                 multiseed_msink;
 
 /**
@@ -2269,19 +2270,14 @@ static void multiseedSearchWorker() {
 
 		//const BitPairReference& refs   = *multiseed_refs;
 
-		// Thread-local cache for seed alignments
-		PtrWrap<AlignmentCache> scLocal;
-		if(!msNoCache) {
-			scLocal.init(new AlignmentCache(seedCacheLocalMB * 1024 * 1024, false));
-		}
 		AlignmentCache scCurrent(seedCacheCurrentMB * 1024 * 1024, false);
 		// Thread-local cache for current seed alignments
 
 		// Interfaces for alignment and seed caches
 		AlignmentCacheIface ca(
 			&scCurrent,
-			scLocal.get(),
-			msNoCache ? NULL : multiseed_ca);
+			NULL,
+			NULL);
 
 		// Instantiate an object for holding reporting-related parameters.
 		ReportingParams rp(

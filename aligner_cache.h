@@ -703,8 +703,8 @@ public:
 
 	AlignmentCacheIface(
 		AlignmentCache *current,
-		AlignmentCache *local,
-		AlignmentCache *shared) :
+		AlignmentCache *local,     // Note: Assume NULL
+		AlignmentCache *shared) :  // Note: Assume NULL
 		qk_(),
 		qv_(NULL),
 		cacheable_(false),
