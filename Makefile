@@ -217,24 +217,33 @@ FILE_FLAGS     := -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE
 DEBUG_DEFS     = -DCOMPILER_OPTIONS="\"$(DEBUG_FLAGS) $(CXXFLAGS)\""
 RELEASE_DEFS   = -DCOMPILER_OPTIONS="\"$(RELEASE_FLAGS) $(CXXFLAGS)\""
 
-BOWTIE2_BIN_LIST := bowtie2-build-s \
-  bowtie2-build-l \
-  bowtie2-align-s \
-  bowtie2-align-l \
-  bowtie2-inspect-s \
-  bowtie2-inspect-l
-BOWTIE2_BIN_LIST_DBG := bowtie2-build-s-debug \
-  bowtie2-build-l-debug \
-  bowtie2-align-s-debug \
-  bowtie2-align-l-debug \
-  bowtie2-inspect-s-debug \
-  bowtie2-inspect-l-debug
-BOWTIE2_BIN_LIST_SAN := bowtie2-build-s-sanitized \
-  bowtie2-build-l-sanitized \
-  bowtie2-align-s-sanitized \
-  bowtie2-align-l-sanitized \
-  bowtie2-inspect-s-sanitized \
-  bowtie2-inspect-l-sanitized
+#BOWTIE2_BIN_LIST := bowtie2-build-s \
+#  bowtie2-build-l \
+#  bowtie2-align-s \
+#  bowtie2-align-l \
+#  bowtie2-inspect-s \
+#  bowtie2-inspect-l
+#BOWTIE2_BIN_LIST_DBG := bowtie2-build-s-debug \
+#  bowtie2-build-l-debug \
+#  bowtie2-align-s-debug \
+#  bowtie2-align-l-debug \
+#  bowtie2-inspect-s-debug \
+#  bowtie2-inspect-l-debug
+#BOWTIE2_BIN_LIST_SAN := bowtie2-build-s-sanitized \
+#  bowtie2-build-l-sanitized \
+#  bowtie2-align-s-sanitized \
+#  bowtie2-align-l-sanitized \
+#  bowtie2-inspect-s-sanitized \
+#  bowtie2-inspect-l-sanitized
+
+
+#
+# Only supporting the 64-bit alignment for now
+#
+BOWTIE2_BIN_LIST := bowtie2-align-l
+BOWTIE2_BIN_LIST_DBG := bowtie2-align-l-debug
+BOWTIE2_BIN_LIST_SAN := bowtie2-align-l-sanitized
+
 ifndef SANITIZER_FLAGS
         BOWTIE2_BIN_LIST_SAN =
 endif
