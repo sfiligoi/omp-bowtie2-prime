@@ -573,8 +573,7 @@ VectorPatternSource::VectorPatternSource(
 	const EList<string>& seqs,
 	const PatternParams& p) :
 	PatternSource(p),
-	cur_(p.skip),
-	skip_(p.skip),
+	cur_(0),
 	paired_(false),
 	tokbuf_(),
 	bufs_()
@@ -1869,21 +1868,11 @@ void SRAPatternSource::open() {
 
 		// compute window to iterate through
 		size_t MAX_ROW = sra_run.getReadCount();
-		pp_.upto -= pp_.skip;
-
-		if (pp_.upto <= MAX_ROW) {
-			MAX_ROW = pp_.upto;
-		}
 		if(MAX_ROW < 0) {
 			return;
 		}
 
 		size_t start = 1;
-
-		if (pp_.skip > 0) {
-			start = pp_.skip + 1;
-			readCnt_ = pp_.skip;
-		}
 
 		read_iter_ = new ngs::ReadIterator(sra_run.getReadRange(start, MAX_ROW, ngs::Read::all));
 	} catch(...) {

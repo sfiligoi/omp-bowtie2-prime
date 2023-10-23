@@ -81,8 +81,6 @@ struct PatternParams {
 		pair<short, size_t> trimTo_,
 		int sampleLen_,
 		int sampleFreq_,
-		size_t skip_,
-		uint64_t upto_,
 		int nthreads_,
 		bool fixName_,
 		bool preserve_tags_,
@@ -100,8 +98,6 @@ struct PatternParams {
 		trimTo(trimTo_),
 		sampleLen(sampleLen_),
 		sampleFreq(sampleFreq_),
-		skip(skip_),
-		upto(upto_),
 		nthreads(nthreads_),
 		fixName(fixName_),
 		preserve_tags(preserve_tags_),
@@ -120,8 +116,6 @@ struct PatternParams {
 	pair<short, size_t> trimTo;
 	int sampleLen;		  // length of sampled reads for FastaContinuous...
 	int sampleFreq;		  // frequency of sampled reads for FastaContinuous...
-	size_t skip;		  // skip the first 'skip' patterns
-	uint64_t upto;		  // max number of queries to read
 	int nthreads;		  // number of threads for locking
 	bool fixName;		  //
 	bool preserve_tags;       // keep existing tags when aligning BAM files
@@ -363,7 +357,6 @@ public:
 		zstdfp_(NULL),
 #endif
 		is_open_(false),
-		skip_(p.skip),
 		first_(true),
 		compressionType_(CompressionType::NONE)
 	{
@@ -531,7 +524,6 @@ protected:
 	zstdStrm *zstdfp_;	         // zstd compressed file
 #endif
 	bool is_open_;			 // whether fp_ is currently open
-	TReadId skip_;			 // number of reads to skip
 	bool first_;			 // parsing first record in first file?
 	char buf_[64*1024];		 // file buffer
 	CompressionType compressionType_;

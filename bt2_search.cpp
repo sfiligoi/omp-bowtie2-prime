@@ -87,7 +87,6 @@ static bool metricsPerRead; // report a metrics tuple for every read
 static bool allHits;      // for multihits, report just one
 static bool showVersion;  // just print version and quit?
 static int ipause;        // pause before maching?
-static uint64_t qUpto;    // max # of queries to read
 static int gTrim5;        // amount to trim from 5' end
 static int gTrim3;        // amount to trim from 3' end
 static pair<short, size_t> trimTo; // trim reads exceeding given length from either 3' or 5'-end
@@ -120,7 +119,6 @@ bool gReportDiscordant;   // find and report discordant paired-end alignments
 bool gReportMixed;        // find and report unpaired alignments for paired reads
 static uint32_t cacheLimit;      // ranges w/ size > limit will be cached
 static uint32_t cacheSize;       // # words per range cache
-static uint32_t skipReads;       // # reads/read pairs to skip
 bool gNofw; // don't align fw orientation of read
 bool gNorc; // don't align rc orientation of read
 static uint32_t fastaContLen;
@@ -293,7 +291,6 @@ static void resetOptions() {
 	allHits		    = false;	// for multihits, report just one
 	showVersion	    = false;	// just print version and quit?
 	ipause		    = 0;	// pause before maching?
-	qUpto               = 0xffffffffffffffff; // max # of queries to read
 	gTrim5		    = 0;	// amount to trim from 5' end
 	gTrim3		    = 0;	// amount to trim from 3' end
 	trimTo		    = pair<short, size_t>(5, 0);	// default: don't do any trimming
@@ -328,7 +325,6 @@ static void resetOptions() {
 
 	cacheLimit	    = 5;	// ranges w/ size > limit will be cached
 	cacheSize	    = 0;	// # words per range cache
-	skipReads	    = 0;	// # reads/read pairs to skip
 	gNofw		    = false;	// don't align fw orientation of read
 	gNorc		    = false;	// don't align rc orientation of read
 	fastaContLen	    = 0;
@@ -1062,7 +1058,7 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_NO_DISCORDANT: gReportDiscordant = false; break;
 	case ARG_NO_MIXED: gReportMixed = false; break;
 	case 's':
-		skipReads = (uint32_t)parseInt(0, "-s arg must be positive", arg);
+		cerr << "WARNING: skipReads not supported" << endl; 
 		break;
 	case ARG_FF: gMate1fw = true;  gMate2fw = true;  break;
 	case ARG_RF: gMate1fw = false; gMate2fw = true;  break;
@@ -1122,7 +1118,7 @@ static void parseOption(int next_option, const char *arg) {
 		cerr << "WARNING: arbitraryRandom not supported" << endl; 
 		break;
 	case 'u':
-		qUpto = (uint32_t)parseInt(1, "-u/--qupto arg must be at least 1", arg);
+		cerr << "WARNING: qupto not supported" << endl; 
 		break;
 	case 'Q':
 		tokenize(arg, ",", qualities);
@@ -1742,12 +1738,6 @@ static void parseOptions(int argc, const char **argv) {
 			}
 		}
 	}
-	// If both -s and -u are used, we need to adjust qUpto accordingly
-	// since it uses rdid to know if we've reached the -u limit (and
-	// rdids are all shifted up by skipReads characters)
-	if(qUpto + skipReads > qUpto) {
-		qUpto += skipReads;
-	}
 	if(useShmem && useMm && !gQuiet) {
 		cerr << "Warning: --shmem overrides --mm..." << endl;
 		useMm = false;
@@ -2339,8 +2329,7 @@ static void multiseedSearchWorker() {
 
 			PatternSourcePerThread* const ps = g_psrah.get()->ptr();
 			TReadId rdid = ps->read_a().rdid;
-			bool sample = true;
-			if(rdid >= skipReads && rdid < qUpto && sample) {
+
 				// Align this read/pair
 				//
 				// Check if there is metrics reporting for us to do.
@@ -2350,10 +2339,7 @@ static void multiseedSearchWorker() {
 				if(sam_print_xt) {
 					gettimeofday(&prm.tv_beg, &prm.tz_beg);
 				}
-			} else if(rdid >= qUpto) {
-				break;
-			}
-			if(rdid >= skipReads && rdid < qUpto && sample) {
+
 					ca.nextRead(); // clear the cache
 					olm.reads++;
 					assert(!ca.aligning());
@@ -3224,7 +3210,7 @@ static void multiseedSearchWorker() {
 					seedSumm,             // suppress alignments?
 					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 					xeq);
-		  } // if(rdid >= skipReads && rdid < qUpto)
+
 		} while (have_next_read(g_psrah)); // must read the whole cached buffer
 
 		// One last metrics merge
@@ -3363,8 +3349,7 @@ static void multiseedSearchWorker_2p5() {
 			continue;
 		}
 		TReadId rdid = ps->read_a().rdid;
-		bool sample = true;
-		if(rdid >= skipReads && rdid < qUpto && sample) {
+
 			//
 			// Check if there is metrics reporting for us to do.
 			//
@@ -3527,10 +3512,7 @@ static void multiseedSearchWorker_2p5() {
 				seedSumm,             // suppress alignments?
 				scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 				xeq);
-		} // if(rdid >= skipReads && rdid < qUpto)
-		else if(rdid >= qUpto) {
-			break;
-		}
+
 	   } while (ps->nextReadPairReady()); // must read the whole cached buffer
 	} // while(true)
 
@@ -3810,8 +3792,6 @@ static void driver(
 		trimTo,        // trim reads exceeding given length from either 3' or 5'-end
 		fastaContLen,  // length of sampled reads for FastaContinuous...
 		fastaContFreq, // frequency of sampled reads for FastaContinuous...
-		skipReads,     // skip the first 'skip' patterns
-		qUpto,         // max number of queries to read
 		nthreads,      //number of threads for locking
 		outType != OUTPUT_SAM, // whether to fix mate names
 		preserve_tags, // keep existing tags when aligning BAM files
@@ -3894,7 +3874,7 @@ static void driver(
 		nthreads,                        // # threads
 		nthreads > 1 , // whether to be thread-safe
 		readsPerBatch,                   // size of output buffer of reads
-		skipReads);                      // first read will have this rdid
+		0);                      // first read will have this rdid
 	{
 		Timer _t(cerr, "Time searching: ", timing);
 		// Set up pexnalities
