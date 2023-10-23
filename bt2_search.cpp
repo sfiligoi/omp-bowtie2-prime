@@ -212,7 +212,6 @@ static uint32_t seedCacheLocalMB;   // # MB to use for non-shared seed alignment
 static uint32_t seedCacheCurrentMB; // # MB to use for current-read seed hit cacheing
 static uint32_t exactCacheCurrentMB; // # MB to use for current-read seed hit cacheing
 static size_t maxhalf;        // max width on one side of DP table
-static bool seedSumm;         // print summary information about seed hits, not alignments
 static bool scUnMapped;       // consider soft-clipped bases unmapped when calculating TLEN
 static bool doUngapped;       // do ungapped alignment
 static bool xeq;              // use X/= instead of M in CIGAR string
@@ -417,7 +416,6 @@ static void resetOptions() {
 	seedCacheCurrentMB  = 20;	// # MB to use for current-read seed hit cacheing
 	exactCacheCurrentMB = 20;	// # MB to use for current-read seed hit cacheing
 	maxhalf		    = 15;	// max width on one side of DP table
-	seedSumm	    = false;	// print summary information about seed hits, not alignments
 	scUnMapped	    = false;	// consider soft clipped bases unmapped when calculating TLEN
 	xeq		    = false;	// use =/X instead of M in CIGAR string
 	doUngapped	    = true;	// do ungapped alignment
@@ -1064,7 +1062,9 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_RF: gMate1fw = false; gMate2fw = true;  break;
 	case ARG_FR: gMate1fw = true;  gMate2fw = false; break;
 	case ARG_SHMEM: useShmem = true; break;
-	case ARG_SEED_SUMM: seedSumm = true; break;
+	case ARG_SEED_SUMM:
+		cerr << "WARNING: seedSumm not supported" << endl; 
+		break;
 	case ARG_SC_UNMAPPED: scUnMapped = true; break;
 	case ARG_XEQ: xeq = true; break;
 	case ARG_PRESERVE_TAGS: {
@@ -2540,7 +2540,7 @@ static void multiseedSearchWorker() {
 							// TODO: Consider mates & orientations separately?
 							matemap[0] = 1; matemap[1] = 0;
 						}
-						for(size_t matei = 0; matei < (seedSumm ? 0:2); matei++) {
+						for(size_t matei = 0; matei < 2; matei++) {
 							size_t mate = matemap[matei];
 							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
 								shs[mate].clearExactE2eHits();
@@ -2685,7 +2685,7 @@ static void multiseedSearchWorker() {
 					}
 
 					// 1-mismatch
-					if(do1mmUpFront && !seedSumm) {
+					if(do1mmUpFront) {
 						for(size_t matei = 0; matei < (paired ? 2:1); matei++) {
 							size_t mate = matemap[matei];
 							if(!filt[mate] || done[mate] || nelt[mate] > eePeEeltLimit) {
@@ -2727,7 +2727,7 @@ static void multiseedSearchWorker() {
 							// TODO: Consider mates & orientations separately?
 							matemap[0] = 1; matemap[1] = 0;
 						}
-						for(size_t matei = 0; matei < (seedSumm ? 0:2); matei++) {
+						for(size_t matei = 0; matei < 2; matei++) {
 							size_t mate = matemap[matei];
 							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
 								continue;
@@ -3005,7 +3005,7 @@ static void multiseedSearchWorker() {
 							assert(msinkwrap.repOk());
 							//rnd.init(ROTL(rds[mate]->seed, 10));
 							assert(shs[mate].repOk(&ca.current()));
-							if(!seedSumm) {
+							{
 								// If there aren't any seed hits...
 								if(shs[mate].empty()) {
 									continue; // on to the next mate
@@ -3129,7 +3129,7 @@ static void multiseedSearchWorker() {
 									cerr << "Bad return value: " << ret << endl;
 									throw 1;
 								}
-							} // if(!seedSumm)
+							}
 						} // for(size_t matei = 0; matei < 2; matei++)
 
 						// We don't necessarily have to continue investigating both
@@ -3206,8 +3206,8 @@ static void multiseedSearchWorker() {
 					rpm,                  // reporting metrics
 					prm,                  // per-read metrics
 					sc,                   // scoring scheme
-					!seedSumm,            // suppress seed summaries?
-					seedSumm,             // suppress alignments?
+					true,                 // suppress seed summaries?
+					false,                // suppress alignments?
 					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 					xeq);
 
@@ -3508,8 +3508,8 @@ static void multiseedSearchWorker_2p5() {
 				rpm,                  // reporting metrics
 				prm,                  // per-read metrics
 				sc,                   // scoring scheme
-				!seedSumm,            // suppress seed summaries?
-				seedSumm,             // suppress alignments?
+				true,                 // suppress seed summaries?
+				false,                // suppress alignments?
 				scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 				xeq);
 
@@ -4027,7 +4027,7 @@ static void driver(
 			ebwt.evictFromMemory();
 		}
 
-		if(!gQuiet && !seedSumm) {
+		if(!gQuiet) {
 			size_t repThresh = mhits;
 			if(repThresh == 0) {
 				repThresh = std::numeric_limits<size_t>::max();
