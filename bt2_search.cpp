@@ -1009,8 +1009,8 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_TEST_25: bowtie2p5 = true; break;
 	case ARG_DESC_KB: descentTotSz = SimpleFunc::parse(arg, 0.0, 1024.0, 1024.0, DMAX); break;
 	case ARG_DESC_FMOPS: descentTotFmops = SimpleFunc::parse(arg, 0.0, 10.0, 100.0, DMAX); break;
-	case ARG_LOG_DP: logDps = arg; break;
-	case ARG_LOG_DP_OPP: logDpsOpp = arg; break;
+	case ARG_LOG_DP: logDps = arg; break;  // NOTE: Deprecated, noop
+	case ARG_LOG_DP_OPP: logDpsOpp = arg; break; // NOTE: Deprecated, noop
 	case ARG_DESC_LANDING: {
 		descLanding = parse<int>(arg);
 		if(descLanding < 1) {
@@ -2294,20 +2294,9 @@ static void multiseedSearchWorker() {
 			*bmapq,        // MAPQ calculator
 			(size_t)tid);  // thread id
 
-		// Write dynamic-programming problem descriptions here
-		ofstream *dpLog = NULL, *dpLogOpp = NULL;
-		if(!logDps.empty()) {
-			dpLog = new ofstream(logDps.c_str(), ofstream::out);
-			dpLog->sync_with_stdio(false);
-		}
-		if(!logDpsOpp.empty()) {
-			dpLogOpp = new ofstream(logDpsOpp.c_str(), ofstream::out);
-			dpLogOpp->sync_with_stdio(false);
-		}
-
 		SeedAligner al;
 		SwDriver sd(exactCacheCurrentMB * 1024 * 1024);
-		SwAligner sw(dpLog), osw(dpLogOpp);
+		SwAligner sw(NULL), osw(NULL);
 		SeedResults shs[2];
 		OuterLoopMetrics olm;
 		SeedSearchMetrics sdm;
@@ -3314,9 +3303,6 @@ static void multiseedSearchWorker() {
 
 		// One last metrics merge
 		MERGE_METRICS(metrics);
-
-		if(dpLog    != NULL) dpLog->close();
-		if(dpLogOpp != NULL) dpLogOpp->close();
 
 	}
 
