@@ -1134,7 +1134,7 @@ static void parseOption(int next_option, const char *arg) {
 		seed = parseInt(0, "--seed arg must be at least 0", arg);
 		break;
 	case ARG_NON_DETERMINISTIC:
-		arbitraryRandom = true;
+		cerr << "WARNING: arbitraryRandom not supported" << endl; 
 		break;
 	case 'u':
 		qUpto = (uint32_t)parseInt(1, "-u/--qupto arg must be at least 1", arg);
@@ -1313,7 +1313,7 @@ static void parseOption(int next_option, const char *arg) {
 		break;
 	}
 	case ARG_SAMPLE:
-		sampleFrac = parse<float>(arg);
+		cerr << "WARNING: sampleFrac not supported" << endl; 
 		break;
 	case ARG_CP_MIN:
 		cminlen = parse<size_t>(arg);
@@ -2303,7 +2303,7 @@ static void multiseedSearchWorker() {
 		WalkMetrics wlm;
 		SwMetrics swmSeed, swmMate;
 		ReportingMetrics rpm;
-		RandomSource rnd, rndArb;
+		RandomSource rnd;
 		SSEMetrics sseU8ExtendMet;
 		SSEMetrics sseU8MateMet;
 		SSEMetrics sseI16ExtendMet;
@@ -2361,7 +2361,6 @@ static void multiseedSearchWorker() {
 		// Keep track of whether mates 1/2 were filtered out by upstream qc
 		bool qcfilt[2]  = { true, true };
 
-		rndArb.init((uint32_t)time(0));
 		int mergei = 0;
 		int mergeival = 16;
                 std::unique_ptr<PatternSourceReadAhead> g_psrah(new PatternSourceReadAhead(readahead_factory));
@@ -2380,14 +2379,6 @@ static void multiseedSearchWorker() {
 			PatternSourcePerThread* const ps = g_psrah.get()->ptr();
 			TReadId rdid = ps->read_a().rdid;
 			bool sample = true;
-			if(arbitraryRandom) {
-				ps->read_a().seed = rndArb.nextU32();
-				ps->read_b().seed = rndArb.nextU32();
-			}
-			if(sampleFrac < 1.0f) {
-				rnd.init(ROTL(ps->read_a().seed, 2));
-				sample = rnd.nextFloat() < sampleFrac;
-			}
 			if(rdid >= skipReads && rdid < qUpto && sample) {
 				// Align this read/pair
 				//
@@ -3357,7 +3348,7 @@ static void multiseedSearchWorker_2p5() {
 	SwMetrics swmSeed, swmMate;
 	DescentMetrics descm;
 	ReportingMetrics rpm;
-	RandomSource rnd, rndArb;
+	RandomSource rnd;
 	SSEMetrics sseU8ExtendMet;
 	SSEMetrics sseU8MateMet;
 	SSEMetrics sseI16ExtendMet;
@@ -3422,7 +3413,6 @@ static void multiseedSearchWorker_2p5() {
 	// Keep track of whether mates 1/2 were filtered out by upstream qc
 	bool qcfilt[2]  = { true, true };
 
-	rndArb.init((uint32_t)time(0));
 	int mergei = 0;
 	int mergeival = 16;
 	while(true) {
@@ -3439,14 +3429,6 @@ static void multiseedSearchWorker_2p5() {
 		}
 		TReadId rdid = ps->read_a().rdid;
 		bool sample = true;
-		if(arbitraryRandom) {
-			ps->read_a().seed = rndArb.nextU32();
-			ps->read_b().seed = rndArb.nextU32();
-		}
-		if(sampleFrac < 1.0f) {
-			rnd.init(ROTL(ps->read_a().seed, 2));
-			sample = rnd.nextFloat() < sampleFrac;
-		}
 		if(rdid >= skipReads && rdid < qUpto && sample) {
 			//
 			// Check if there is metrics reporting for us to do.
