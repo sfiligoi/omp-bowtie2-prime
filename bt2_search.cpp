@@ -4620,9 +4620,6 @@ static void multiseedSearch(
 		}
 
 	}
-	if(!metricsPerRead && (metricsOfb != NULL || metricsStderr)) {
-		metrics.reportInterval(metricsOfb, metricsStderr, true, NULL);
-	}
 }
 
 static string argstr;
