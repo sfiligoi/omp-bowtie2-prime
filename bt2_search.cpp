@@ -2354,10 +2354,6 @@ static void multiseedSearchWorker() {
 				break;
 			}
 			if(rdid >= skipReads && rdid < qUpto && sample) {
-				// Try to align this read
-				bool retry = true;
-				while(retry) {
-					retry = false;
 					ca.nextRead(); // clear the cache
 					olm.reads++;
 					assert(!ca.aligning());
@@ -3228,8 +3224,6 @@ static void multiseedSearchWorker() {
 					seedSumm,             // suppress alignments?
 					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 					xeq);
-				assert(!retry || msinkwrap.empty());
-			} // while(retry)
 		  } // if(rdid >= skipReads && rdid < qUpto)
 		} while (have_next_read(g_psrah)); // must read the whole cached buffer
 
