@@ -171,10 +171,7 @@ static bool sam_print_zu;
 static bool sam_print_zt;
 static bool preserve_tags;     // Only applies when aligning BAM files
 static bool align_paired_reads; // Process only the paired reads in BAM file
-static bool bwaSwLike;
 static bool gSeedLenIsSet;
-static float bwaSwLikeC;
-static float bwaSwLikeT;
 static bool qcFilter;
 bool gReportOverhangs;        // false -> filter out alignments that fall off the end of a reference sequence
 static string rgid;           // ID: setting for @RG header line
@@ -382,10 +379,7 @@ static void resetOptions() {
 	sam_print_zt        = false;
 	preserve_tags       = false;
 	align_paired_reads  = false;
-	bwaSwLike           = false;
 	gSeedLenIsSet	    = false;
-	bwaSwLikeC          = 5.5f;
-	bwaSwLikeT          = 20.0f;
 	gDefaultSeedLen	    = DEFAULT_SEEDLEN;
 	qcFilter            = false;	// don't believe upstream qc by default
 	rgid		    = "";	// SAM outputs for @RG header line
@@ -1052,16 +1046,7 @@ static void parseOption(int next_option, const char *arg) {
 		break;
 	}
 	case ARG_BWA_SW_LIKE: {
-		bwaSwLikeC = 5.5f;
-		bwaSwLikeT = 30;
-		bwaSwLike = true;
-		localAlign = true;
-		// -a INT   Score of a match [1]
-		// -b INT   Mismatch penalty [3]
-		// -q INT   Gap open penalty [5]
-		// -r INT   Gap extension penalty. The penalty for a contiguous
-		//          gap of size k is q+k*r. [2]
-		polstr += ";MA=1;MMP=C3;RDG=5,2;RFG=5,2";
+		cerr << "WARNING: BWA_SW_LIKE not supported" << endl; 
 		break;
 	}
 	case 'q': set_format(format, FASTQ); break;
@@ -1378,8 +1363,7 @@ static void parseOption(int next_option, const char *arg) {
 		origString = arg;
 		break;
 	case ARG_LOCAL: {
-		localAlign = true;
-		gDefaultSeedLen = DEFAULT_LOCAL_SEEDLEN;
+		cerr << "WARNING: localAlign not supported" << endl; 
 		break;
 	}
 	case ARG_END_TO_END: localAlign = false; break;
@@ -1404,19 +1388,27 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_1MM_MINLEN:       do1mmMinLen = parse<size_t>(arg); break;
 	case ARG_NOISY_HPOLY: noisyHpolymer = true; break;
 	case 'x': bt2index = arg; break;
-	case ARG_PRESET_VERY_FAST_LOCAL: localAlign = true;
+	case ARG_PRESET_VERY_FAST_LOCAL:
+		cerr << "WARNING: localAlign not supported" << endl; 
+		break;
 	case ARG_PRESET_VERY_FAST: {
 		presetList.push_back("very-fast%LOCAL%"); break;
 	}
-	case ARG_PRESET_FAST_LOCAL: localAlign = true;
+	case ARG_PRESET_FAST_LOCAL:
+		cerr << "WARNING: localAlign not supported" << endl; 
+		break;
 	case ARG_PRESET_FAST: {
 		presetList.push_back("fast%LOCAL%"); break;
 	}
-	case ARG_PRESET_SENSITIVE_LOCAL: localAlign = true;
+	case ARG_PRESET_SENSITIVE_LOCAL:
+		cerr << "WARNING: localAlign not supported" << endl; 
+		break;
 	case ARG_PRESET_SENSITIVE: {
 		presetList.push_back("sensitive%LOCAL%"); break;
 	}
-	case ARG_PRESET_VERY_SENSITIVE_LOCAL: localAlign = true;
+	case ARG_PRESET_VERY_SENSITIVE_LOCAL:
+		cerr << "WARNING: localAlign not supported" << endl; 
+		break;
 	case ARG_PRESET_VERY_SENSITIVE: {
 		presetList.push_back("very-sensitive%LOCAL%"); break;
 	}
@@ -2109,35 +2101,15 @@ static inline void printEEScoreMsg(
 static void setupMinScores(
 	const PatternSourcePerThread& ps,
 	bool paired,
-	bool localAlign,
 	const Scoring& sc,
 	const size_t *rdlens,
 	TAlScore *minsc,
 	TAlScore *maxpen)
 {
-	if(bwaSwLike) {
-		// From BWA-SW manual: "Given an l-long query, the
-		// threshold for a hit to be retained is
-		// a*max{T,c*log(l)}."  We try to recreate that here.
-		float a = (float)sc.match(30);
-		float T = bwaSwLikeT, c = bwaSwLikeC;
-		minsc[0] = (TAlScore)max<float>(a*T, a*c*log(rdlens[0]));
-		if(paired) {
-			minsc[1] = (TAlScore)max<float>(a*T, a*c*log(rdlens[1]));
-		}
-	} else {
+	{
 		minsc[0] = scoreMin.f<TAlScore>(rdlens[0]);
 		if(paired) minsc[1] = scoreMin.f<TAlScore>(rdlens[1]);
-		if(localAlign) {
-			if(minsc[0] < 0) {
-				if(!gQuiet) printLocalScoreMsg(ps, paired, true);
-				minsc[0] = 0;
-			}
-			if(paired && minsc[1] < 0) {
-				if(!gQuiet) printLocalScoreMsg(ps, paired, false);
-				minsc[1] = 0;
-			}
-		} else {
+		{
 			if(minsc[0] > 0) {
 				if(!gQuiet) printEEScoreMsg(ps, paired, true);
 				minsc[0] = 0;
@@ -2149,18 +2121,7 @@ static void setupMinScores(
 		}
 	}
 	// Given minsc, calculate maxpen
-	if(localAlign) {
-		TAlScore perfect0 = sc.perfectScore(rdlens[0]);
-		assert_geq(perfect0, minsc[0]);
-		maxpen[0] = perfect0 - minsc[0];
-		if(paired) {
-			TAlScore perfect1 = sc.perfectScore(rdlens[1]);
-			assert_geq(perfect1, minsc[1]);
-			maxpen[1] = perfect1 - minsc[1];
-		} else {
-			maxpen[1] = std::numeric_limits<TAlScore>::min();
-		}
-	} else {
+	{
 		assert_leq(minsc[0], 0);
 		maxpen[0] = -minsc[0];
 		if(paired) {
@@ -2415,29 +2376,10 @@ static void multiseedSearchWorker() {
 					// Calculate the minimum valid score threshold for the read
 					TAlScore minsc[2];
 					minsc[0] = minsc[1] = std::numeric_limits<TAlScore>::max();
-					if(bwaSwLike) {
-						// From BWA-SW manual: "Given an l-long query, the
-						// threshold for a hit to be retained is
-						// a*max{T,c*log(l)}."  We try to recreate that here.
-						float a = (float)sc.match(30);
-						float T = bwaSwLikeT, c = bwaSwLikeC;
-						minsc[0] = (TAlScore)max<float>(a*T, a*c*log(rdlens[0]));
-						if(paired) {
-							minsc[1] = (TAlScore)max<float>(a*T, a*c*log(rdlens[1]));
-						}
-					} else {
+					{
 						minsc[0] = scoreMin.f<TAlScore>(rdlens[0]);
 						if(paired) minsc[1] = scoreMin.f<TAlScore>(rdlens[1]);
-						if(localAlign) {
-							if(minsc[0] < 0) {
-								if(!gQuiet) printLocalScoreMsg(*ps, paired, true);
-								minsc[0] = 0;
-							}
-							if(paired && minsc[1] < 0) {
-								if(!gQuiet) printLocalScoreMsg(*ps, paired, false);
-								minsc[1] = 0;
-							}
-						} else {
+						{
 							if(minsc[0] > 0) {
 								if(!gQuiet) printEEScoreMsg(*ps, paired, true);
 								minsc[0] = 0;
@@ -3458,7 +3400,7 @@ static void multiseedSearchWorker_2p5() {
 			// Calculate the minimum valid score threshold for the read
 			TAlScore minsc[2], maxpen[2];
 			minsc[0] = minsc[1] = std::numeric_limits<TAlScore>::max();
-			setupMinScores(*ps, paired, localAlign, sc, rdlens, minsc, maxpen);
+			setupMinScores(*ps, paired, sc, rdlens, minsc, maxpen);
 			// N filter; does the read have too many Ns?
 			size_t readns[2] = {0, 0};
 			sc.nFilterPair(
