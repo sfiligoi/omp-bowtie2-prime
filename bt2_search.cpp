@@ -2271,13 +2271,9 @@ static void multiseedSearchWorker() {
 		//const BitPairReference& refs   = *multiseed_refs;
 
 		AlignmentCache scCurrent(seedCacheCurrentMB * 1024 * 1024, false);
-		// Thread-local cache for current seed alignments
 
 		// Interfaces for alignment and seed caches
-		AlignmentCacheIface ca(
-			&scCurrent,
-			NULL,
-			NULL);
+		AlignmentCacheIface ca(&scCurrent);
 
 		// Instantiate an object for holding reporting-related parameters.
 		ReportingParams rp(

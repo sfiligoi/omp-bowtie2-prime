@@ -702,79 +702,16 @@ class AlignmentCacheIface {
 public:
 
 	AlignmentCacheIface(
-		AlignmentCache *current,
-		AlignmentCache *local,     // Note: Assume NULL
-		AlignmentCache *shared) :  // Note: Assume NULL
+		AlignmentCache *current):
 		qk_(),
 		qv_(NULL),
 		cacheable_(false),
 		rangen_(0),
 		eltsn_(0),
-		current_(current),
-		local_(local),
-		shared_(shared)
+		current_(current)
 	{
 		assert(current_ != NULL);
 	}
-
-#if 0
-	/**
-	 * Query the relevant set of caches, looking for a QVal to go with
-	 * the provided QKey.  If the QVal is found in a cache other than
-	 * the current-read cache, it is copied into the current-read cache
-	 * first and the QVal pointer for the current-read cache is
-	 * returned.  This function never returns a pointer from any cache
-	 * other than the current-read cache.  If the QVal could not be
-	 * found in any cache OR if the QVal was found in a cache other
-	 * than the current-read cache but could not be copied into the
-	 * current-read cache, NULL is returned.
-	 */
-	QVal* queryCopy(const QKey& qk, bool getLock = true) {
-		assert(qk.cacheable());
-		AlignmentCache* caches[3] = { current_, local_, shared_ };
-		for(int i = 0; i < 3; i++) {
-			if(caches[i] == NULL) continue;
-			QVal* qv = caches[i]->query(qk, getLock);
-			if(qv != NULL) {
-				if(i == 0) return qv;
-				if(!current_->copy(qk, *qv, *caches[i], getLock)) {
-					// Exhausted memory in the current cache while
-					// attempting to copy in the qk
-					return NULL;
-				}
-				QVal* curqv = current_->query(qk, getLock);
-				assert(curqv != NULL);
-				return curqv;
-			}
-		}
-		return NULL;
-	}
-
-	/**
-	 * Query the relevant set of caches, looking for a QVal to go with
-	 * the provided QKey.  If a QVal is found and which is non-NULL,
-	 * *which is set to 0 if the qval was found in the current-read
-	 * cache, 1 if it was found in the local across-read cache, and 2
-	 * if it was found in the shared across-read cache.
-	 */
-	inline QVal* query(
-		const QKey& qk,
-		AlignmentCache** which,
-		bool getLock = true)
-	{
-		assert(qk.cacheable());
-		AlignmentCache* caches[3] = { current_, local_, shared_ };
-		for(int i = 0; i < 3; i++) {
-			if(caches[i] == NULL) continue;
-			QVal* qv = caches[i]->query(qk, getLock);
-			if(qv != NULL) {
-				if(which != NULL) *which = caches[i];
-				return qv;
-			}
-		}
-		return NULL;
-	}
-#endif
 
 	/**
 	 * This function is called whenever we start to align a new read or
@@ -831,24 +768,6 @@ public:
 		// Commit the contents of the current-read cache to the next
 		// cache up in the hierarchy.
 		// If qk is cacheable, then it must be in the cache
-#if 0
-		if(qk_.cacheable()) {
-			AlignmentCache* caches[3] = { current_, local_, shared_ };
-			ASSERT_ONLY(AlignmentCache* which);
-			ASSERT_ONLY(QVal* qv2 = query(qk_, &which, true));
-			assert(qv2 == qv);
-			assert(which == current_);
-			for(int i = 1; i < 3; i++) {
-				if(caches[i] != NULL) {
-					// Copy this key/value pair to the to the higher
-					// level cache and, if its memory is exhausted,
-					// clear the cache and try again.
-					caches[i]->clearCopy(qk_, *qv_, *current_, getLock);
-					break;
-				}
-			}
-		}
-#endif
 		// Reset the state in this iface in preparation for the next
 		// alignment.
 		resetRead();
@@ -880,8 +799,6 @@ public:
 	 */
 	void clear() {
 		if(current_ != NULL) current_->clear();
-		if(local_   != NULL) local_->clear();
-		if(shared_  != NULL) shared_->clear();
 	}
 
 	/**
@@ -988,8 +905,6 @@ protected:
 	size_t eltsn_;  // number of elements since last alignment job began
 
 	AlignmentCache *current_; // cache dedicated to the current read
-	AlignmentCache *local_;   // local, unsynchronized cache
-	AlignmentCache *shared_;  // shared, synchronized cache
 };
 
 #endif /*ALIGNER_CACHE_H_*/
