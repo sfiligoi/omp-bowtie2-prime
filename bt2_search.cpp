@@ -1164,7 +1164,7 @@ static void parseOption(int next_option, const char *arg) {
 		thread_ceiling = parseInt(0, "--thread-ceiling must be at least 0", arg);
 		break;
 	case ARG_THREAD_PIDDIR:
-                // NOOP, deprecated
+		cerr << "WARNING: THREAD_PIDDIR not supported" << endl; 
 		break;
 	case ARG_FILEPAR:
 		fileParallel = true;
@@ -1282,7 +1282,10 @@ static void parseOption(int next_option, const char *arg) {
 	}
 	case ARG_METRIC_FILE: metricsFile = arg; break;
 	case ARG_METRIC_STDERR: metricsStderr = true; break;
-	case ARG_METRIC_PER_READ: metricsPerRead = true; break;
+	case ARG_METRIC_PER_READ: {
+		cerr << "WARNING: metricsPerRead not supported" << endl; 
+		break;
+        }
 	case ARG_NO_FW: gNofw = true; break;
 	case ARG_NO_RC: gNorc = true; break;
 	case ARG_SAM_NO_QNAME_TRUNC: samTruncQname = false; break;
@@ -3149,25 +3152,6 @@ static void multiseedSearchWorker() {
 				//
 				// Check if there is metrics reporting for us to do.
 				//
-				if(metricsIval > 0 &&
-				   (metricsOfb != NULL || metricsStderr) &&
-				   !metricsPerRead &&
-				   ++mergei == mergeival)
-				{
-					// Do a periodic merge.  Update global metrics, in a
-					// synchronized manner if needed.
-					MERGE_METRICS(metrics);
-					mergei = 0;
-					// Check if a progress message should be printed
-					if(tid == 0) {
-						// Only thread 1 prints progress messages
-						time_t curTime = time(0);
-						if(curTime - iTime >= metricsIval) {
-							metrics.reportInterval(metricsOfb, metricsStderr, false, NULL);
-							iTime = curTime;
-						}
-					}
-				}
 				prm.reset(); // per-read metrics
 				prm.doFmString = false;
 				if(sam_print_xt) {
@@ -4073,14 +4057,7 @@ static void multiseedSearchWorker() {
 					xeq);
 				assert(!retry || msinkwrap.empty());
 			} // while(retry)
-		} // if(rdid >= skipReads && rdid < qUpto)
-		if(metricsPerRead) {
-			MERGE_METRICS(metricsPt);
-			nametmp = ps->read_a().name;
-			metricsPt.reportInterval(
-				metricsOfb, metricsStderr, true, &nametmp);
-			metricsPt.reset();
-		}
+		  } // if(rdid >= skipReads && rdid < qUpto)
 		} while (have_next_read(g_psrah)); // must read the whole cached buffer
 
 		// One last metrics merge
@@ -4238,25 +4215,6 @@ static void multiseedSearchWorker_2p5() {
 			//
 			// Check if there is metrics reporting for us to do.
 			//
-			if(metricsIval > 0 &&
-			   (metricsOfb != NULL || metricsStderr) &&
-			   !metricsPerRead &&
-			   ++mergei == mergeival)
-			{
-				// Do a periodic merge.  Update global metrics, in a
-				// synchronized manner if needed.
-				MERGE_METRICS(metrics);
-				mergei = 0;
-				// Check if a progress message should be printed
-				if(tid == 0) {
-					// Only thread 1 prints progress messages
-					time_t curTime = time(0);
-					if(curTime - iTime >= metricsIval) {
-						metrics.reportInterval(metricsOfb, metricsStderr, false, NULL);
-						iTime = curTime;
-					}
-				}
-			}
 			prm.reset(); // per-read metrics
 			prm.doFmString = sam_print_zm;
 			// If we're reporting how long each read takes, get the initial time
@@ -4419,13 +4377,6 @@ static void multiseedSearchWorker_2p5() {
 		} // if(rdid >= skipReads && rdid < qUpto)
 		else if(rdid >= qUpto) {
 			break;
-		}
-		if(metricsPerRead) {
-			MERGE_METRICS(metricsPt);
-			nametmp = ps->read_a().name;
-			metricsPt.reportInterval(
-				metricsOfb, metricsStderr, true, &nametmp);
-			metricsPt.reset();
 		}
 	   } while (ps->nextReadPairReady()); // must read the whole cached buffer
 	} // while(true)
