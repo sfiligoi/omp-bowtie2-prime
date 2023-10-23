@@ -978,7 +978,6 @@ bool SeedAligner::oneMmSearch(
 	int64_t            minsc,  // minimum score
 	bool               nofw,   // don't align forward read
 	bool               norc,   // don't align revcomp read
-	bool               local,  // 1mm hits must be legal local alignments
 	bool               repex,  // report 0mm hits?
 	bool               rep1mm, // report 1mm hits?
 	SeedResults&       hits,   // holds all the seed hits (and exact hit)
@@ -1226,56 +1225,10 @@ bool SeedAligner::oneMmSearch(
 							Edit e((uint32_t)off5p, j, rdc, EDIT_TYPE_MM, false);
 							results = true;
 							int64_t score = (len - 1) * sc.match();
-							// In --local mode, need to double-check that
-							// end-to-end alignment doesn't violate  local
-							// alignment principles.  Specifically, it
-							// shouldn't to or below 0 anywhere in the middle.
 							int pen = sc.score(rdc, (int)(1 << j), quc - 33);
 							score += pen;
-							bool valid = true;
-							if(local) {
-								int64_t locscore_fw = 0, locscore_bw = 0;
-								for(size_t i = 0; i < len; i++) {
-									if(i == dep) {
-										if(locscore_fw + pen <= 0) {
-											valid = false;
-											break;
-										}
-										locscore_fw += pen;
-									} else {
-										locscore_fw += sc.match();
-									}
-									if(len-i-1 == dep) {
-										if(locscore_bw + pen <= 0) {
-											valid = false;
-											break;
-										}
-										locscore_bw += pen;
-									} else {
-										locscore_bw += sc.match();
-									}
-								}
-							}
-							if(valid) {
-								valid = score >= minsc;
-							}
-							if(valid) {
-#ifndef NDEBUG
-								BTDnaString& rf = tmprfdnastr_;
-								rf.clear();
-								edits_.clear();
-								edits_.push_back(e);
-								if(!fw) Edit::invertPoss(edits_, len, false);
-								Edit::toRef(fw ? read.patFw : read.patRc, edits_, rf);
-								if(!fw) Edit::invertPoss(edits_, len, false);
-								assert_eq(len, rf.length());
-								for(size_t i = 0; i < len; i++) {
-									assert_lt((int)rf[i], 4);
-								}
-								ASSERT_ONLY(TIndexOffU toptmp = 0);
-								ASSERT_ONLY(TIndexOffU bottmp = 0);
-								assert(ebwtFw->contains(rf, &toptmp, &bottmp));
-#endif
+							bool valid = score >= minsc;
+							if(valid) { // Note: Should be always valid, but needs to prove it
 								TIndexOffU toprep = ebwtfw ? topm : topmp;
 								TIndexOffU botrep = ebwtfw ? botm : botmp;
 								assert_eq(toprep, toptmp);

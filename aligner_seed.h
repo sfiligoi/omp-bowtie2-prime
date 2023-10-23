@@ -1736,7 +1736,6 @@ public:
 		int64_t            minsc,  // minimum score
 		bool               nofw,   // don't align forward read
 		bool               norc,   // don't align revcomp read
-		bool               local,  // 1mm hits must be legal local alignments
 		bool               repex,  // report 0mm hits?
 		bool               rep1mm, // report 1mm hits?
 		SeedResults&       hits,   // holds all the seed hits (and exact hit)

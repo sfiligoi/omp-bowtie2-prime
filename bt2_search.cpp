@@ -2731,7 +2731,6 @@ static void multiseedSearchWorker() {
 									minsc[mate],    // minimum score
 									!yfw,           // don't align forward read
 									!yrc,           // don't align revcomp read
-									localAlign,     // must be legal local alns?
 									false,          // do exact match
 									true,           // do 1mm
 									shs[mate],      // seed hits (hits installed here)
