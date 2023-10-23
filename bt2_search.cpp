@@ -3095,7 +3095,6 @@ static void multiseedSearchWorker() {
 			gOlapMatesOK,
 			gExpandToFrag);
 
-		PerfMetrics metricsPt; // per-thread metrics object; for read-level metrics
 		BTString nametmp;
 		EList<Seed> seeds1, seeds2;
 		EList<Seed> *seeds[2] = { &seeds1, &seeds2 };
@@ -4163,7 +4162,6 @@ static void multiseedSearchWorker_2p5() {
 		descentTotSz,        // limit on total bytes of best-first search data
 		descentTotFmops);    // limit on total number of FM index ops in BFS
 
-	PerfMetrics metricsPt; // per-thread metrics object; for read-level metrics
 	BTString nametmp;
 
 	PerReadMetrics prm;
