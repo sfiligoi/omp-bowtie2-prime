@@ -4075,9 +4075,7 @@ protected:
 				parent->right = n;
 			}
 			n->parent = parent;
-			int thru = 0;
 			while(true) {
-				thru++;
 				parent = n->parent;
 				if(parent != NULL) assert(parent->repOk());
 				if(parent == NULL && n->red) {
