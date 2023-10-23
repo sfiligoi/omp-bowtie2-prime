@@ -236,8 +236,6 @@ static EList<string> queries; // list of query files
 static string outfile;        // write SAM output to this file
 static int mapqv;             // MAPQ calculation version
 static int tighten;           // -M tighten mode (0=none, 1=best, 2=secbest+1)
-static bool doExactUpFront;   // do exact search up front if seeds seem good enough
-static bool do1mmUpFront;     // do 1mm search up front if seeds seem good enough
 static size_t do1mmMinLen;    // length below which we disable 1mm e2e search
 static size_t seedBoostThresh;   // if average non-zero position has more than this many elements
 static size_t nSeedRounds;    // # seed rounds
@@ -443,8 +441,6 @@ static void resetOptions() {
 	outfile.clear();        // write SAM output to this file
 	mapqv		    = 2;	// MAPQ calculation version
 	tighten		    = 3;	// -M tightening mode
-	doExactUpFront	    = true;	// do exact search up front if seeds seem good enough
-	do1mmUpFront	    = true;	// do 1mm search up front if seeds seem good enough
 	seedBoostThresh	    = 300;	// if average non-zero position has more than this many elements
 	nSeedRounds	    = 2;	// # rounds of seed searches to do for repetitive reads
 	do1mmMinLen	    = 60;	// length below which we disable 1mm search
@@ -1377,10 +1373,14 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_IGNORE_QUALS: ignoreQuals = true; break;
 	case ARG_MAPQ_V: mapqv = parse<int>(arg); break;
 	case ARG_TIGHTEN: tighten = parse<int>(arg); break;
-	case ARG_EXACT_UPFRONT:    doExactUpFront = true; break;
-	case ARG_1MM_UPFRONT:      do1mmUpFront   = true; break;
-	case ARG_EXACT_UPFRONT_NO: doExactUpFront = false; break;
-	case ARG_1MM_UPFRONT_NO:   do1mmUpFront   = false; break;
+	case ARG_EXACT_UPFRONT:    /* noop */ break;
+	case ARG_1MM_UPFRONT:      /* noop */ break;
+	case ARG_EXACT_UPFRONT_NO:
+		cerr << "WARNING: No doExactUpFront not supported" << endl; 
+		break;
+	case ARG_1MM_UPFRONT_NO:
+		cerr << "WARNING: do1mmUpFront not supported" << endl; 
+		break;
 	case ARG_1MM_MINLEN:       do1mmMinLen = parse<size_t>(arg); break;
 	case ARG_NOISY_HPOLY: noisyHpolymer = true; break;
 	case 'x': bt2index = arg; break;
@@ -2505,7 +2505,7 @@ static void multiseedSearchWorker() {
 					size_t nelt[2] = {0, 0};
 
 					// Find end-to-end exact alignments for each read
-					if(doExactUpFront) {
+					{
 						for(size_t matei = 0; matei < (paired ? 2:1); matei++) {
 							size_t mate = matemap[matei];
 							if(!filt[mate] || done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
@@ -2685,7 +2685,7 @@ static void multiseedSearchWorker() {
 					}
 
 					// 1-mismatch
-					if(do1mmUpFront) {
+					{
 						for(size_t matei = 0; matei < (paired ? 2:1); matei++) {
 							size_t mate = matemap[matei];
 							if(!filt[mate] || done[mate] || nelt[mate] > eePeEeltLimit) {
@@ -3714,7 +3714,7 @@ static void multiseedSearch(
 			!noRefNames,  // load names?
 			startVerbose);
 	}
-	if(multiseedMms > 0 || do1mmUpFront) {
+	{
 		// Load the other half of the index into memory
 		assert(!ebwtBw->isInMemory());
 		Timer _t(cerr, "Time loading mirror index: ", timing);
@@ -3980,7 +3980,7 @@ static void driver(
 		// Do the search for all input reads
 		assert(patsrc != NULL);
 		assert(mssink != NULL);
-                if(multiseedMms > 0 || do1mmUpFront) {
+                {
 			if(gVerbose || startVerbose) {
 				cerr << "About to initialize rev Ebwt: "; logTime(cerr, true);
 			}
@@ -4012,14 +4012,6 @@ static void driver(
 				*mssink, // hit sink
 				ebwt,    // BWT
 				&ebwtBw); // BWT'
-                } else {
-			multiseedSearch(
-				sc,      // scoring scheme
-				pp,      // pattern params
-				*patsrc, // pattern source
-				*mssink, // hit sink
-				ebwt,    // BWT
-				NULL);    // BWT'
 		}
 
 		// Evict any loaded indexes from memory
