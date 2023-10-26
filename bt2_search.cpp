@@ -80,10 +80,6 @@ static bool interleaved;  // reads are interleaved
 static string origString; // reference text, or filename(s)
 static int seed;          // srandom() seed
 static int timing;        // whether to report basic timing data
-static int metricsIval;   // interval between alignment metrics messages (0 = no messages)
-static string metricsFile;// output file to put alignment metrics in
-static bool metricsStderr;// output file to put alignment metrics in
-static bool metricsPerRead; // report a metrics tuple for every read
 static bool allHits;      // for multihits, report just one
 static bool showVersion;  // just print version and quit?
 static int ipause;        // pause before maching?
@@ -281,10 +277,6 @@ static void resetOptions() {
 	origString	    = "";	// reference text, or filename(s)
 	seed		    = 0;	// srandom() seed
 	timing		    = 0;	// whether to report basic timing data
-	metricsIval	    = 1;	// interval between alignment metrics messages (0 = no messages)
-	metricsFile         = "";	// output file to put alignment metrics in
-	metricsStderr       = false;	// print metrics to stderr (in addition to --metrics-file if it's specified
-	metricsPerRead      = false;	// report a metrics tuple for every read?
 	allHits		    = false;	// for multihits, report just one
 	showVersion	    = false;	// just print version and quit?
 	ipause		    = 0;	// pause before maching?
@@ -1844,167 +1836,6 @@ struct OuterLoopMetrics {
 	MUTEX_T mutex_m;
 };
 
-/**
- * Collection of all relevant performance metrics when aligning in
- * multiseed mode.
- */
-struct PerfMetrics {
-
-	PerfMetrics() : first(true) { reset(); }
-
-	/**
-	 * Set all counters to 0.
-	 */
-	void reset() {
-		olm.reset();
-		sdm.reset();
-		wlm.reset();
-		swmSeed.reset();
-		swmMate.reset();
-		rpm.reset();
-		dpSse8Seed.reset();   // 8-bit SSE seed extensions
-		dpSse8Mate.reset();   // 8-bit SSE mate finds
-		dpSse16Seed.reset();  // 16-bit SSE seed extensions
-		dpSse16Mate.reset();  // 16-bit SSE mate finds
-		nbtfiltst = 0;
-		nbtfiltsc = 0;
-		nbtfiltdo = 0;
-
-		olmu.reset();
-		sdmu.reset();
-		wlmu.reset();
-		swmuSeed.reset();
-		swmuMate.reset();
-		rpmu.reset();
-		dpSse8uSeed.reset();  // 8-bit SSE seed extensions
-		dpSse8uMate.reset();  // 8-bit SSE mate finds
-		dpSse16uSeed.reset(); // 16-bit SSE seed extensions
-		dpSse16uMate.reset(); // 16-bit SSE mate finds
-		nbtfiltst_u = 0;
-		nbtfiltsc_u = 0;
-		nbtfiltdo_u = 0;
-	}
-
-	/**
-	 * Merge a set of specific metrics into this object.
-	 */
-	void merge(
-		const OuterLoopMetrics *ol,
-		const SeedSearchMetrics *sd,
-		const WalkMetrics *wl,
-		const SwMetrics *swSeed,
-		const SwMetrics *swMate,
-		const ReportingMetrics *rm,
-		const SSEMetrics *dpSse8Ex,
-		const SSEMetrics *dpSse8Ma,
-		const SSEMetrics *dpSse16Ex,
-		const SSEMetrics *dpSse16Ma,
-		uint64_t nbtfiltst_,
-		uint64_t nbtfiltsc_,
-		uint64_t nbtfiltdo_)
-		{
-			ThreadSafe ts(mutex_m);
-			if(ol != NULL) {
-				olmu.merge(*ol);
-			}
-			if(sd != NULL) {
-				sdmu.merge(*sd);
-			}
-			if(wl != NULL) {
-				wlmu.merge(*wl);
-			}
-			if(swSeed != NULL) {
-				swmuSeed.merge(*swSeed);
-			}
-			if(swMate != NULL) {
-				swmuMate.merge(*swMate);
-			}
-			if(rm != NULL) {
-				rpmu.merge(*rm);
-			}
-			if(dpSse8Ex != NULL) {
-				dpSse8uSeed.merge(*dpSse8Ex);
-			}
-			if(dpSse8Ma != NULL) {
-				dpSse8uMate.merge(*dpSse8Ma);
-			}
-			if(dpSse16Ex != NULL) {
-				dpSse16uSeed.merge(*dpSse16Ex);
-			}
-			if(dpSse16Ma != NULL) {
-				dpSse16uMate.merge(*dpSse16Ma);
-			}
-			nbtfiltst_u += nbtfiltst_;
-			nbtfiltsc_u += nbtfiltsc_;
-			nbtfiltdo_u += nbtfiltdo_;
-		}
-
-	void mergeIncrementals() {
-		olm.merge(olmu);
-		sdm.merge(sdmu);
-		wlm.merge(wlmu);
-		swmSeed.merge(swmuSeed);
-		swmMate.merge(swmuMate);
-		dpSse8Seed.merge(dpSse8uSeed);
-		dpSse8Mate.merge(dpSse8uMate);
-		dpSse16Seed.merge(dpSse16uSeed);
-		dpSse16Mate.merge(dpSse16uMate);
-		nbtfiltst_u += nbtfiltst;
-		nbtfiltsc_u += nbtfiltsc;
-		nbtfiltdo_u += nbtfiltdo;
-
-		olmu.reset();
-		sdmu.reset();
-		wlmu.reset();
-		swmuSeed.reset();
-		swmuMate.reset();
-		rpmu.reset();
-		dpSse8uSeed.reset();
-		dpSse8uMate.reset();
-		dpSse16uSeed.reset();
-		dpSse16uMate.reset();
-		nbtfiltst_u = 0;
-		nbtfiltsc_u = 0;
-		nbtfiltdo_u = 0;
-	}
-
-	// Total over the whole job
-	OuterLoopMetrics  olm;   // overall metrics
-	SeedSearchMetrics sdm;   // metrics related to seed alignment
-	WalkMetrics       wlm;   // metrics related to walking left (i.e. resolving reference offsets)
-	SwMetrics         swmSeed;  // metrics related to DP seed-extend alignment
-	SwMetrics         swmMate;  // metrics related to DP mate-finding alignment
-	ReportingMetrics  rpm;   // metrics related to reporting
-	SSEMetrics        dpSse8Seed;  // 8-bit SSE seed extensions
-	SSEMetrics        dpSse8Mate;    // 8-bit SSE mate finds
-	SSEMetrics        dpSse16Seed; // 16-bit SSE seed extensions
-	SSEMetrics        dpSse16Mate;   // 16-bit SSE mate finds
-	uint64_t          nbtfiltst;
-	uint64_t          nbtfiltsc;
-	uint64_t          nbtfiltdo;
-
-	// Just since the last update
-	OuterLoopMetrics  olmu;  // overall metrics
-	SeedSearchMetrics sdmu;  // metrics related to seed alignment
-	WalkMetrics       wlmu;  // metrics related to walking left (i.e. resolving reference offsets)
-	SwMetrics         swmuSeed; // metrics related to DP seed-extend alignment
-	SwMetrics         swmuMate; // metrics related to DP mate-finding alignment
-	ReportingMetrics  rpmu;  // metrics related to reporting
-	SSEMetrics        dpSse8uSeed;  // 8-bit SSE seed extensions
-	SSEMetrics        dpSse8uMate;  // 8-bit SSE mate finds
-	SSEMetrics        dpSse16uSeed; // 16-bit SSE seed extensions
-	SSEMetrics        dpSse16uMate; // 16-bit SSE mate finds
-	uint64_t          nbtfiltst_u;
-	uint64_t          nbtfiltsc_u;
-	uint64_t          nbtfiltdo_u;
-
-	MUTEX_T           mutex_m;  // lock for when one ob
-	bool              first; // yet to print first line?
-	time_t            lastElapsed; // used in reportInterval to measure time since last call
-};
-
-static PerfMetrics metrics;
-
 // Cyclic rotations
 #define ROTL(n, x) (((x) << (n)) | ((x) >> (32-n)))
 #define ROTR(n, x) (((x) >> (n)) | ((x) << (32-n)))
@@ -2123,46 +1954,6 @@ static void setupMinScores(
 	}
 }
 
-#define MERGE_METRICS(met) {			\
-		msink.mergeMetrics(rpm);	\
-		met.merge(			\
-			&olm,			\
-			&sdm,			\
-			&wlm,			\
-			&swmSeed,		\
-			&swmMate,		\
-			&rpm,			\
-			&sseU8ExtendMet,	\
-			&sseU8MateMet,		\
-			&sseI16ExtendMet,	\
-			&sseI16MateMet,		\
-			nbtfiltst,		\
-			nbtfiltsc,		\
-			nbtfiltdo);		\
-		olm.reset();			\
-		sdm.reset();			\
-		wlm.reset();			\
-		swmSeed.reset();		\
-		swmMate.reset();		\
-		rpm.reset();			\
-		sseU8ExtendMet.reset();		\
-		sseU8MateMet.reset();		\
-		sseI16ExtendMet.reset();	\
-		sseI16MateMet.reset();		\
-	}
-
-#define MERGE_SW(x) {				\
-		x.merge(			\
-			sseU8ExtendMet,		\
-			sseU8MateMet,		\
-			sseI16ExtendMet,	\
-			sseI16MateMet,		\
-			nbtfiltst,		\
-			nbtfiltsc,		\
-			nbtfiltdo);		\
-		x.resetCounters();		\
-	}
-
 #ifdef PER_THREAD_TIMING
 /// Based on http://stackoverflow.com/questions/16862620/numa-get-current-node-core
 void get_cpu_and_node(int& cpu, int& node) {
@@ -2191,8 +1982,6 @@ static inline bool have_next_read(std::unique_ptr<PatternSourceReadAhead> &g_psr
  * data structures, creates per-thread structures, then enters the alignment
  * loop.  The general flow of the alignment loop is:
  *
- * - If it's been a while and we're the master thread, report some alignment
- *   metrics
  * - Get the next read/pair
  * - Check if this read/pair is identical to the previous
  *   + If identical, check whether we can skip any or all alignment stages.  If
@@ -2647,8 +2436,6 @@ static void multiseedSearchWorker() {
 									exhaustive[mate]);
 							}
 							assert_gt(ret, 0);
-							MERGE_SW(sw);
-							MERGE_SW(osw);
 							// Clear out the exact hits so that we don't try to
 							// extend them again later!
 							shs[mate].clearExactE2eHits();
@@ -2828,8 +2615,6 @@ static void multiseedSearchWorker() {
 									exhaustive[mate]);
 							}
 							assert_gt(ret, 0);
-							MERGE_SW(sw);
-							MERGE_SW(osw);
 							// Clear out the 1mm hits so that we don't try to
 							// extend them again later!
 							shs[mate].clear1mmE2eHits();
@@ -3104,8 +2889,6 @@ static void multiseedSearchWorker() {
 										exhaustive[mate]);
 								}
 								assert_gt(ret, 0);
-								MERGE_SW(sw);
-								MERGE_SW(osw);
 								if(ret == EXTEND_EXHAUSTED_CANDIDATES) {
 									// Not done yet
 								} else if(ret == EXTEND_POLICY_FULFILLED) {
@@ -3212,9 +2995,6 @@ static void multiseedSearchWorker() {
 					xeq);
 
 		} while (have_next_read(g_psrah)); // must read the whole cached buffer
-
-		// One last metrics merge
-		MERGE_METRICS(metrics);
 
 	}
 
@@ -3515,9 +3295,6 @@ static void multiseedSearchWorker_2p5() {
 
 	   } while (ps->nextReadPairReady()); // must read the whole cached buffer
 	} // while(true)
-
-	// One last metrics merge
-	MERGE_METRICS(metrics);
 
 	return;
 }
