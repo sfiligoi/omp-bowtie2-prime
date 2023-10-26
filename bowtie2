@@ -48,7 +48,7 @@ while (-f $prog && -l $prog){
 ($vol,$script_path,$prog)
     = File::Spec->splitpath($prog);
 my $os_is_nix   = $^O ne "MSWin32";
-my $align_bin_s = $os_is_nix ? 'bowtie2-align-s' : 'bowtie2-align-s.exe';
+my $align_bin_s = $os_is_nix ? 'bowtie2-align-l' : 'bowtie2-align-l.exe';
 my $build_bin   = $os_is_nix ? 'bowtie2-build' : 'bowtie2-build.exe';
 my $align_bin_l = $os_is_nix ? 'bowtie2-align-l' : 'bowtie2-align-l.exe';
 my $align_prog_s= File::Spec->catpath($vol,$script_path,$align_bin_s);
@@ -94,8 +94,8 @@ sub quote_params {
         }
 }
 
-(-x "$align_prog") ||
-    Fail("Expected bowtie2 to be in same directory with bowtie2-align:\n$script_path\n");
+#(-x "$align_prog") ||
+#    Fail("Expected bowtie2 to be in same directory with bowtie2-align:\n$script_path\n");
 
 # Get description of arguments from Bowtie 2 so that we can distinguish Bowtie
 # 2 args from wrapper args
