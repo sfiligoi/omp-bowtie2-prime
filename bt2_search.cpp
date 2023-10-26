@@ -1791,51 +1791,6 @@ static Scoring*                 multiseed_sc;
 static BitPairReference*        multiseed_refs;
 static AlnSink*                 multiseed_msink;
 
-/**
- * Metrics for measuring the work done by the outer read alignment
- * loop.
- */
-struct OuterLoopMetrics {
-
-	OuterLoopMetrics() {
-		reset();
-	}
-
-	/**
-	 * Set all counters to 0.
-	 */
-	void reset() {
-		reads = bases = srreads = srbases =
-			freads = fbases = ureads = ubases = 0;
-	}
-
-	/**
-	 * Sum the counters in m in with the conters in this object.  This
-	 * is the only safe way to update an OuterLoopMetrics that's shared
-	 * by multiple threads.
-	 */
-	void merge(const OuterLoopMetrics& m) {
-		reads += m.reads;
-		bases += m.bases;
-		srreads += m.srreads;
-		srbases += m.srbases;
-		freads += m.freads;
-		fbases += m.fbases;
-		ureads += m.ureads;
-		ubases += m.ubases;
-	}
-
-	uint64_t reads;   // total reads
-	uint64_t bases;   // total bases
-	uint64_t srreads; // same-read reads
-	uint64_t srbases; // same-read bases
-	uint64_t freads;  // filtered reads
-	uint64_t fbases;  // filtered bases
-	uint64_t ureads;  // unfiltered reads
-	uint64_t ubases;  // unfiltered bases
-	MUTEX_T mutex_m;
-};
-
 // Cyclic rotations
 #define ROTL(n, x) (((x) << (n)) | ((x) >> (32-n)))
 #define ROTR(n, x) (((x) >> (n)) | ((x) << (32-n)))
@@ -2038,7 +1993,6 @@ static void multiseedSearchWorker() {
 		SwDriver sd(exactCacheCurrentMB * 1024 * 1024);
 		SwAligner sw(NULL), osw(NULL);
 		SeedResults shs[2];
-		OuterLoopMetrics olm;
 		SeedSearchMetrics sdm;
 		WalkMetrics wlm;
 		ReportingMetrics rpm;
@@ -2122,12 +2076,10 @@ static void multiseedSearchWorker() {
 				}
 
 					ca.nextRead(); // clear the cache
-					olm.reads++;
 					assert(!ca.aligning());
 					bool paired = !ps->read_b().empty();
 					const size_t rdlen1 = ps->read_a().length();
 					const size_t rdlen2 = paired ? ps->read_b().length() : 0;
-					olm.bases += (rdlen1 + rdlen2);
 					msinkwrap.nextRead(
 						&ps->read_a(),
 						paired ? &ps->read_b() : NULL,
@@ -2270,14 +2222,10 @@ static void multiseedSearchWorker() {
 					for(size_t mate = 0; mate < (paired ? 2:1); mate++) {
 						if(!filt[mate]) {
 							// Mate was rejected by N filter
-							olm.freads++;               // reads filtered out
-							olm.fbases += rdlens[mate]; // bases filtered out
 						} else {
 							shs[mate].clear();
 							shs[mate].nextRead(mate == 0 ? ps->read_a() : ps->read_b());
 							assert(shs[mate].empty());
-							olm.ureads++;               // reads passing filter
-							olm.ubases += rdlens[mate]; // bases passing filter
 						}
 					}
 					size_t eePeEeltLimit = std::numeric_limits<size_t>::max();
@@ -3022,7 +2970,6 @@ static void multiseedSearchWorker_2p5() {
 		*bmapq,        // MAPQ calculator
 		(size_t)tid);  // thread id
 
-	OuterLoopMetrics olm;
 	SeedSearchMetrics sdm;
 	WalkMetrics wlm;
 	DescentMetrics descm;
@@ -3112,11 +3059,9 @@ static void multiseedSearchWorker_2p5() {
 				gettimeofday(&prm.tv_beg, &prm.tz_beg);
 			}
 			// Try to align this read
-			olm.reads++;
 			bool paired = !ps->read_b().empty();
 			const size_t rdlen1 = ps->read_a().length();
 			const size_t rdlen2 = paired ? ps->read_b().length() : 0;
-			olm.bases += (rdlen1 + rdlen2);
 			// Check if read is identical to previous read
 			rnd.init(ROTL(ps->read_a().seed, 5));
 			msinkwrap.nextRead(
@@ -3220,17 +3165,6 @@ static void multiseedSearchWorker_2p5() {
 			}
 			assert_gt(streak[0], 0);
 			prm.maxDPFails = streak[0];
-			// Increment counters according to what got filtered
-			for(size_t mate = 0; mate < (paired ? 2:1); mate++) {
-				if(!filt[mate]) {
-					// Mate was rejected by N filter
-					olm.freads++;               // reads filtered out
-					olm.fbases += rdlens[mate]; // bases filtered out
-				} else {
-					olm.ureads++;               // reads passing filter
-					olm.ubases += rdlens[mate]; // bases passing filter
-				}
-			}
 			if(filt[0]) {
 				ald.initRead(ps->read_a(), nofw[0], norc[0], minsc[0], maxpen[0], filt[1] ? &ps->read_b() : NULL);
 			} else if(filt[1]) {
