@@ -2044,13 +2044,6 @@ static void multiseedSearchWorker() {
 		SwMetrics swmSeed, swmMate;
 		ReportingMetrics rpm;
 		RandomSource rnd;
-		SSEMetrics sseU8ExtendMet;
-		SSEMetrics sseU8MateMet;
-		SSEMetrics sseI16ExtendMet;
-		SSEMetrics sseI16MateMet;
-		uint64_t nbtfiltst = 0; // TODO: find a new home for these
-		uint64_t nbtfiltsc = 0; // TODO: find a new home for these
-		uint64_t nbtfiltdo = 0; // TODO: find a new home for these
 
 		ASSERT_ONLY(BTDnaString tmp);
 
@@ -3050,13 +3043,6 @@ static void multiseedSearchWorker_2p5() {
 	DescentMetrics descm;
 	ReportingMetrics rpm;
 	RandomSource rnd;
-	SSEMetrics sseU8ExtendMet;
-	SSEMetrics sseU8MateMet;
-	SSEMetrics sseI16ExtendMet;
-	SSEMetrics sseI16MateMet;
-	uint64_t nbtfiltst = 0; // TODO: find a new home for these
-	uint64_t nbtfiltsc = 0; // TODO: find a new home for these
-	uint64_t nbtfiltdo = 0; // TODO: find a new home for these
 
 	ASSERT_ONLY(BTDnaString tmp);
 
