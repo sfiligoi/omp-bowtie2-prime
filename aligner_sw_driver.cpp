@@ -70,7 +70,6 @@ bool SwDriver::eeSaTups(
 	const BitPairReference& ref, // Reference strings
 	RandomSource& rnd,           // pseudo-random generator
 	WalkMetrics& wlm,            // group walk left metrics
-	SwMetrics& swmSeed,          // metrics for seed extensions
 	size_t& nelt_out,            // out: # elements total
     size_t maxelt,               // max elts we'll consider
 	bool all)                    // report all hits?
@@ -92,7 +91,6 @@ bool SwDriver::eeSaTups(
 	satpos_.ensure(nobj);
 	eehits_.ensure(nobj);
 	size_t tot = sh.exactFwEEHit().size() + sh.exactRcEEHit().size();
-	bool succ = false;
 	bool firstEe = true;
     bool done = false;
 	if(tot > 0) {
@@ -150,12 +148,6 @@ bool SwDriver::eeSaTups(
                     TIndexOffU width = bots[i] - tops[i];
                     TIndexOffU top = tops[i];
                     // Clear list where resolved offsets are stored
-                    swmSeed.exranges++;
-                    swmSeed.exrows += width;
-                    if(!succ) {
-                        swmSeed.exsucc++;
-                        succ = true;
-                    }
                     if(firstEe) {
                         salistEe_.clear();
                         pool_.clear();
@@ -165,7 +157,6 @@ bool SwDriver::eeSaTups(
                     TSlice o(salistEe_, (TIndexOffU)salistEe_.size(), width);
                     for(TIndexOffU i = 0; i < width; i++) {
                         if(!salistEe_.add(pool_, OFF_MASK)) {
-                            swmSeed.exooms++;
                             return false;
                         }
                     }
@@ -199,7 +190,6 @@ bool SwDriver::eeSaTups(
 			}
 		}
 	}
-	succ = false;
 	if(!done && !sh.mm1EEHits().empty()) {
 		sh.sort1mmEe(rnd);
 		size_t sz = sh.mm1EEHits().size();
@@ -241,12 +231,6 @@ bool SwDriver::eeSaTups(
                 TIndexOffU width = bots[i] - tops[i];
                 TIndexOffU top = tops[i];
                 // Clear list where resolved offsets are stored
-                swmSeed.mm1ranges++;
-                swmSeed.mm1rows += width;
-                if(!succ) {
-                    swmSeed.mm1succ++;
-                    succ = true;
-                }
                 if(firstEe) {
                     salistEe_.clear();
                     pool_.clear();
@@ -255,7 +239,6 @@ bool SwDriver::eeSaTups(
                 TSlice o(salistEe_, (TIndexOffU)salistEe_.size(), width);
                 for(size_t i = 0; i < width; i++) {
                     if(!salistEe_.add(pool_, OFF_MASK)) {
-                        swmSeed.mm1ooms++;
                         return false;
                     }
                 }
@@ -783,7 +766,6 @@ int SwDriver::extendSeeds(
 	AlignmentCacheIface& ca,     // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random source
 	WalkMetrics& wlm,            // group walk left metrics
-	SwMetrics& swmSeed,          // DP metrics for seed-extend
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
 	bool reportImmediately,      // whether to report hits immediately to msink
@@ -833,7 +815,6 @@ int SwDriver::extendSeeds(
 					ref,          // Reference strings
 					rnd,          // pseudo-random generator
 					wlm,          // group walk left metrics
-					swmSeed,      // seed-extend metrics
 					nelt,         // out: # elements total
                     maxIters,     // max # to report
 					all);         // report all hits?
@@ -970,7 +951,6 @@ int SwDriver::extendSeeds(
 				if(seenDiags1_.locusPresent(refcoord)) {
 					// Already handled alignments seeded on this diagonal
 					prm.nRedundants++;
-					swmSeed.rshit++;
 					continue;
 				}
 				// Now that we have a seed hit, there are many issues to solve
@@ -1050,7 +1030,6 @@ int SwDriver::extendSeeds(
 						if(prm.nUgFail >= maxUgStreak) {
 							return EXTEND_EXCEEDED_SOFT_LIMIT;
 						}
-						swmSeed.ungapfail++;
 						continue;
 					} else if(al == -1) {
 						prm.nExUgFails++;
@@ -1058,7 +1037,6 @@ int SwDriver::extendSeeds(
 						if(prm.nUgFail >= maxUgStreak) {
 							return EXTEND_EXCEEDED_SOFT_LIMIT;
 						}
-						swmSeed.ungapnodec++;
 					} else {
 						prm.nExUgSuccs++;
 						prm.nUgLastSucc = prm.nExUgs-1;
@@ -1068,7 +1046,6 @@ int SwDriver::extendSeeds(
 						prm.nUgFail = 0;
 						found = true;
 						state = FOUND_UNGAPPED;
-						swmSeed.ungapsucc++;
 					}
 				}
 				// int64_t pastedRefoff = (int64_t)wr.toff - rdoff;
@@ -1137,7 +1114,6 @@ int SwDriver::extendSeeds(
 					// there is at least one valid alignment
 					TAlScore bestCell = std::numeric_limits<TAlScore>::min();
 					found = swa.align(bestCell);
-					swmSeed.tallyGappedDp(readGaps, refGaps);
 					prm.nExDps++;
 					if(!found) {
 						prm.nExDpFails++;
@@ -1422,8 +1398,6 @@ int SwDriver::extendSeedsPaired(
 	AlignmentCacheIface& ca,     // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random source
 	WalkMetrics& wlm,            // group walk left metrics
-	SwMetrics& swmSeed,          // DP metrics for seed-extend
-	SwMetrics& swmMate,          // DP metrics for mate finidng
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
 	bool swMateImmediately,      // whether to look for mate immediately
@@ -1513,7 +1487,6 @@ int SwDriver::extendSeedsPaired(
 					ref,          // Reference strings
 					rnd,          // pseudo-random generator
 					wlm,          // group walk left metrics
-					swmSeed,      // seed-extend metrics
 					nelt,         // out: # elements total
                     maxIters,     // max elts to report
 					all);         // report all hits
@@ -1670,7 +1643,6 @@ int SwDriver::extendSeedsPaired(
 				if(seenDiags.locusPresent(refcoord)) {
 					// Already handled alignments seeded on this diagonal
 					prm.nRedundants++;
-					swmSeed.rshit++;
 					continue;
 				}
 				// Now that we have a seed hit, there are many issues to solve
@@ -1756,14 +1728,11 @@ int SwDriver::extendSeedsPaired(
 					prm.nUgFail++; // say it's failed until proven successful
 					prm.nExUgFails++;
 					if(al == 0) {
-						swmSeed.ungapfail++;
 						continue;
 					} else if(al == -1) {
-						swmSeed.ungapnodec++;
 					} else {
 						found = true;
 						state = FOUND_UNGAPPED;
-						swmSeed.ungapsucc++;
 					}
 				}
 				// int64_t pastedRefoff = (int64_t)wr.toff - rdoff;
@@ -1832,7 +1801,6 @@ int SwDriver::extendSeedsPaired(
 					// there is at least one valid alignment
 					TAlScore bestCell = std::numeric_limits<TAlScore>::min();
 					found = swa.align(bestCell);
-					swmSeed.tallyGappedDp(readGaps, refGaps);
 					prm.nExDps++;
 					prm.nDpFail++;    // failed until proven successful
 					prm.nExDpFails++; // failed until proven successful
@@ -2078,7 +2046,6 @@ int SwDriver::extendSeedsPaired(
 							TAlScore bestCell = std::numeric_limits<TAlScore>::min();
 							foundMate = oswa.align(bestCell);
 							prm.nMateDps++;
-							swmMate.tallyGappedDp(oreadGaps, orefGaps);
 							if(!foundMate) {
 								TAlScore bestLast = anchor1 ? prm.bestLtMinscMate2 : prm.bestLtMinscMate1;
 								if(bestCell > std::numeric_limits<TAlScore>::min() && bestCell > bestLast) {

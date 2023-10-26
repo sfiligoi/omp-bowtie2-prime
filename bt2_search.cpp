@@ -2041,7 +2041,6 @@ static void multiseedSearchWorker() {
 		OuterLoopMetrics olm;
 		SeedSearchMetrics sdm;
 		WalkMetrics wlm;
-		SwMetrics swmSeed, swmMate;
 		ReportingMetrics rpm;
 		RandomSource rnd;
 
@@ -2293,7 +2292,6 @@ static void multiseedSearchWorker() {
 							if(!filt[mate] || done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
 								continue;
 							}
-							swmSeed.exatts++;
 							nelt[mate] = al.exactSweep(
 								ebwtFw,        // index
 								*rds[mate],    // read
@@ -2380,8 +2378,6 @@ static void multiseedSearchWorker() {
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
 									wlm,            // group walk left metrics
-									swmSeed,        // DP metrics, seed extend
-									swmMate,        // DP metrics, mate finding
 									prm,            // per-read metrics
 									&msinkwrap,     // for organizing hits
 									true,           // seek mate immediately
@@ -2422,7 +2418,6 @@ static void multiseedSearchWorker() {
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
 									wlm,            // group walk left metrics
-									swmSeed,        // DP metrics, seed extend
 									prm,            // per-read metrics
 									&msinkwrap,     // for organizing hits
 									true,           // report hits once found
@@ -2484,7 +2479,6 @@ static void multiseedSearchWorker() {
 							bool yrc = minedrc[mate] <= 1 && !norc[mate];
 							if(yfw || yrc) {
 								// Clear out the exact hits
-								swmSeed.mm1atts++;
 								al.oneMmSearch(
 									&ebwtFw,        // BWT index
 									ebwtBw,         // BWT' index
@@ -2559,8 +2553,6 @@ static void multiseedSearchWorker() {
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
 									wlm,            // group walk left metrics
-									swmSeed,        // DP metrics, seed extend
-									swmMate,        // DP metrics, mate finding
 									prm,            // per-read metrics
 									&msinkwrap,     // for organizing hits
 									true,           // seek mate immediately
@@ -2601,7 +2593,6 @@ static void multiseedSearchWorker() {
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
 									wlm,            // group walk left metrics
-									swmSeed,        // DP metrics, seed extend
 									prm,            // per-read metrics
 									&msinkwrap,     // for organizing hits
 									true,           // report hits once found
@@ -2687,7 +2678,6 @@ static void multiseedSearchWorker() {
 							assert(msinkwrap.repOk());
 							//rnd.init(ROTL(rds[mate]->seed, 10));
 							assert(shs[mate].repOk(&ca.current()));
-							swmSeed.sdatts++;
 							// Set up seeds
 							seeds[mate]->clear();
 							Seed::mmSeeds(
@@ -2761,7 +2751,6 @@ static void multiseedSearchWorker() {
 						double uniqFactor[2] = { 0.0f, 0.0f };
 						for(size_t i = 0; i < 2; i++) {
 							if(!shs[i].empty()) {
-								swmSeed.sdsucc++;
 								uniqFactor[i] = shs[i].uniquenessFactor();
 							}
 						}
@@ -2833,8 +2822,6 @@ static void multiseedSearchWorker() {
 										ca,             // seed alignment cache
 										rnd,            // pseudo-random source
 										wlm,            // group walk left metrics
-										swmSeed,        // DP metrics, seed extend
-										swmMate,        // DP metrics, mate finding
 										prm,            // per-read metrics
 										&msinkwrap,     // for organizing hits
 										true,           // seek mate immediately
@@ -2875,7 +2862,6 @@ static void multiseedSearchWorker() {
 										ca,             // seed alignment cache
 										rnd,            // pseudo-random source
 										wlm,            // group walk left metrics
-										swmSeed,        // DP metrics, seed extend
 										prm,            // per-read metrics
 										&msinkwrap,     // for organizing hits
 										true,           // report hits once found
@@ -3039,7 +3025,6 @@ static void multiseedSearchWorker_2p5() {
 	OuterLoopMetrics olm;
 	SeedSearchMetrics sdm;
 	WalkMetrics wlm;
-	SwMetrics swmSeed, swmMate;
 	DescentMetrics descm;
 	ReportingMetrics rpm;
 	RandomSource rnd;
