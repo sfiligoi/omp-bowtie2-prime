@@ -1993,7 +1993,6 @@ static void multiseedSearchWorker() {
 		SwDriver sd(exactCacheCurrentMB * 1024 * 1024);
 		SwAligner sw(NULL), osw(NULL);
 		SeedResults shs[2];
-		SeedSearchMetrics sdm;
 		WalkMetrics wlm;
 		ReportingMetrics rpm;
 		RandomSource rnd;
@@ -2250,17 +2249,7 @@ static void multiseedSearchWorker() {
 								minedfw[mate], // minimum # edits for fw mate
 								minedrc[mate], // minimum # edits for rc mate
 								true,          // report 0mm hits
-								shs[mate],     // put end-to-end results here
-								sdm);          // metrics
-							size_t bestmin = min(minedfw[mate], minedrc[mate]);
-							if(bestmin == 0) {
-								sdm.bestmin0++;
-							} else if(bestmin == 1) {
-								sdm.bestmin1++;
-							} else {
-								assert_eq(2, bestmin);
-								sdm.bestmin2++;
-							}
+								shs[mate]);     // put end-to-end results here
 						}
 						matemap[0] = 0; matemap[1] = 1;
 						if(nelt[0] > 0 && nelt[1] > 0 && nelt[0] > nelt[1]) {
@@ -2437,8 +2426,7 @@ static void multiseedSearchWorker() {
 									!yrc,           // don't align revcomp read
 									false,          // do exact match
 									true,           // do 1mm
-									shs[mate],      // seed hits (hits installed here)
-									sdm);           // metrics
+									shs[mate]);     // seed hits (hits installed here)
 								nelt[mate] = shs[mate].num1mmE2eHits();
 							}
 						}
@@ -2650,7 +2638,6 @@ static void multiseedSearchWorker() {
 								norc[mate],     // don't align revcomp read
 								ca,             // holds some seed hits from previous reads
 								shs[mate],      // holds all the seed hits
-								sdm,            // metrics
 								instFw,
 								instRc);
 							assert(shs[mate].repOk(&ca.current()));
@@ -2672,7 +2659,6 @@ static void multiseedSearchWorker() {
 								sc,               // scoring scheme
 								ca,               // alignment cache
 								shs[mate],        // store seed hits here
-								sdm,              // metrics
 								prm);             // per-read metrics
 							assert(shs[mate].repOk(&ca.current()));
 							if(shs[mate].empty()) {
@@ -2970,7 +2956,6 @@ static void multiseedSearchWorker_2p5() {
 		*bmapq,        // MAPQ calculator
 		(size_t)tid);  // thread id
 
-	SeedSearchMetrics sdm;
 	WalkMetrics wlm;
 	DescentMetrics descm;
 	ReportingMetrics rpm;

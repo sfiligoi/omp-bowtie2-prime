@@ -505,7 +505,6 @@ pair<int, int> SeedAligner::instantiateSeeds(
 	bool norc,                 // don't align revcomp read
 	AlignmentCacheIface& cache,// holds some seed hits from previous reads
 	SeedResults& sr,           // holds all the seed hits
-	SeedSearchMetrics& met,    // metrics
 	pair<int, int>& instFw,
 	pair<int, int>& instRc)
 {
@@ -577,7 +576,6 @@ pair<int, int> SeedAligner::instantiateSeeds(
 				} else {
 					// Seed may fail to instantiate if there are Ns
 					// that prevent it from matching
-					met.filteredseed++;
 					iss.pop_back();
 				}
 			}
@@ -602,7 +600,6 @@ void SeedAligner::searchAllSeeds(
 	const Scoring& pens,         // scoring scheme
 	AlignmentCacheIface& cache,  // local cache for seed alignments
 	SeedResults& sr,             // holds all the seed hits
-	SeedSearchMetrics& met,      // metrics
 	PerReadMetrics& prm)         // per-read metrics
 {
 	assert(!seeds.empty());
@@ -706,15 +703,6 @@ void SeedAligner::searchAllSeeds(
 	prm.seedMean = (uint64_t)sr.averageHitsPerSeed();
 
 	prm.nSdFmops += bwops_;
-	met.seedsearch += seedsearches;
-	met.nrange += sr.numRanges();
-	met.nelt += sr.numElts();
-	met.possearch += possearches;
-	met.intrahit += intrahits;
-	met.interhit += interhits;
-	met.ooms += ooms;
-	met.bwops += bwops_;
-	met.bweds += bwedits_;
 }
 
 bool SeedAligner::sanityPartial(
@@ -861,8 +849,7 @@ size_t SeedAligner::exactSweep(
 	size_t&            mineFw,  // minimum # edits for forward read
 	size_t&            mineRc,  // minimum # edits for revcomp read
 	bool               repex,   // report 0mm hits?
-	SeedResults&       hits,    // holds all the seed hits (and exact hit)
-	SeedSearchMetrics& met)     // metrics
+	SeedResults&       hits)    // holds all the seed hits (and exact hit)
 {
 	assert_gt(mineMax, 0);
 	const size_t len = read.length();
@@ -980,8 +967,7 @@ bool SeedAligner::oneMmSearch(
 	bool               norc,   // don't align revcomp read
 	bool               repex,  // report 0mm hits?
 	bool               rep1mm, // report 1mm hits?
-	SeedResults&       hits,   // holds all the seed hits (and exact hit)
-	SeedSearchMetrics& met)    // metrics
+	SeedResults&       hits)   // holds all the seed hits (and exact hit)
 {
 	assert(!rep1mm || ebwtBw != NULL);
 	const size_t len = read.length();

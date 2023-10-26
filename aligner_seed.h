@@ -1391,71 +1391,6 @@ class Ebwt;
 struct SideLocus;
 
 /**
- * Encapsulates a sumamry of what the searchAllSeeds aligner did.
- */
-struct SeedSearchMetrics {
-
-	SeedSearchMetrics() : mutex_m() {
-	    reset();
-	}
-
-	/**
-	 * Merge this metrics object with the given object, i.e., sum each
-	 * category.  This is the only safe way to update a
-	 * SeedSearchMetrics object shread by multiple threads.
-	 */
-	void merge(const SeedSearchMetrics& m, bool getLock = false) {
-		seedsearch   += m.seedsearch;
-		nrange       += m.nrange;
-		nelt         += m.nelt;
-		possearch    += m.possearch;
-		intrahit     += m.intrahit;
-		interhit     += m.interhit;
-		filteredseed += m.filteredseed;
-		ooms         += m.ooms;
-		bwops        += m.bwops;
-		bweds        += m.bweds;
-		bestmin0     += m.bestmin0;
-		bestmin1     += m.bestmin1;
-		bestmin2     += m.bestmin2;
-	}
-	
-	/**
-	 * Set all counters to 0.
-	 */
-	void reset() {
-		seedsearch =
-		nrange =
-		nelt =
-		possearch =
-		intrahit =
-		interhit =
-		filteredseed =
-		ooms =
-		bwops =
-		bweds =
-		bestmin0 =
-		bestmin1 =
-		bestmin2 = 0;
-	}
-
-	uint64_t seedsearch;   // # times we executed strategy in InstantiatedSeed
-	uint64_t nrange;       // # ranges found
-	uint64_t nelt;         // # range elements found
-	uint64_t possearch;    // # offsets where aligner executed >= 1 strategy
-	uint64_t intrahit;     // # offsets where current-read cache gave answer
-	uint64_t interhit;     // # offsets where across-read cache gave answer
-	uint64_t filteredseed; // # seed instantiations skipped due to Ns
-	uint64_t ooms;         // out-of-memory errors
-	uint64_t bwops;        // Burrows-Wheeler operations
-	uint64_t bweds;        // Burrows-Wheeler edits
-	uint64_t bestmin0;     // # times the best min # edits was 0
-	uint64_t bestmin1;     // # times the best min # edits was 1
-	uint64_t bestmin2;     // # times the best min # edits was 2
-	MUTEX_T  mutex_m;
-};
-
-/**
  * Wrap the search cache with all the relevant objects
  */
 class SeedSearchCache {
@@ -1674,7 +1609,6 @@ public:
 		bool norc,                  // don't align revcomp read
 		AlignmentCacheIface& cache, // holds some seed hits from previous reads
 		SeedResults& sr,            // holds all the seed hits
-		SeedSearchMetrics& met,     // metrics
 		std::pair<int, int>& instFw,
 		std::pair<int, int>& instRc);
 
@@ -1690,7 +1624,6 @@ public:
 		const Scoring& pens,        // scoring scheme
 		AlignmentCacheIface& cache, // local seed alignment cache
 		SeedResults& hits,          // holds all the seed hits
-		SeedSearchMetrics& met,     // metrics
 		PerReadMetrics& prm);       // per-read metrics
 
 	/**
@@ -1722,8 +1655,7 @@ public:
 		size_t&            mineFw,  // minimum # edits for forward read
 		size_t&            mineRc,  // minimum # edits for revcomp read
 		bool               repex,   // report 0mm hits?
-		SeedResults&       hits,    // holds all the seed hits (and exact hit)
-		SeedSearchMetrics& met);    // metrics
+		SeedResults&       hits);   // holds all the seed hits (and exact hit)
 
 	/**
 	 * Search for end-to-end alignments with up to 1 mismatch.
@@ -1738,8 +1670,7 @@ public:
 		bool               norc,   // don't align revcomp read
 		bool               repex,  // report 0mm hits?
 		bool               rep1mm, // report 1mm hits?
-		SeedResults&       hits,   // holds all the seed hits (and exact hit)
-		SeedSearchMetrics& met);   // metrics
+		SeedResults&       hits);  // holds all the seed hits (and exact hit)
 
 protected:
 	class SeedAlignerSearchParams;
