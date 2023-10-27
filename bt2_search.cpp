@@ -1993,7 +1993,6 @@ static void multiseedSearchWorker() {
 		SwDriver sd(exactCacheCurrentMB * 1024 * 1024);
 		SwAligner sw(NULL), osw(NULL);
 		SeedResults shs[2];
-		WalkMetrics wlm;
 		ReportingMetrics rpm;
 		RandomSource rnd;
 
@@ -2314,7 +2313,6 @@ static void multiseedSearchWorker() {
 									tighten,        // -M score tightening mode
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
-									wlm,            // group walk left metrics
 									prm,            // per-read metrics
 									&msinkwrap,     // for organizing hits
 									true,           // seek mate immediately
@@ -2354,7 +2352,6 @@ static void multiseedSearchWorker() {
 									tighten,        // -M score tightening mode
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
-									wlm,            // group walk left metrics
 									prm,            // per-read metrics
 									&msinkwrap,     // for organizing hits
 									true,           // report hits once found
@@ -2488,7 +2485,6 @@ static void multiseedSearchWorker() {
 									tighten,        // -M score tightening mode
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
-									wlm,            // group walk left metrics
 									prm,            // per-read metrics
 									&msinkwrap,     // for organizing hits
 									true,           // seek mate immediately
@@ -2528,7 +2524,6 @@ static void multiseedSearchWorker() {
 									tighten,        // -M score tightening mode
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
-									wlm,            // group walk left metrics
 									prm,            // per-read metrics
 									&msinkwrap,     // for organizing hits
 									true,           // report hits once found
@@ -2755,7 +2750,6 @@ static void multiseedSearchWorker() {
 										tighten,        // -M score tightening mode
 										ca,             // seed alignment cache
 										rnd,            // pseudo-random source
-										wlm,            // group walk left metrics
 										prm,            // per-read metrics
 										&msinkwrap,     // for organizing hits
 										true,           // seek mate immediately
@@ -2795,7 +2789,6 @@ static void multiseedSearchWorker() {
 										tighten,        // -M score tightening mode
 										ca,             // seed alignment cache
 										rnd,            // pseudo-random source
-										wlm,            // group walk left metrics
 										prm,            // per-read metrics
 										&msinkwrap,     // for organizing hits
 										true,           // report hits once found
@@ -2958,7 +2951,6 @@ static void multiseedSearchWorker_2p5() {
 		*bmapq,        // MAPQ calculator
 		(size_t)tid);  // thread id
 
-	WalkMetrics wlm;
 	DescentMetrics descm;
 	ReportingMetrics rpm;
 	RandomSource rnd;
@@ -3158,7 +3150,7 @@ static void multiseedSearchWorker_2p5() {
 				ald.initRead(ps->read_b(), nofw[1], norc[1], minsc[1], maxpen[1], NULL);
 			}
 			if(filt[0] || filt[1]) {
-				ald.go(sc, ebwtFw, ebwtBw, ref, descm, wlm, prm, rnd, msinkwrap);
+				ald.go(sc, ebwtFw, ebwtBw, ref, descm, prm, rnd, msinkwrap);
 			}
 			// Commit and report paired-end/unpaired alignments
 			uint32_t sd = rds[0]->seed ^ rds[1]->seed;

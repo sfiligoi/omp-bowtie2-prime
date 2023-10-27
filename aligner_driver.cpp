@@ -268,7 +268,6 @@ int AlignerDriver::go(
 	const Ebwt& ebwtBw,
 	const BitPairReference& ref,
 	DescentMetrics& met,
-	WalkMetrics& wlm,
 	PerReadMetrics& prm,
 	RandomSource& rnd,
 	AlnSinkWrap& sink)
@@ -319,8 +318,7 @@ int AlignerDriver::go(
 					dr1_.sink(),
 					ebwtFw,
 					ref,
-					rnd,
-					wlm);
+					rnd);
 				while(!alsel_.done() && !sink.state().doneWithMate(true)) {
 					res.reset();
 					bool ret2 = alsel_.next(
@@ -329,7 +327,6 @@ int AlignerDriver::go(
 						ref,
 						rnd,
 						res,
-						wlm,
 						prm);
 					if(ret2) {
 						// Got an alignment

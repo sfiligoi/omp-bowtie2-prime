@@ -69,7 +69,6 @@ bool SwDriver::eeSaTups(
 	const Ebwt& ebwt,            // BWT
 	const BitPairReference& ref, // Reference strings
 	RandomSource& rnd,           // pseudo-random generator
-	WalkMetrics& wlm,            // group walk left metrics
 	size_t& nelt_out,            // out: # elements total
     size_t maxelt,               // max elts we'll consider
 	bool all)                    // report all hits?
@@ -179,8 +178,7 @@ bool SwDriver::eeSaTups(
                         ebwt,               // forward Bowtie index
                         ref,                // reference sequences
                         sa,                 // SATuple
-                        rnd,                // pseudo-random generator
-                        wlm);               // metrics
+                        rnd);                // pseudo-random generator
                     assert(gws_.back().repOk(sa));
                     nelt_out += width;
                     if(nelt_out >= maxelt) {
@@ -260,8 +258,7 @@ bool SwDriver::eeSaTups(
                     ebwt, // forward Bowtie index
                     ref,  // reference sequences
                     sa,   // SATuple
-                    rnd,  // pseudo-random generator
-                    wlm); // metrics
+                    rnd);  // pseudo-random generator
                 assert(gws_.back().repOk(sa));
                 nelt_out += width;
                 if(nelt_out >= maxelt) {
@@ -484,7 +481,6 @@ void SwDriver::prioritizeSATups(
 	size_t nsm,                  // if range as <= nsm elts, it's "small"
 	AlignmentCacheIface& ca,     // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random generator
-	WalkMetrics& wlm,            // group walk left metrics
 	PerReadMetrics& prm,         // per-read metrics
 	size_t& nelt_out,            // out: # elements total
 	bool all)                    // report all hits?
@@ -603,8 +599,7 @@ void SwDriver::prioritizeSATups(
 				ebwtFw, // forward Bowtie index
 				ref,    // reference sequences
 				sa,     // SA tuples: ref hit, salist range
-				rnd,    // pseudo-random generator
-				wlm);   // metrics
+				rnd);    // pseudo-random generator
 			assert(gws_.back().initialized());
 			rands_.expand();
 			rands_.back().init(satpos_[i].sat.size(), all);
@@ -648,8 +643,7 @@ void SwDriver::prioritizeSATups(
 			ebwtFw, // forward Bowtie index
 			ref,    // reference sequences
 			sa,     // SA tuples: ref hit, salist range
-			rnd,    // pseudo-random generator
-			wlm);   // metrics
+			rnd);   // pseudo-random generator
 		assert(gws_.back().initialized());
 		rands_.expand();
 		rands_.back().init(satpos_.back().sat.size(), all);
@@ -708,8 +702,7 @@ void SwDriver::prioritizeSATups(
 			ebwtFw, // forward Bowtie index
 			ref,    // reference sequences
 			sa,     // SA tuples: ref hit, salist range
-			rnd,    // pseudo-random generator
-			wlm);   // metrics
+			rnd);   // pseudo-random generator
 		assert(gws_.back().initialized());
 		// Initialize random selector
 		rands_.expand();
@@ -765,7 +758,6 @@ int SwDriver::extendSeeds(
 	int tighten,                 // -M score tightening mode
 	AlignmentCacheIface& ca,     // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random source
-	WalkMetrics& wlm,            // group walk left metrics
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
 	bool reportImmediately,      // whether to report hits immediately to msink
@@ -814,7 +806,6 @@ int SwDriver::extendSeeds(
 					ebwtFw,       // BWT
 					ref,          // Reference strings
 					rnd,          // pseudo-random generator
-					wlm,          // group walk left metrics
 					nelt,         // out: # elements total
                     maxIters,     // max # to report
 					all);         // report all hits?
@@ -847,7 +838,6 @@ int SwDriver::extendSeeds(
 					nsm,           // smallness threshold
 					ca,            // alignment cache for seed hits
 					rnd,           // pseudo-random generator
-					wlm,           // group walk left metrics
 					prm,           // per-read metrics
 					nelt,          // out: # elements total
 					all);          // report all hits?
@@ -909,7 +899,7 @@ int SwDriver::extendSeeds(
 				sa.topf = satpos_[i].sat.topf;
 				sa.len = satpos_[i].sat.key.len;
 				sa.offs = satpos_[i].sat.offs;
-				gws_[i].advanceElement((TIndexOffU)elt, ebwtFw, ref, sa, gwstate_, wr, wlm, prm);
+				gws_[i].advanceElement((TIndexOffU)elt, ebwtFw, ref, sa, gwstate_, wr, prm);
 				eltsDone++;
 				if(!eeMode) {
 					assert_gt(neltLeft, 0);
@@ -1397,7 +1387,6 @@ int SwDriver::extendSeedsPaired(
 	int tighten,                 // -M score tightening mode
 	AlignmentCacheIface& ca,     // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random source
-	WalkMetrics& wlm,            // group walk left metrics
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
 	bool swMateImmediately,      // whether to look for mate immediately
@@ -1486,7 +1475,6 @@ int SwDriver::extendSeedsPaired(
 					ebwtFw,       // BWT
 					ref,          // Reference strings
 					rnd,          // pseudo-random generator
-					wlm,          // group walk left metrics
 					nelt,         // out: # elements total
                     maxIters,     // max elts to report
 					all);         // report all hits
@@ -1526,7 +1514,6 @@ int SwDriver::extendSeedsPaired(
 					nsm,           // smallness threshold
 					ca,            // alignment cache for seed hits
 					rnd,           // pseudo-random generator
-					wlm,           // group walk left metrics
 					prm,           // per-read metrics
 					nelt,          // out: # elements total
 					all);          // report all hits?
@@ -1602,7 +1589,7 @@ int SwDriver::extendSeedsPaired(
 				sa.topf = satpos_[i].sat.topf;
 				sa.len = satpos_[i].sat.key.len;
 				sa.offs = satpos_[i].sat.offs;
-				gws_[i].advanceElement((TIndexOffU)elt, ebwtFw, ref, sa, gwstate_, wr, wlm, prm);
+				gws_[i].advanceElement((TIndexOffU)elt, ebwtFw, ref, sa, gwstate_, wr, prm);
 				eltsDone++;
 				assert_gt(neltLeft, 0);
 				neltLeft--;

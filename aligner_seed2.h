@@ -2141,8 +2141,7 @@ public:
 		const DescentAlignmentSink& sink,
 		const Ebwt& ebwtFw,         // forward Bowtie index for walking left
 		const BitPairReference& ref,// bitpair-encoded reference
-		RandomSource& rnd,          // pseudo-random generator for sampling rows
-		WalkMetrics& met)
+		RandomSource& rnd)          // pseudo-random generator for sampling rows
 	{
 		// We're going to sample from space of *alignments*, not ranges.  So
 		// when we extract a sample, we'll have to do a little extra work to
@@ -2158,7 +2157,7 @@ public:
 		for(size_t i = 0; i < sas_.size(); i++) {
 			size_t en = sink[i].botf - sink[i].topf;
 			sas_[i].init(sink[i].topf, EListSlice<TIndexOffU, 16>(offs_, ei, en));
-			gws_[i].init(ebwtFw, ref, sas_[i], rnd, met);
+			gws_[i].init(ebwtFw, ref, sas_[i], rnd);
 			ei += en;
 		}
 	}
@@ -2186,7 +2185,6 @@ public:
 		const BitPairReference& ref, // bitpair-encoded reference
 		RandomSource& rnd,
 		AlnRes& rs,
-		WalkMetrics& met,
 		PerReadMetrics& prm)
 	{
 		// Sample one alignment randomly from pool of remaining alignments
@@ -2207,7 +2205,6 @@ public:
 			sas_[rangei], // SA range with offsets
 			gwstate_,     // GroupWalk state; scratch space
 			wr,           // put the result here
-			met,          // metrics
 			prm);         // per-read metrics
 		assert_neq(OFF_MASK, wr.toff);
 		bool straddled = false;
@@ -2355,8 +2352,7 @@ public:
 		size_t nbatch,                   // # of alignments in a batch
 		const Ebwt& ebwtFw,              // forward Bowtie index for walk-left
 		const BitPairReference& ref,     // bitpair-encoded reference
-		RandomSource& rnd,               // pseudo-randoms for sampling rows
-		WalkMetrics& met)                // metrics re: offset resolution
+		RandomSource& rnd)               // pseudo-randoms for sampling rows
 	{
 		// Make our internal heap
 		if(depthBonus > 0) {
@@ -2368,7 +2364,7 @@ public:
 			}
 		} else heap_ = heap;
 		assert(!heap_.empty());
-		nextRanges(df, pf, ebwtFw, ref, rnd, met);
+		nextRanges(df, pf, ebwtFw, ref, rnd);
 		assert(!rangeExhausted());
 	}
 	
@@ -2405,7 +2401,6 @@ public:
 		const BitPairReference& ref, // bitpair-encoded reference
 		RandomSource& rnd,
 		AlnRes& rs,
-		WalkMetrics& met,
 		PerReadMetrics& prm)
 	{
 		// Sample one alignment randomly from pool of remaining alignments
@@ -2426,7 +2421,6 @@ public:
 			sas_[rangei], // SA range with offsets
 			gwstate_,     // GroupWalk state; scratch space
 			wr,           // put the result here
-			met,          // metrics
 			prm);         // per-read metrics
 		assert_neq(OFF_MASK, wr.toff);
 		bool straddled = false;
@@ -2495,8 +2489,7 @@ protected:
         EFactory<DescentPos>& pf,        // DescentPos factory
 		const Ebwt& ebwtFw,              // forward Bowtie index for walk-left
 		const BitPairReference& ref,     // bitpair-encoded reference
-		RandomSource& rnd,               // pseudo-randoms for sampling rows
-		WalkMetrics& met)                // metrics re: offset resolution
+		RandomSource& rnd)               // pseudo-randoms for sampling rows
 	{
 		// Pop off the topmost
 		assert(!heap_.empty());
@@ -2509,7 +2502,7 @@ protected:
 		sas_.resize(1);
 		gws_.resize(1);
 		sas_[0].init(topf, EListSlice<TIndexOffU, 16>(offs_, 0, botf - topf));
-		gws_[0].init(ebwtFw, ref, sas_[0], rnd, met);
+		gws_[0].init(ebwtFw, ref, sas_[0], rnd);
 	}
 	
 	DescentPartialResolvedAlignmentSink palsink_;

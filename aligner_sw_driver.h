@@ -348,7 +348,6 @@ public:
 		int tighten,                 // -M score tightening mode
 		AlignmentCacheIface& ca,     // alignment cache for seed hits
 		RandomSource& rnd,           // pseudo-random source
-		WalkMetrics& wlm,            // group walk left metrics
 		PerReadMetrics& prm,         // per-read metrics
 		AlnSinkWrap* mhs,            // HitSink for multiseed-style aligner
 		bool reportImmediately,      // whether to report hits immediately to mhs
@@ -404,7 +403,6 @@ public:
 		int tighten,                 // -M score tightening mode
 		AlignmentCacheIface& cs,     // alignment cache for seed hits
 		RandomSource& rnd,           // pseudo-random source
-		WalkMetrics& wlm,            // group walk left metrics
 		PerReadMetrics& prm,         // per-read metrics for anchor
 		AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
 		bool swMateImmediately,      // whether to look for mate immediately
@@ -445,7 +443,6 @@ protected:
 		const Ebwt& ebwt,            // BWT
 		const BitPairReference& ref, // Reference strings
 		RandomSource& rnd,           // pseudo-random generator
-		WalkMetrics& wlm,            // group walk left metrics
 		size_t& nelt_out,            // out: # elements total
         size_t maxelts,              // max # elts to report
 		bool all);                   // report all hits?
@@ -479,7 +476,6 @@ protected:
 		size_t nsm,                  // if range as <= nsm elts, it's "small"
 		AlignmentCacheIface& ca,     // alignment cache for seed hits
 		RandomSource& rnd,           // pseudo-random generator
-		WalkMetrics& wlm,            // group walk left metrics
 		PerReadMetrics& prm,         // per-read metrics
 		size_t& nelt_out,            // out: # elements total
 		bool all);                   // report all hits?

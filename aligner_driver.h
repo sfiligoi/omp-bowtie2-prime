@@ -266,7 +266,6 @@ public:
 		const Ebwt& ebwtBw,
 		const BitPairReference& ref,
 		DescentMetrics& met,
-		WalkMetrics& wlm,
 		PerReadMetrics& prm,
 		RandomSource& rnd,
 		AlnSinkWrap& sink);

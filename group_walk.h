@@ -148,57 +148,6 @@ struct GroupWalkState {
 };
 
 /**
- * Encapsulates counters that encode how much work the walk-left logic
- * has done.
- */
-struct WalkMetrics {
-
-	WalkMetrics() {
-		reset();
-	}
-
-	/**
-	 * Sum each across this object and 'm'.  This is the only safe way
-	 * to update a WalkMetrics shared by many threads.
-	 */
-	void merge(const WalkMetrics& m, bool getLock = false) {
-		if(getLock) {
-			ThreadSafe ts(mutex_m);
-			mergeImpl(m);
-		} else {
-			mergeImpl(m);
-		}
-	}
-
-	/**
-	 * Set all to 0.
-	 */
-	void reset() {
-		bwops = branches = resolves = refresolves = reports = 0;
-	}
-
-	uint64_t bwops;       // Burrows-Wheeler operations
-	uint64_t branches;    // BW range branch-offs
-	uint64_t resolves;    // # offs resolved with BW walk-left
-	uint64_t refresolves; // # resolutions caused by reference scanning
-	uint64_t reports;     // # offs reported (1 can be reported many times)
-	MUTEX_T mutex_m;
-
-private:
-	/**
-	 * Sum each across this object and 'm'.  This is the only safe way
-	 * to update a WalkMetrics shared by many threads.
-	 */
-	void mergeImpl(const WalkMetrics& m) {
-		bwops += m.bwops;
-		branches += m.branches;
-		resolves += m.resolves;
-		refresolves += m.refresolves;
-		reports += m.reports;
-	}
-};
-
-/**
  * Coordinates for a BW element that the GroupWalk might resolve.
  */
 struct GWElt {
@@ -457,8 +406,7 @@ public:
 		EList<WalkResult, 16>* res,   // EList where resolved offsets should be appended
 		TIndexOffU tp,                  // top of range at this step
 		TIndexOffU bt,                  // bot of range at this step
-		TIndexOffU st,                  // # steps taken to get to this step
-		WalkMetrics& met)
+		TIndexOffU st)                  // # steps taken to get to this step
 	{
 		assert_gt(bt, tp);
 		assert_lt(range, sts.size());
@@ -468,7 +416,7 @@ public:
 		assert(!inited_);
 		ASSERT_ONLY(inited_ = true);
 		ASSERT_ONLY(lastStep_ = step-1);
-		return init(ebwt, ref, sa, sts, hit, range, reportList, res, met);
+		return init(ebwt, ref, sa, sts, hit, range, reportList, res);
 	}
 
 	/**
@@ -491,8 +439,7 @@ public:
 		GWHit<T>& hit,                // Corresponding hit structure
 		TIndexOffU range,               // range being inited
 		bool reportList,              // report resolutions, adding to 'res' list?
-		EList<WalkResult, 16>* res,   // EList to append resolutions
-		WalkMetrics& met)             // update these metrics
+		EList<WalkResult, 16>* res)   // EList to append resolutions
 	{
 		assert(inited_);
 		assert_eq(step, lastStep_+1);
@@ -515,10 +462,9 @@ public:
 				if(toff != OFF_MASK) {
 					// Yes, toff was resolvable
 					assert_eq(toff, ebwt.getOffset(bwrow));
-					met.resolves++;
 					toff += step;
 					assert_eq(toff, ebwt.getOffset(origBwRow));
-					setOff(i, toff, sa, met);
+					setOff(i, toff, sa);
 					if(!reportList) ret.first++;
 #if 0
 // used to be #ifndef NDEBUG, but since we no longer require that the reference
@@ -599,7 +545,6 @@ public:
 						hit.len,    // hit length
 						toff);      // text offset
 					hit.setReported(map(i));
-					met.reports++;
 				}
 				// Offset resolved
 				if(empty) {
@@ -695,8 +640,7 @@ public:
 				res,
 				ztop,
 				oldbot,
-				step,
-				met);
+				step);
 		}
 		assert_gt(bot, top);
 		// Prepare SideLocus's for next step
@@ -838,8 +782,7 @@ public:
 	void setOff(
 		size_t i,
 		TIndexOffU off,
-		SARangeWithOffs<T>& sa,
-		WalkMetrics& met)
+		SARangeWithOffs<T>& sa)
 	{
 		assert_lt(i + mapi_, map_.size());
 		assert_lt(map_[i + mapi_], sa.offs.size());
@@ -870,7 +813,6 @@ public:
 		EList<WalkResult, 16>* res,  // EList where resolved offsets should be appended
 		EList<GWState, S>& st,       // EList of GWStates for range being advanced
 		GroupWalkState& gws,         // temporary storage for masks
-		WalkMetrics& met,
 		PerReadMetrics& prm)
 	{
 		ASSERT_ONLY(TIndexOffU origTop = top);
@@ -889,7 +831,6 @@ public:
 			upto[0] = in[0] = upto[1] = in[1] =
 			upto[2] = in[2] = upto[3] = in[3] = 0;
 			assert_eq(bot, bloc.toBWRow());
-			met.bwops++;
 			prm.nExFmops++;
 			// Assert that there's not a dollar sign in the middle of
 			// this range
@@ -947,7 +888,6 @@ public:
 						assert_lt(nbot-ntop, bot-top);
 						st.back().mapi_ = 0;
 						st.back().map_.clear();
-						met.branches++;
 						// Range narrowed so we have to look at the masks
 						for(size_t j = 0; j < gws.masks[i].size(); j++) {
 							if(gws.masks[i][j]) st.back().map_.push_back(map_[j+mapi_]);
@@ -964,8 +904,7 @@ public:
 							res,         // report hits here if reportList is true
 							ntop,        // BW top of new range
 							nbot,        // BW bot of new range
-							step+1,      // # steps taken to get to this new range
-							met);        // update these metrics
+							step+1);     // # steps taken to get to this new range
 						ret.first += rret.first;
 						ret.second += rret.second;
 					}
@@ -992,7 +931,6 @@ public:
 			assert_eq(1, map_.size()-mapi_);
 			// Sets top, returns char walked through (which we ignore)
 			ASSERT_ONLY(TIndexOffU oldtop = top);
-			met.bwops++;
 			prm.nExFmops++;
 			ebwt.mapLF1(top, tloc);
 			assert_neq(top, oldtop);
@@ -1016,8 +954,7 @@ public:
 			hit,        // associated GWHit object
 			range,      // range offset
 			reportList, // if true, report hits to 'res' list
-			res,        // report hits here if reportList is true
-			met);       // update these metrics
+			res);        // report hits here if reportList is true
 		ret.first += rret.first;
 		ret.second += rret.second;
 		return ret;
@@ -1106,8 +1043,7 @@ public:
 		const Ebwt& ebwtFw,         // forward Bowtie index for walking left
 		const BitPairReference& ref,// bitpair-encoded reference
 		SARangeWithOffs<T>& sa,     // SA range with offsets
-		RandomSource& rnd,          // pseudo-random generator for sampling rows
-		WalkMetrics& met)           // update metrics here
+		RandomSource& rnd)          // pseudo-random generator for sampling rows
 	{
 		reset();
 #ifndef NDEBUG
@@ -1134,8 +1070,7 @@ public:
 			NULL,               // put resolved elements here
 			top,                // BW row at top
 			bot,                // BW row at bot
-			0,                  // # steps taken
-			met);               // update metrics here
+			0);                 // # steps taken
 		elt_ += sa.size();
 		assert(hit_.repOk(sa));
 	}
@@ -1147,10 +1082,10 @@ public:
 	/**
 	 * Advance the GroupWalk until all elements have been resolved.
 	 */
-	void resolveAll(WalkMetrics& met, PerReadMetrics& prm) {
+	void resolveAll(PerReadMetrics& prm) {
 		WalkResult res; // ignore results for now
 		for(size_t i = 0; i < elt_; i++) {
-			advanceElement((TIndexOffU)i, res, met, prm);
+			advanceElement((TIndexOffU)i, res, prm);
 		}
 	}
 
@@ -1165,7 +1100,6 @@ public:
 		SARangeWithOffs<T>& sa,      // SA range with offsets
 		GroupWalkState& gws,         // GroupWalk state; scratch space
 		WalkResult& res,             // put the result here
-		WalkMetrics& met,            // metrics
 		PerReadMetrics& prm)         // per-read metrics
 	{
 		assert(inited_);
@@ -1192,7 +1126,6 @@ public:
 				NULL,
 				st_,
 				gws,
-				met,
 				prm);
 			assert(sa.offs[elt] != OFF_MASK ||
 			       !st_[hit_.fmap[elt].first].doneResolving(sa));
@@ -1202,7 +1135,6 @@ public:
 		if(!hit_.reported(elt)) {
 			hit_.setReported(elt);
 		}
-		met.reports++;
 		res.init(
 			0,              // seed offset
 			false,          // orientation
