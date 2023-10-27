@@ -2903,7 +2903,7 @@ static void multiseedSearchWorker() {
 		} while (have_next_read(g_psrah)); // must read the whole cached buffer
 
 		// Merge in the metrics
-		msink.mergeMetrics(rpm);
+		msink.mergeMetricsUnsafe(rpm);
 	}
 
 	return;
@@ -3181,7 +3181,7 @@ static void multiseedSearchWorker_2p5() {
 	} // while(true)
 
 	// Merge in the metrics
-	msink.mergeMetrics(rpm);
+	msink.mergeMetricsUnsafe(rpm);
 
 	return;
 }

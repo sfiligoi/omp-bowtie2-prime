@@ -43,9 +43,34 @@ enum {
  */
 struct ReportingMetrics {
 
-	ReportingMetrics():mutex_m() {
-	    reset();
-	}
+	ReportingMetrics():
+		nread(0),
+		npaired(0),
+		nunpaired(0),
+		nconcord_uni(0),
+		nconcord_uni1(0),
+		nconcord_uni2(0),
+		nconcord_rep(0),
+		nconcord_0(0),
+		ndiscord(0),
+		nunp_0_uni(0),
+		nunp_0_uni1(0),
+		nunp_0_uni2(0),
+		nunp_0_rep(0),
+		nunp_0_0(0),
+		nunp_rep_uni(0),
+		nunp_rep_uni1(0),
+		nunp_rep_uni2(0),
+		nunp_rep_rep(0),
+		nunp_rep_0(0),
+		nunp_uni(0),
+		nunp_uni1(0),
+		nunp_uni2(0),
+		nunp_rep(0),
+		nunp_0(0),
+		sum_best1(0),
+		sum_best2(0),
+		sum_best(0) {}
 
 	void reset() {
 		init(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -118,11 +143,9 @@ struct ReportingMetrics {
 
 	/**
 	 * Merge (add) the counters in the given ReportingMetrics object
-	 * into this object.  This is the only safe way to update a
-	 * ReportingMetrics shared by multiple threads.
+	 * into this object.  Not thread safe.
 	 */
-	void merge(const ReportingMetrics& met) {
-		ThreadSafe ts(mutex_m);
+	void mergeUnsafe(const ReportingMetrics& met) {
 		nread         += met.nread;
 
 		npaired       += met.npaired;
@@ -200,8 +223,6 @@ struct ReportingMetrics {
 	uint64_t  sum_best1;     // Sum of all the best alignment scores
 	uint64_t  sum_best2;     // Sum of all the second-best alignment scores
 	uint64_t  sum_best;      // Sum of all the best and second-best
-
-	MUTEX_T mutex_m;
 };
 
 // Type for expression numbers of hits
@@ -847,8 +868,8 @@ public:
 	/**
 	 * Merge given metrics in with ours by summing all individual metrics.
 	 */
-	void mergeMetrics(const ReportingMetrics& met) {
-		met_.merge(met);
+	void mergeMetricsUnsafe(const ReportingMetrics& met) {
+		met_.mergeUnsafe(met);
 	}
 
 	/**
