@@ -1998,29 +1998,6 @@ static void multiseedSearchWorker() {
 
 		ASSERT_ONLY(BTDnaString tmp);
 
-		int pepolFlag;
-		if(gMate1fw && gMate2fw) {
-			pepolFlag = PE_POLICY_FF;
-		} else if(gMate1fw && !gMate2fw) {
-			pepolFlag = PE_POLICY_FR;
-		} else if(!gMate1fw && gMate2fw) {
-			pepolFlag = PE_POLICY_RF;
-		} else {
-			pepolFlag = PE_POLICY_RR;
-		}
-		assert_geq(gMaxInsert, gMinInsert);
-		assert_geq(gMinInsert, 0);
-		PairedEndPolicy pepol(
-			pepolFlag,
-			gMaxInsert,
-			gMinInsert,
-			localAlign,
-			gFlippedMatesOK,
-			gDovetailMatesOK,
-			gContainMatesOK,
-			gOlapMatesOK,
-			gExpandToFrag);
-
 		BTString nametmp;
 		EList<Seed> seeds1, seeds2;
 		EList<Seed> *seeds[2] = { &seeds1, &seeds2 };
@@ -2272,6 +2249,7 @@ static void multiseedSearchWorker() {
 							assert(!msinkwrap.maxed());
 							assert(msinkwrap.repOk());
 							int ret = 0;
+#if 0
 							if(paired) {
 								// Paired-end dynamic programming driver
 								ret = sd.extendSeedsPaired(
@@ -2321,7 +2299,9 @@ static void multiseedSearchWorker() {
 									gReportMixed,   // look for unpaired alns?
 									exhaustive[mate]);
 								// Might be done, but just with this mate
-							} else {
+							} else 
+#endif
+                                                        {
 								// Unpaired dynamic programming driver
 								ret = sd.extendSeeds(
 									*rds[mate],     // read
@@ -2444,6 +2424,7 @@ static void multiseedSearchWorker() {
 								continue;
 							}
 							int ret = 0;
+#if 0
 							if(paired) {
 								// Paired-end dynamic programming driver
 								ret = sd.extendSeedsPaired(
@@ -2493,7 +2474,9 @@ static void multiseedSearchWorker() {
 									gReportMixed,   // look for unpaired alns?
 									exhaustive[mate]);
 								// Might be done, but just with this mate
-							} else {
+							} else 
+#endif
+                                                        {
 								// Unpaired dynamic programming driver
 								ret = sd.extendSeeds(
 									*rds[mate],     // read
@@ -2709,6 +2692,7 @@ static void multiseedSearchWorker() {
 								// Sort seed hits into ranks
 								shs[mate].rankSeedHits(rnd, msinkwrap.allHits());
 								int ret = 0;
+#if 0
 								if(paired) {
 									// Paired-end dynamic programming driver
 									ret = sd.extendSeedsPaired(
@@ -2758,7 +2742,9 @@ static void multiseedSearchWorker() {
 										gReportMixed,   // look for unpaired alns?
 										exhaustive[mate]);
 									// Might be done, but just with this mate
-								} else {
+								} else 
+#endif
+                                                                {
 									// Unpaired dynamic programming driver
 									ret = sd.extendSeeds(
 										*rds[mate],     // read
