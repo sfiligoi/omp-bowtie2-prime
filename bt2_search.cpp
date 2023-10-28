@@ -2135,12 +2135,8 @@ static void multiseedSearchWorker() {
 					int nceil[2] = { 0, 0 };
 					nceil[0] = nCeil.f<int>((double)rdlens[0]);
 					nceil[0] = min(nceil[0], (int)rdlens[0]);
-					if(paired) {
-						nceil[1] = nCeil.f<int>((double)rdlens[1]);
-						nceil[1] = min(nceil[1], (int)rdlens[1]);
-					}
 					exhaustive[0] = exhaustive[1] = false;
-					size_t matemap[2] = { 0, 1 };
+					// size_t matemap[2] = { 0, 1 };
 					bool pairPostFilt = filt[0] && filt[1];
 					if(pairPostFilt) {
 						rnd.init(ps->read_a().seed ^ ps->read_b().seed);
@@ -2149,7 +2145,8 @@ static void multiseedSearchWorker() {
 					}
 					// Calculate interval length for both mates
 					int interval[2] = { 0, 0 };
-					for(size_t mate = 0; mate < (paired ? 2:1); mate++) {
+                                        {
+                                                const size_t mate = 0;
 						interval[mate] = msIval.f<int>((double)rdlens[mate]);
 						if(filt[0] && filt[1]) {
 							// Boost interval length by 20% for paired-end reads
@@ -2194,10 +2191,9 @@ static void multiseedSearchWorker() {
 					}
 					assert_gt(nrounds[0], 0);
 					// Increment counters according to what got filtered
-					for(size_t mate = 0; mate < (paired ? 2:1); mate++) {
-						if(!filt[mate]) {
-							// Mate was rejected by N filter
-						} else {
+                                        {
+                                                const size_t mate = 0;
+						if(filt[mate]) {
 							shs[mate].clear();
 							shs[mate].nextRead(mate == 0 ? ps->read_a() : ps->read_b());
 							assert(shs[mate].empty());
@@ -2210,12 +2206,14 @@ static void multiseedSearchWorker() {
 
 					// Find end-to-end exact alignments for each read
 					{
-						for(size_t matei = 0; matei < (paired ? 2:1); matei++) {
-							size_t mate = matemap[matei];
+                                                {
+                                                        //const size_t matei = 0;
+							//size_t mate = matemap[matei];
+                                                        const size_t mate = 0;
 							if(!filt[mate] || done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
-								continue;
-							}
-							nelt[mate] = al.exactSweep(
+								// nothing to do
+							} else {
+							  nelt[mate] = al.exactSweep(
 								ebwtFw,        // index
 								*rds[mate],    // read
 								sc,            // scoring scheme
@@ -2226,15 +2224,11 @@ static void multiseedSearchWorker() {
 								minedrc[mate], // minimum # edits for rc mate
 								true,          // report 0mm hits
 								shs[mate]);     // put end-to-end results here
-						}
-						matemap[0] = 0; matemap[1] = 1;
-						if(nelt[0] > 0 && nelt[1] > 0 && nelt[0] > nelt[1]) {
-							// Do the mate with fewer exact hits first
-							// TODO: Consider mates & orientations separately?
-							matemap[0] = 1; matemap[1] = 0;
+							}
 						}
 						for(size_t matei = 0; matei < 2; matei++) {
-							size_t mate = matemap[matei];
+							//size_t mate = matemap[matei];
+                                                        const size_t mate = matei;
 							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
 								shs[mate].clearExactE2eHits();
 								continue;
@@ -2375,14 +2369,14 @@ static void multiseedSearchWorker() {
 
 					// 1-mismatch
 					{
-						for(size_t matei = 0; matei < (paired ? 2:1); matei++) {
-							size_t mate = matemap[matei];
-							if(!filt[mate] || done[mate] || nelt[mate] > eePeEeltLimit) {
+                                                //const size_t matei = 0;
+						//size_t mate = matemap[matei];
+                                                const size_t mate = 0;
+						if(!filt[mate] || done[mate] || nelt[mate] > eePeEeltLimit) {
 								// Done with this mate
 								shs[mate].clear1mmE2eHits();
 								nelt[mate] = 0;
-								continue;
-							}
+						} else {
 							nelt[mate] = 0;
 							assert(!msinkwrap.maxed());
 							assert(msinkwrap.repOk());
@@ -2407,15 +2401,9 @@ static void multiseedSearchWorker() {
 								nelt[mate] = shs[mate].num1mmE2eHits();
 							}
 						}
-						// Possibly reorder the mates
-						matemap[0] = 0; matemap[1] = 1;
-						if(nelt[0] > 0 && nelt[1] > 0 && nelt[0] > nelt[1]) {
-							// Do the mate with fewer exact hits first
-							// TODO: Consider mates & orientations separately?
-							matemap[0] = 1; matemap[1] = 0;
-						}
 						for(size_t matei = 0; matei < 2; matei++) {
-							size_t mate = matemap[matei];
+							// size_t mate = matemap[matei];
+							const size_t mate = matei;
 							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
 								continue;
 							}
@@ -2569,8 +2557,10 @@ static void multiseedSearchWorker() {
 						//	if(seedlens[0] > 8) seedlens[0]--;
 						//	if(seedlens[1] > 8) seedlens[1]--;
 						//}
-						for(size_t matei = 0; matei < (paired ? 2:1); matei++) {
-							size_t mate = matemap[matei];
+						for(size_t matei = 0; matei < 1; matei++) { // keep the for, due to logic using continue and break
+                                                	//const size_t matei = 0;
+							//size_t mate = matemap[matei];
+                                                	const size_t mate = 0;
 							if(done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
 								// Done with this mate
 								done[mate] = true;
@@ -2666,25 +2656,16 @@ static void multiseedSearchWorker() {
 								uniqFactor[i] = shs[i].uniquenessFactor();
 							}
 						}
-						// Possibly reorder the mates
-						matemap[0] = 0; matemap[1] = 1;
-						if(!shs[0].empty() && !shs[1].empty() && uniqFactor[1] > uniqFactor[0]) {
-							// Do the mate with fewer exact hits first
-							// TODO: Consider mates & orientations separately?
-							matemap[0] = 1; matemap[1] = 0;
-						}
-						for(size_t matei = 0; matei < (paired ? 2:1); matei++) {
-							size_t mate = matemap[matei];
+						{
+                                                	//const size_t matei = 0;
+							//size_t mate = matemap[matei];
+                                                	const size_t mate = 0;
 							if(done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
 								// Done with this mate
 								done[mate] = true;
-								continue;
-							}
-							assert(!msinkwrap.maxed());
-							assert(msinkwrap.repOk());
-							//rnd.init(ROTL(rds[mate]->seed, 10));
-							assert(shs[mate].repOk(&ca.current()));
-							{
+							} else if(shs[mate].empty()) {
+								// nothing to do
+							} else {
 								// If there aren't any seed hits...
 								if(shs[mate].empty()) {
 									continue; // on to the next mate
