@@ -2213,7 +2213,7 @@ static void multiseedSearchWorker() {
 								shs[mate]);     // put end-to-end results here
 							}
 						}
-						for(size_t matei = 0; matei < 2; matei++) {
+						for(size_t matei = 0; matei < 1; matei++) {
 							//size_t mate = matemap[matei];
                                                         const size_t mate = matei;
 							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
@@ -2300,6 +2300,8 @@ static void multiseedSearchWorker() {
 								}
 							}
 						}
+						// TODO: We likelt do not need this
+						shs[1].clearExactE2eHits();
 					}
 
 					// 1-mismatch
