@@ -2065,7 +2065,6 @@ static void multiseedSearchWorker() {
 					size_t rdrows[2] = { rdlen1, rdlen2 };
 					// Calculate the minimum valid score threshold for the read
 					TAlScore minsc[2];
-					minsc[0] = minsc[1] = std::numeric_limits<TAlScore>::max();
 					{
 						minsc[0] = scoreMin.f<TAlScore>(rdlens[0]);
 						{
@@ -2075,19 +2074,13 @@ static void multiseedSearchWorker() {
 							}
 						}
 					}
+					minsc[1] = std::numeric_limits<TAlScore>::max();
 					// N filter; does the read have too many Ns?
 					size_t readns[2] = {0, 0};
-					sc.nFilterPair(
-						&ps->read_a().patFw,
-						NULL,
-						readns[0],
-						readns[1],
-						nfilt[0],
-						nfilt[1]);
+					nfilt[0] = sc.nFilter(ps->read_a().patFw, readns[0]);
 					// Score filter; does the read enough character to rise above
 					// the score threshold?
 					scfilt[0] = sc.scoreFilter(minsc[0], rdlens[0]);
-					scfilt[1] = sc.scoreFilter(minsc[1], rdlens[1]);
 					lenfilt[0] = lenfilt[1] = true;
 					if(rdlens[0] <= (size_t)multiseedMms || rdlens[0] < 2) {
 						if(!gQuiet) printMmsSkipMsg(*ps, paired, true, multiseedMms);
