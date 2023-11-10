@@ -2243,58 +2243,6 @@ static void multiseedSearchWorker() {
 							assert(!msinkwrap.maxed());
 							assert(msinkwrap.repOk());
 							int ret = 0;
-#if 0
-							if(paired) {
-								// Paired-end dynamic programming driver
-								ret = sd.extendSeedsPaired(
-									*rds[mate],     // mate to align as anchor
-									*rds[mate ^ 1], // mate to align as opp.
-									mate == 0,      // anchor is mate 1?
-									!filt[mate ^ 1],// opposite mate filtered out?
-									shs[mate],      // seed hits for anchor
-									ebwtFw,         // bowtie index
-									ebwtBw,         // rev bowtie index
-									ref,            // packed reference strings
-									sw,             // dyn prog aligner, anchor
-									osw,            // dyn prog aligner, opposite
-									sc,             // scoring scheme
-									pepol,          // paired-end policy
-									-1,             // # mms allowed in a seed
-									0,              // length of a seed
-									0,              // interval between seeds
-									minsc[mate],    // min score for anchor
-									minsc[mate^1],  // min score for opp.
-									nceil[mate],    // N ceil for anchor
-									nceil[mate^1],  // N ceil for opp.
-									nofw[mate],     // don't align forward read
-									norc[mate],     // don't align revcomp read
-									maxhalf,        // max width on one DP side
-									doUngapped,     // do ungapped alignment
-									mxIter[mate],   // max extend loop iters
-									mxUg[mate],     // max # ungapped extends
-									mxDp[mate],     // max # DPs
-									streak[mate],   // stop after streak of this many end-to-end fails
-									streak[mate],   // stop after streak of this many ungap fails
-									streak[mate],   // stop after streak of this many dp fails
-									mtStreak[mate], // max mate fails per seed range
-									doExtend,       // extend seed hits
-									enable8,        // use 8-bit SSE where possible
-									cminlen,        // checkpoint if read is longer
-									cpow2,          // checkpointer interval, log2
-									doTri,          // triangular mini-fills?
-									tighten,        // -M score tightening mode
-									ca,             // seed alignment cache
-									rnd,            // pseudo-random source
-									prm,            // per-read metrics
-									&msinkwrap,     // for organizing hits
-									true,           // seek mate immediately
-									true,           // report hits once found
-									gReportDiscordant,// look for discordant alns?
-									gReportMixed,   // look for unpaired alns?
-									exhaustive[mate]);
-								// Might be done, but just with this mate
-							} else 
-#endif
                                                         {
 								// Unpaired dynamic programming driver
 								ret = sd.extendSeeds(
@@ -2412,58 +2360,6 @@ static void multiseedSearchWorker() {
 								continue;
 							}
 							int ret = 0;
-#if 0
-							if(paired) {
-								// Paired-end dynamic programming driver
-								ret = sd.extendSeedsPaired(
-									*rds[mate],     // mate to align as anchor
-									*rds[mate ^ 1], // mate to align as opp.
-									mate == 0,      // anchor is mate 1?
-									!filt[mate ^ 1],// opposite mate filtered out?
-									shs[mate],      // seed hits for anchor
-									ebwtFw,         // bowtie index
-									ebwtBw,         // rev bowtie index
-									ref,            // packed reference strings
-									sw,             // dyn prog aligner, anchor
-									osw,            // dyn prog aligner, opposite
-									sc,             // scoring scheme
-									pepol,          // paired-end policy
-									-1,             // # mms allowed in a seed
-									0,              // length of a seed
-									0,              // interval between seeds
-									minsc[mate],    // min score for anchor
-									minsc[mate^1],  // min score for opp.
-									nceil[mate],    // N ceil for anchor
-									nceil[mate^1],  // N ceil for opp.
-									nofw[mate],     // don't align forward read
-									norc[mate],     // don't align revcomp read
-									maxhalf,        // max width on one DP side
-									doUngapped,     // do ungapped alignment
-									mxIter[mate],   // max extend loop iters
-									mxUg[mate],     // max # ungapped extends
-									mxDp[mate],     // max # DPs
-									streak[mate],   // stop after streak of this many end-to-end fails
-									streak[mate],   // stop after streak of this many ungap fails
-									streak[mate],   // stop after streak of this many dp fails
-									mtStreak[mate], // max mate fails per seed range
-									doExtend,       // extend seed hits
-									enable8,        // use 8-bit SSE where possible
-									cminlen,        // checkpoint if read is longer
-									cpow2,          // checkpointer interval, log2
-									doTri,          // triangular mini-fills?
-									tighten,        // -M score tightening mode
-									ca,             // seed alignment cache
-									rnd,            // pseudo-random source
-									prm,            // per-read metrics
-									&msinkwrap,     // for organizing hits
-									true,           // seek mate immediately
-									true,           // report hits once found
-									gReportDiscordant,// look for discordant alns?
-									gReportMixed,   // look for unpaired alns?
-									exhaustive[mate]);
-								// Might be done, but just with this mate
-							} else 
-#endif
                                                         {
 								// Unpaired dynamic programming driver
 								ret = sd.extendSeeds(
@@ -2553,10 +2449,6 @@ static void multiseedSearchWorker() {
 						assert(shs[1].empty());
 						assert(shs[0].repOk(&ca.current()));
 						assert(shs[1].repOk(&ca.current()));
-						//if(roundi > 0) {
-						//	if(seedlens[0] > 8) seedlens[0]--;
-						//	if(seedlens[1] > 8) seedlens[1]--;
-						//}
 						for(size_t matei = 0; matei < 1; matei++) { // keep the for, due to logic using continue and break
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
@@ -2673,58 +2565,6 @@ static void multiseedSearchWorker() {
 								// Sort seed hits into ranks
 								shs[mate].rankSeedHits(rnd, msinkwrap.allHits());
 								int ret = 0;
-#if 0
-								if(paired) {
-									// Paired-end dynamic programming driver
-									ret = sd.extendSeedsPaired(
-										*rds[mate],     // mate to align as anchor
-										*rds[mate ^ 1], // mate to align as opp.
-										mate == 0,      // anchor is mate 1?
-										!filt[mate ^ 1],// opposite mate filtered out?
-										shs[mate],      // seed hits for anchor
-										ebwtFw,         // bowtie index
-										ebwtBw,         // rev bowtie index
-										ref,            // packed reference strings
-										sw,             // dyn prog aligner, anchor
-										osw,            // dyn prog aligner, opposite
-										sc,             // scoring scheme
-										pepol,          // paired-end policy
-										multiseedMms,   // # mms allowed in a seed
-										seedlens[mate], // length of a seed
-										interval[mate], // interval between seeds
-										minsc[mate],    // min score for anchor
-										minsc[mate^1],  // min score for opp.
-										nceil[mate],    // N ceil for anchor
-										nceil[mate^1],  // N ceil for opp.
-										nofw[mate],     // don't align forward read
-										norc[mate],     // don't align revcomp read
-										maxhalf,        // max width on one DP side
-										doUngapped,     // do ungapped alignment
-										mxIter[mate],   // max extend loop iters
-										mxUg[mate],     // max # ungapped extends
-										mxDp[mate],     // max # DPs
-										streak[mate],   // stop after streak of this many end-to-end fails
-										streak[mate],   // stop after streak of this many ungap fails
-										streak[mate],   // stop after streak of this many dp fails
-										mtStreak[mate], // max mate fails per seed range
-										doExtend,       // extend seed hits
-										enable8,        // use 8-bit SSE where possible
-										cminlen,        // checkpoint if read is longer
-										cpow2,          // checkpointer interval, log2
-										doTri,          // triangular mini-fills?
-										tighten,        // -M score tightening mode
-										ca,             // seed alignment cache
-										rnd,            // pseudo-random source
-										prm,            // per-read metrics
-										&msinkwrap,     // for organizing hits
-										true,           // seek mate immediately
-										true,           // report hits once found
-										gReportDiscordant,// look for discordant alns?
-										gReportMixed,   // look for unpaired alns?
-										exhaustive[mate]);
-									// Might be done, but just with this mate
-								} else 
-#endif
                                                                 {
 									// Unpaired dynamic programming driver
 									ret = sd.extendSeeds(

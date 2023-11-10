@@ -30,7 +30,7 @@ HEADERS := $(wildcard *.h)
 BOWTIE_MM := 1
 BOWTIE_SHARED_MEM :=
 
-CXXFLAGS += -std=c++11 --coverage
+CXXFLAGS += -std=c++11
 
 NGS_VER ?= 2.10.2
 VDB_VER ?= 2.10.2
