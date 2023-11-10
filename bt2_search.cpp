@@ -2054,10 +2054,10 @@ static void multiseedSearchWorker() {
 					assert(!ca.aligning());
 					bool paired = !ps->read_b().empty();
 					const size_t rdlen1 = ps->read_a().length();
-					const size_t rdlen2 = paired ? ps->read_b().length() : 0;
+					const size_t rdlen2 = 0;
 					msinkwrap.nextRead(
 						&ps->read_a(),
-						paired ? &ps->read_b() : NULL,
+						NULL,
 						rdid,
 						sc.qualitiesMatter());
 					assert(msinkwrap.inited());
@@ -2068,15 +2068,10 @@ static void multiseedSearchWorker() {
 					minsc[0] = minsc[1] = std::numeric_limits<TAlScore>::max();
 					{
 						minsc[0] = scoreMin.f<TAlScore>(rdlens[0]);
-						if(paired) minsc[1] = scoreMin.f<TAlScore>(rdlens[1]);
 						{
 							if(minsc[0] > 0) {
 								if(!gQuiet) printEEScoreMsg(*ps, paired, true);
 								minsc[0] = 0;
-							}
-							if(paired && minsc[1] > 0) {
-								if(!gQuiet) printEEScoreMsg(*ps, paired, false);
-								minsc[1] = 0;
 							}
 						}
 					}
@@ -2084,7 +2079,7 @@ static void multiseedSearchWorker() {
 					size_t readns[2] = {0, 0};
 					sc.nFilterPair(
 						&ps->read_a().patFw,
-						paired ? &ps->read_b().patFw : NULL,
+						NULL,
 						readns[0],
 						readns[1],
 						nfilt[0],
@@ -2098,17 +2093,9 @@ static void multiseedSearchWorker() {
 						if(!gQuiet) printMmsSkipMsg(*ps, paired, true, multiseedMms);
 						lenfilt[0] = false;
 					}
-					if((rdlens[1] <= (size_t)multiseedMms || rdlens[1] < 2) && paired) {
-						if(!gQuiet) printMmsSkipMsg(*ps, paired, false, multiseedMms);
-						lenfilt[1] = false;
-					}
 					if(rdlens[0] < 2) {
 						if(!gQuiet) printLenSkipMsg(*ps, paired, true);
 						lenfilt[0] = false;
-					}
-					if(rdlens[1] < 2 && paired) {
-						if(!gQuiet) printLenSkipMsg(*ps, paired, false);
-						lenfilt[1] = false;
 					}
 					qcfilt[0] = qcfilt[1] = true;
 					if(qcFilter) {
@@ -2127,10 +2114,10 @@ static void multiseedSearchWorker() {
 					// Calcualte nofw / no rc
 					bool nofw[2] = { false, false };
 					bool norc[2] = { false, false };
-					nofw[0] = paired ? (gMate1fw ? gNofw : gNorc) : gNofw;
-					norc[0] = paired ? (gMate1fw ? gNorc : gNofw) : gNorc;
-					nofw[1] = paired ? (gMate2fw ? gNofw : gNorc) : gNofw;
-					norc[1] = paired ? (gMate2fw ? gNorc : gNofw) : gNorc;
+					nofw[0] = gNofw;
+					norc[0] = gNorc;
+					nofw[1] = gNofw;
+					norc[1] = gNorc;
 					// Calculate nceil
 					int nceil[2] = { 0, 0 };
 					nceil[0] = nCeil.f<int>((double)rdlens[0]);
@@ -2239,7 +2226,7 @@ static void multiseedSearchWorker() {
 								continue;
 							}
 							assert(filt[mate]);
-							assert(matei == 0 || paired);
+							//assert(matei == 0 || paired);
 							assert(!msinkwrap.maxed());
 							assert(msinkwrap.repOk());
 							int ret = 0;
@@ -2658,7 +2645,7 @@ static void multiseedSearchWorker() {
 						}
 					}
 					size_t totnucs = 0;
-					for(size_t mate = 0; mate < (paired ? 2:1); mate++) {
+					for(size_t mate = 0; mate < 1; mate++) {
 						if(filt[mate]) {
 							size_t len = rdlens[mate];
 							if(!nofw[mate] && !norc[mate]) {
