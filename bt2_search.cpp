@@ -2037,6 +2037,7 @@ static void multiseedSearchWorker() {
 			  }
 			}
 
+			const size_t mate = 0;
 			PatternSourcePerThread* const ps = g_psrah.get()->ptr();
 			TReadId rdid = ps->read_a().rdid;
 
@@ -2128,7 +2129,6 @@ static void multiseedSearchWorker() {
 					// Calculate interval length for both mates
 					int interval[2] = { 0, 0 };
                                         {
-                                                const size_t mate = 0;
 						interval[mate] = msIval.f<int>((double)rdlens[mate]);
 						if(filt[0] && filt[1]) {
 							// Boost interval length by 20% for paired-end reads
@@ -2149,12 +2149,12 @@ static void multiseedSearchWorker() {
 						mxUg[0]     = mxUg[1]     = std::numeric_limits<size_t>::max();
 						mxIter[0]   = mxIter[1]   = std::numeric_limits<size_t>::max();
 					} else if(khits > 1) {
-						for(size_t mate = 0; mate < 2; mate++) {
-							streak[mate]   += (khits-1) * maxStreakIncr;
-							mtStreak[mate] += (khits-1) * maxStreakIncr;
-							mxDp[mate]     += (khits-1) * maxItersIncr;
-							mxUg[mate]     += (khits-1) * maxItersIncr;
-							mxIter[mate]   += (khits-1) * maxItersIncr;
+						for(size_t matei = 0; matei < 2; matei++) {
+							streak[matei]   += (khits-1) * maxStreakIncr;
+							mtStreak[matei] += (khits-1) * maxStreakIncr;
+							mxDp[matei]     += (khits-1) * maxItersIncr;
+							mxUg[matei]     += (khits-1) * maxItersIncr;
+							mxIter[matei]   += (khits-1) * maxItersIncr;
 						}
 					}
 					if(filt[0] && filt[1]) {
@@ -2174,7 +2174,7 @@ static void multiseedSearchWorker() {
 					assert_gt(nrounds[0], 0);
 					// Increment counters according to what got filtered
                                         {
-                                                const size_t mate = 0;
+                                                //const size_t mate = 0;
 						if(filt[mate]) {
 							shs[mate].clear();
 							shs[mate].nextRead(mate == 0 ? ps->read_a() : ps->read_b());
@@ -2191,7 +2191,7 @@ static void multiseedSearchWorker() {
                                                 {
                                                         //const size_t matei = 0;
 							//size_t mate = matemap[matei];
-                                                        const size_t mate = 0;
+                                                        //const size_t mate = 0;
 							if(!filt[mate] || done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
 								// nothing to do
 							} else {
@@ -2210,7 +2210,7 @@ static void multiseedSearchWorker() {
 						}
 						for(size_t matei = 0; matei < 1; matei++) {
 							//size_t mate = matemap[matei];
-                                                        const size_t mate = matei;
+                                                        //const size_t mate = matei;
 							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
 								shs[mate].clearExactE2eHits();
 								continue;
@@ -2303,7 +2303,7 @@ static void multiseedSearchWorker() {
 					{
                                                 //const size_t matei = 0;
 						//size_t mate = matemap[matei];
-                                                const size_t mate = 0;
+                                                // const size_t mate = 0;
 						if(!filt[mate] || done[mate] || nelt[mate] > eePeEeltLimit) {
 								// Done with this mate
 								shs[mate].clear1mmE2eHits();
@@ -2333,9 +2333,9 @@ static void multiseedSearchWorker() {
 								nelt[mate] = shs[mate].num1mmE2eHits();
 							}
 						}
-						for(size_t matei = 0; matei < 2; matei++) {
+						for(size_t matei = 0; matei < 1; matei++) {
 							// size_t mate = matemap[matei];
-							const size_t mate = matei;
+							// const size_t mate = matei;
 							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
 								continue;
 							}
@@ -2436,7 +2436,7 @@ static void multiseedSearchWorker() {
 						for(size_t matei = 0; matei < 1; matei++) { // keep the for, due to logic using continue and break
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
-                                                	const size_t mate = 0;
+                                                	//const size_t mate = 0;
 							if(done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
 								// Done with this mate
 								done[mate] = true;
@@ -2513,7 +2513,8 @@ static void multiseedSearchWorker() {
 						}
 						// shs contain what we need to know to update our seed
 						// summaries for this seeding
-						for(size_t mate = 0; mate < 2; mate++) {
+						for(size_t matei = 0; matei < 1; matei++) {
+							// size_t mate = matei
 							if(!shs[mate].empty()) {
 								nUniqueSeeds += shs[mate].numUniqueSeeds();
 								nUniqueSeedsMS[mate * 2 + 0] += shs[mate].numUniqueSeedsStrand(true);
@@ -2535,7 +2536,7 @@ static void multiseedSearchWorker() {
 						{
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
-                                                	const size_t mate = 0;
+                                                	// const size_t mate = 0;
 							if(done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
 								// Done with this mate
 								done[mate] = true;
@@ -2610,12 +2611,13 @@ static void multiseedSearchWorker() {
 									throw 1;
 								}
 							}
-						} // for(size_t matei = 0; matei < 2; matei++)
+						} // for(size_t matei = 0; matei < 1; matei++)
 
 						// We don't necessarily have to continue investigating both
 						// mates.  We continue on a mate only if its average
 						// interval length is high (> 1000)
-						for(size_t mate = 0; mate < 2; mate++) {
+						for(size_t matei = 0; matei < 1; matei++) {
+							// size_t mate = matei
 							if(!done[mate] && shs[mate].averageHitsPerSeed() < seedBoostThresh) {
 								done[mate] = true;
 							}
@@ -2642,7 +2644,8 @@ static void multiseedSearchWorker() {
 						}
 					}
 					size_t totnucs = 0;
-					for(size_t mate = 0; mate < 1; mate++) {
+					for(size_t matei = 0; matei < 1; matei++) {
+						//size_t mate = matei
 						if(filt[mate]) {
 							size_t len = rdlens[mate];
 							if(!nofw[mate] && !norc[mate]) {
