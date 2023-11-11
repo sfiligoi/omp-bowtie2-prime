@@ -2078,9 +2078,11 @@ static void multiseedSearchWorker() {
 					// N filter; does the read have too many Ns?
 					size_t readns[2] = {0, 0};
 					nfilt[0] = sc.nFilter(ps->read_a().patFw, readns[0]);
+					nfilt[1] = false;
 					// Score filter; does the read enough character to rise above
 					// the score threshold?
 					scfilt[0] = sc.scoreFilter(minsc[0], rdlens[0]);
+					scfilt[1] = false;
 					lenfilt[0] = lenfilt[1] = true;
 					if(rdlens[0] <= (size_t)multiseedMms || rdlens[0] < 2) {
 						if(!gQuiet) printMmsSkipMsg(*ps, paired, true, multiseedMms);
