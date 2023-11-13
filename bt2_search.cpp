@@ -2022,6 +2022,10 @@ static void multiseedSearchWorker() {
 		// Keep track of whether mates 1/2 were filtered out by upstream qc
 		bool qcfilt[2]  = { true, true };
 
+		// read object
+		Read* rds[2] = { NULL, NULL };
+
+
 		int mergei = 0;
 		int mergeival = 16;
                 std::unique_ptr<PatternSourceReadAhead> g_psrah(new PatternSourceReadAhead(readahead_factory));
@@ -2040,7 +2044,9 @@ static void multiseedSearchWorker() {
 			bool paired = false;
 			const size_t mate = 0;
 			PatternSourcePerThread* const ps = g_psrah.get()->ptr();
-			TReadId rdid = ps->read_a().rdid;
+
+			rds[mate] = &ps->read_a();	
+			TReadId rdid = rds[mate]->rdid;
 
 				// Align this read/pair
 				//
@@ -2054,10 +2060,10 @@ static void multiseedSearchWorker() {
 
 					ca.nextRead(); // clear the cache
 					assert(!ca.aligning());
-					const size_t rdlen1 = ps->read_a().length();
+					const size_t rdlen1 = rds[mate]->length();
 					const size_t rdlen2 = 0;
 					msinkwrap.nextRead(
-						&ps->read_a(),
+						rds[mate],
 						NULL,
 						rdid,
 						sc.qualitiesMatter());
@@ -2078,7 +2084,7 @@ static void multiseedSearchWorker() {
 					minsc[1] = std::numeric_limits<TAlScore>::max();
 					// N filter; does the read have too many Ns?
 					size_t readns[2] = {0, 0};
-					nfilt[0] = sc.nFilter(ps->read_a().patFw, readns[0]);
+					nfilt[0] = sc.nFilter(rds[mate]->patFw, readns[0]);
 					nfilt[1] = false;
 					// Score filter; does the read enough character to rise above
 					// the score threshold?
@@ -2095,11 +2101,10 @@ static void multiseedSearchWorker() {
 					}
 					qcfilt[0] = qcfilt[1] = true;
 					if(qcFilter) {
-						qcfilt[0] = (ps->read_a().filter != '0');
+						qcfilt[0] = (rds[mate]->filter != '0');
 					}
 					filt[0] = (nfilt[0] && scfilt[0] && lenfilt[0] && qcfilt[0]);
 					prm.nFilt += (filt[0] ? 0 : 1) + (filt[1] ? 0 : 1);
-					Read* rds[2] = { &ps->read_a(), NULL };
 					// For each mate...
 					assert(msinkwrap.empty());
 					sd.nextRead(paired, rdrows[0], rdrows[1]); // SwDriver
@@ -2118,7 +2123,7 @@ static void multiseedSearchWorker() {
 					nceil[0] = min(nceil[0], (int)rdlens[0]);
 					exhaustive[0] = exhaustive[1] = false;
 					// size_t matemap[2] = { 0, 1 };
-					rnd.init(ps->read_a().seed);
+					rnd.init(rds[mate]->seed);
 
 					// Calculate interval length for both mates
 					int interval[2] = { 0, 0 };
@@ -2167,7 +2172,7 @@ static void multiseedSearchWorker() {
                                                 //const size_t mate = 0;
 						if(filt[mate]) {
 							shs[mate].clear();
-							shs[mate].nextRead(ps->read_a());
+							shs[mate].nextRead(*rds[mate]);
 							assert(shs[mate].empty());
 						}
 					}
