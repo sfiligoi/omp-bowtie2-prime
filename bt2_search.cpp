@@ -2010,7 +2010,7 @@ static void multiseedSearchWorker() {
 		// Keep track of whether last search was exhaustive for mates 1 and 2
 		bool exhaustive[2] = { false, false };
 		// Keep track of whether mates 1/2 were filtered out last time through
-		bool filt[2]    = { true, true };
+		bool filt[2]    = { false, false };
 		// Keep track of whether mates 1/2 were filtered out due Ns last time
 		bool nfilt[2]   = { true, true };
 		// Keep track of whether mates 1/2 were filtered out due to not having
@@ -2037,6 +2037,7 @@ static void multiseedSearchWorker() {
 			  }
 			}
 
+			bool paired = false;
 			const size_t mate = 0;
 			PatternSourcePerThread* const ps = g_psrah.get()->ptr();
 			TReadId rdid = ps->read_a().rdid;
@@ -2053,7 +2054,6 @@ static void multiseedSearchWorker() {
 
 					ca.nextRead(); // clear the cache
 					assert(!ca.aligning());
-					bool paired = !ps->read_b().empty();
 					const size_t rdlen1 = ps->read_a().length();
 					const size_t rdlen2 = 0;
 					msinkwrap.nextRead(
@@ -2096,12 +2096,10 @@ static void multiseedSearchWorker() {
 					qcfilt[0] = qcfilt[1] = true;
 					if(qcFilter) {
 						qcfilt[0] = (ps->read_a().filter != '0');
-						qcfilt[1] = (ps->read_b().filter != '0');
 					}
 					filt[0] = (nfilt[0] && scfilt[0] && lenfilt[0] && qcfilt[0]);
-					filt[1] = (nfilt[1] && scfilt[1] && lenfilt[1] && qcfilt[1]);
 					prm.nFilt += (filt[0] ? 0 : 1) + (filt[1] ? 0 : 1);
-					Read* rds[2] = { &ps->read_a(), &ps->read_b() };
+					Read* rds[2] = { &ps->read_a(), NULL };
 					// For each mate...
 					assert(msinkwrap.empty());
 					sd.nextRead(paired, rdrows[0], rdrows[1]); // SwDriver
@@ -2120,20 +2118,12 @@ static void multiseedSearchWorker() {
 					nceil[0] = min(nceil[0], (int)rdlens[0]);
 					exhaustive[0] = exhaustive[1] = false;
 					// size_t matemap[2] = { 0, 1 };
-					bool pairPostFilt = filt[0] && filt[1];
-					if(pairPostFilt) {
-						rnd.init(ps->read_a().seed ^ ps->read_b().seed);
-					} else {
-						rnd.init(ps->read_a().seed);
-					}
+					rnd.init(ps->read_a().seed);
+
 					// Calculate interval length for both mates
 					int interval[2] = { 0, 0 };
                                         {
 						interval[mate] = msIval.f<int>((double)rdlens[mate]);
-						if(filt[0] && filt[1]) {
-							// Boost interval length by 20% for paired-end reads
-							interval[mate] = (int)(interval[mate] * 1.2 + 0.5);
-						}
 						interval[mate] = max(interval[mate], 1);
 					}
 					// Calculate streak length
@@ -2177,7 +2167,7 @@ static void multiseedSearchWorker() {
                                                 //const size_t mate = 0;
 						if(filt[mate]) {
 							shs[mate].clear();
-							shs[mate].nextRead(mate == 0 ? ps->read_a() : ps->read_b());
+							shs[mate].nextRead(ps->read_a());
 							assert(shs[mate].empty());
 						}
 					}
@@ -2192,7 +2182,7 @@ static void multiseedSearchWorker() {
                                                         //const size_t matei = 0;
 							//size_t mate = matemap[matei];
                                                         //const size_t mate = 0;
-							if(!filt[mate] || done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
+							if(!filt[mate] || done[mate] || msinkwrap.state().doneWithMate(true)) {
 								// nothing to do
 							} else {
 							  nelt[mate] = al.exactSweep(
@@ -2215,7 +2205,7 @@ static void multiseedSearchWorker() {
 								shs[mate].clearExactE2eHits();
 								continue;
 							}
-							if(msinkwrap.state().doneWithMate(mate == 0)) {
+							if(msinkwrap.state().doneWithMate(true)) {
 								shs[mate].clearExactE2eHits();
 								done[mate] = true;
 								continue;
@@ -2229,7 +2219,7 @@ static void multiseedSearchWorker() {
 								// Unpaired dynamic programming driver
 								ret = sd.extendSeeds(
 									*rds[mate],     // read
-									mate == 0,      // mate #1?
+									true,           // mate #1?
 									shs[mate],      // seed hits
 									ebwtFw,         // bowtie index
 									ebwtBw,         // rev bowtie index
@@ -2269,11 +2259,8 @@ static void multiseedSearchWorker() {
 								// Not done yet
 							} else if(ret == EXTEND_POLICY_FULFILLED) {
 								// Policy is satisfied for this mate at least
-								if(msinkwrap.state().doneWithMate(mate == 0)) {
+								if(msinkwrap.state().doneWithMate(true)) {
 									done[mate] = true;
-								}
-								if(msinkwrap.state().doneWithMate(mate == 1)) {
-									done[mate^1] = true;
 								}
 							} else if(ret == EXTEND_PERFECT_SCORE) {
 								// We exhausted this mode at least
@@ -2339,7 +2326,7 @@ static void multiseedSearchWorker() {
 							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
 								continue;
 							}
-							if(msinkwrap.state().doneWithMate(mate == 0)) {
+							if(msinkwrap.state().doneWithMate(true)) {
 								done[mate] = true;
 								continue;
 							}
@@ -2348,7 +2335,7 @@ static void multiseedSearchWorker() {
 								// Unpaired dynamic programming driver
 								ret = sd.extendSeeds(
 									*rds[mate],     // read
-									mate == 0,      // mate #1?
+									true,           // mate #1?
 									shs[mate],      // seed hits
 									ebwtFw,         // bowtie index
 									ebwtBw,         // rev bowtie index
@@ -2388,11 +2375,8 @@ static void multiseedSearchWorker() {
 								// Not done yet
 							} else if(ret == EXTEND_POLICY_FULFILLED) {
 								// Policy is satisfied for this mate at least
-								if(msinkwrap.state().doneWithMate(mate == 0)) {
+								if(msinkwrap.state().doneWithMate(true)) {
 									done[mate] = true;
-								}
-								if(msinkwrap.state().doneWithMate(mate == 1)) {
-									done[mate^1] = true;
 								}
 							} else if(ret == EXTEND_PERFECT_SCORE) {
 								// We exhausted this mode at least
@@ -2437,7 +2421,7 @@ static void multiseedSearchWorker() {
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
                                                 	//const size_t mate = 0;
-							if(done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
+							if(done[mate] || msinkwrap.state().doneWithMate(true)) {
 								// Done with this mate
 								done[mate] = true;
 								continue;
@@ -2537,7 +2521,7 @@ static void multiseedSearchWorker() {
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
                                                 	// const size_t mate = 0;
-							if(done[mate] || msinkwrap.state().doneWithMate(mate == 0)) {
+							if(done[mate] || msinkwrap.state().doneWithMate(true)) {
 								// Done with this mate
 								done[mate] = true;
 							} else if(shs[mate].empty()) {
@@ -2554,7 +2538,7 @@ static void multiseedSearchWorker() {
 									// Unpaired dynamic programming driver
 									ret = sd.extendSeeds(
 										*rds[mate],     // read
-										mate == 0,      // mate #1?
+										true,           // mate #1?
 										shs[mate],      // seed hits
 										ebwtFw,         // bowtie index
 										ebwtBw,         // rev bowtie index
@@ -2591,11 +2575,8 @@ static void multiseedSearchWorker() {
 									// Not done yet
 								} else if(ret == EXTEND_POLICY_FULFILLED) {
 									// Policy is satisfied for this mate at least
-									if(msinkwrap.state().doneWithMate(mate == 0)) {
+									if(msinkwrap.state().doneWithMate(true)) {
 										done[mate] = true;
-									}
-									if(msinkwrap.state().doneWithMate(mate == 1)) {
-										done[mate^1] = true;
 									}
 								} else if(ret == EXTEND_PERFECT_SCORE) {
 									// We exhausted this made at least
