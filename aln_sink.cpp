@@ -801,7 +801,7 @@ void AlnSinkWrap::finishRead(
 			// instance, whether the a given mate aligns to the forward strand.
 			SeedAlSumm ssm1, ssm2;
 			sr1->toSeedAlSumm(ssm1);
-			sr2->toSeedAlSumm(ssm2);
+			if(sr2 != NULL) sr2->toSeedAlSumm(ssm2);
 			for(size_t i = 0; i < rs1_.size(); i++) {
 				rs1_[i].setMateParams(ALN_RES_TYPE_MATE1, &rs2_[i], flags1);
 				rs2_[i].setMateParams(ALN_RES_TYPE_MATE2, &rs1_[i], flags2);
@@ -889,7 +889,7 @@ void AlnSinkWrap::finishRead(
 				xeq);
 			SeedAlSumm ssm1, ssm2;
 			sr1->toSeedAlSumm(ssm1);
-			sr2->toSeedAlSumm(ssm2);
+			if(sr2 != NULL) sr2->toSeedAlSumm(ssm2);
 			for(size_t i = 0; i < rs1_.size(); i++) {
 				rs1_[i].setMateParams(ALN_RES_TYPE_MATE1, &rs2_[i], flags1);
 				rs2_[i].setMateParams(ALN_RES_TYPE_MATE2, &rs1_[i], flags2);

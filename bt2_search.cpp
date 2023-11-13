@@ -2674,17 +2674,17 @@ static void multiseedSearchWorker() {
 				//rnd.init(ROTL(sd, 20));
 				msinkwrap.finishRead(
 					&shs[0],              // seed results for mate 1
-					&shs[1],              // seed results for mate 2
+					NULL,                 // seed results for mate 2 (NULL, since unpired)
 					exhaustive[0],        // exhausted seed hits for mate 1?
-					exhaustive[1],        // exhausted seed hits for mate 2?
+					false,                // exhausted seed hits for mate 2? (false, since upaired)
 					nfilt[0],
-					nfilt[1],
+					false,
 					scfilt[0],
-					scfilt[1],
+					false,
 					lenfilt[0],
-					lenfilt[1],
+					true,
 					qcfilt[0],
-					qcfilt[1],
+					true,
 					rnd,                  // pseudo-random generator
 					rpm,                  // reporting metrics
 					prm,                  // per-read metrics
