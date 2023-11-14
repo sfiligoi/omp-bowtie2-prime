@@ -2084,8 +2084,10 @@ static void multiseedSearchWorker() {
 						minsc[mate] = 0;
 					}
 					// N filter; does the read have too many Ns?
-					size_t readns[2] = {0, 0};
-					nfilt[mate] = sc.nFilter(rds[mate]->patFw, readns[0]);
+					{
+					  size_t readns = 0;
+					  nfilt[mate] = sc.nFilter(rds[mate]->patFw, readns);
+					}
 					// Score filter; does the read enough character to rise above
 					// the score threshold?
 					scfilt[mate] = sc.scoreFilter(minsc[mate], rdlen);
