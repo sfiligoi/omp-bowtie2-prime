@@ -2027,6 +2027,8 @@ static void multiseedSearchWorker() {
 		// Calculate the minimum valid score threshold for the read
 		TAlScore minsc[2];
 
+		size_t minedfw[2] = { 0, 0 };
+		size_t minedrc[2] = { 0, 0 };
 
 		int mergei = 0;
 		int mergeival = 16;
@@ -2098,27 +2100,14 @@ static void multiseedSearchWorker() {
 					// For each mate...
 					assert(msinkwrap.empty());
 					sd.nextRead(false, rdlen, 0); // SwDriver
-					size_t minedfw[2] = { 0, 0 };
-					size_t minedrc[2] = { 0, 0 };
-					// Calcualte nofw / no rc
-					bool nofw[2] = { false, false };
-					bool norc[2] = { false, false };
-					nofw[0] = gNofw;
-					norc[0] = gNorc;
-					nofw[1] = gNofw;
-					norc[1] = gNorc;
+					minedfw[mate] = 0;
+					minedrc[mate] = 0;
 					// Calculate nceil
 					const int nceil = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
 					exhaustive[mate] = false;
 					// size_t matemap[2] = { 0, 1 };
 					rnd.init(rds[mate]->seed);
 
-					// Calculate interval length for both mates
-					int interval[2] = { 0, 0 };
-                                        {
-						interval[mate] = msIval.f<int>((double)rdlen);
-						interval[mate] = max(interval[mate], 1);
-					}
 					// Calculate streak length
 					size_t streak[2]    = { maxDpStreak,   maxDpStreak };
 					size_t mtStreak[2]  = { maxMateStreak, maxMateStreak };
@@ -2140,21 +2129,8 @@ static void multiseedSearchWorker() {
 							mxIter[matei]   += (khits-1) * maxItersIncr;
 						}
 					}
-					if(filt[0] && filt[1]) {
-						streak[0] = (size_t)ceil((double)streak[0] / 2.0);
-						streak[1] = (size_t)ceil((double)streak[1] / 2.0);
-						assert_gt(streak[1], 0);
-					}
 					prm.maxDPFails = streak[0];
 					assert_gt(streak[0], 0);
-					// Calculate # seed rounds for each mate
-					size_t nrounds[2] = { nSeedRounds, nSeedRounds };
-					if(filt[0] && filt[1]) {
-						nrounds[0] = (size_t)ceil((double)nrounds[0] / 2.0);
-						nrounds[1] = (size_t)ceil((double)nrounds[1] / 2.0);
-						assert_gt(nrounds[1], 0);
-					}
-					assert_gt(nrounds[0], 0);
 					// Increment counters according to what got filtered
                                         {
                                                 //const size_t mate = 0;
@@ -2182,8 +2158,8 @@ static void multiseedSearchWorker() {
 								ebwtFw,        // index
 								*rds[mate],    // read
 								sc,            // scoring scheme
-								nofw[mate],    // nofw?
-								norc[mate],    // norc?
+								gNofw,         // nofw?
+								gNorc,         // norc?
 								2,             // max # edits we care about
 								minedfw[mate], // minimum # edits for fw mate
 								minedrc[mate], // minimum # edits for rc mate
@@ -2293,8 +2269,8 @@ static void multiseedSearchWorker() {
 							//rnd.init(ROTL(rds[mate]->seed, 10));
 							assert(shs[mate].empty());
 							assert(shs[mate].repOk(&ca.current()));
-							bool yfw = minedfw[mate] <= 1 && !nofw[mate];
-							bool yrc = minedrc[mate] <= 1 && !norc[mate];
+							bool yfw = minedfw[mate] <= 1 && !gNofw;
+							bool yrc = minedrc[mate] <= 1 && !gNorc;
 							if(yfw || yrc) {
 								// Clear out the exact hits
 								al.oneMmSearch(
@@ -2390,9 +2366,11 @@ static void multiseedSearchWorker() {
 							}
 						}
 					}
+					// Calculate interval length for both mates
+					const int interval = max((int)msIval.f<int>((double)rdlen), 1);
+					// Calculate # seed rounds for each mate
+					const size_t nrounds = min<size_t>(nSeedRounds, interval);
 					int seedlens[2] = { multiseedLen, multiseedLen };
-					nrounds[0] = min<size_t>(nrounds[0], interval[0]);
-					nrounds[1] = min<size_t>(nrounds[1], interval[1]);
 					Constraint gc = Constraint::penaltyFuncBased(scoreMin);
 					size_t seedsTried = 0;
 					size_t seedsTriedMS[] = {0, 0, 0, 0};
@@ -2402,12 +2380,9 @@ static void multiseedSearchWorker() {
 					size_t seedHitTotMS[] = {0, 0, 0, 0};
 					for(size_t roundi = 0; roundi < nSeedRounds; roundi++) {
 						ca.nextRead(); // Clear cache in preparation for new search
-						shs[0].clearSeeds();
-						shs[1].clearSeeds();
-						assert(shs[0].empty());
-						assert(shs[1].empty());
-						assert(shs[0].repOk(&ca.current()));
-						assert(shs[1].repOk(&ca.current()));
+						shs[mate].clearSeeds();
+						assert(shs[mate].empty());
+						assert(shs[mate].repOk(&ca.current()));
 						for(size_t matei = 0; matei < 1; matei++) { // keep the for, due to logic using continue and break
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
@@ -2417,17 +2392,17 @@ static void multiseedSearchWorker() {
 								done[mate] = true;
 								continue;
 							}
-							if(roundi >= nrounds[mate]) {
+							if(roundi >= nrounds) {
 								// Not doing this round for this mate
 								continue;
 							}
 							// Figure out the seed offset
-							if(interval[mate] <= (int)roundi) {
+							if(interval <= (int)roundi) {
 								// Can't do this round, seeds already packed as
 								// tight as possible
 								continue;
 							}
-							size_t offset = (interval[mate] * roundi) / nrounds[mate];
+							size_t offset = (interval * roundi) / nrounds;
 							assert(roundi == 0 || offset > 0);
 							assert(!msinkwrap.maxed());
 							assert(msinkwrap.repOk());
@@ -2450,11 +2425,11 @@ static void multiseedSearchWorker() {
 							std::pair<int, int> inst = al.instantiateSeeds(
 								*seeds[mate],   // search seeds
 								offset,         // offset to begin extracting
-								interval[mate], // interval between seeds
+								interval,       // interval between seeds
 								*rds[mate],     // read to align
 								sc,             // scoring scheme
-								nofw[mate],     // don't align forward read
-								norc[mate],     // don't align revcomp read
+								gNofw,          // don't align forward read
+								gNorc,          // don't align revcomp read
 								ca,             // holds some seed hits from previous reads
 								shs[mate],      // holds all the seed hits
 								instFw,
@@ -2502,12 +2477,6 @@ static void multiseedSearchWorker() {
 								seedHitTotMS[mate * 2 + 1] += shs[mate].numEltsRc();
 							}
 						}
-						double uniqFactor[2] = { 0.0f, 0.0f };
-						for(size_t i = 0; i < 2; i++) {
-							if(!shs[i].empty()) {
-								uniqFactor[i] = shs[i].uniquenessFactor();
-							}
-						}
 						{
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
@@ -2538,7 +2507,7 @@ static void multiseedSearchWorker() {
 										sc,             // scoring scheme
 										multiseedMms,   // # mms allowed in a seed
 										seedlens[mate], // length of a seed
-										interval[mate], // interval between seeds
+										interval,       // interval between seeds
 										minsc[mate],    // minimum score for valid
 										nceil,          // N ceil for anchor
 										maxhalf,        // max width on one DP side
@@ -2618,7 +2587,7 @@ static void multiseedSearchWorker() {
 					size_t totnucs = 0;
 					if(filt[mate]) {
 						size_t len = rdlen;
-						if(!nofw[mate] && !norc[mate]) {
+						if(!gNofw && !gNorc) {
 							len *= 2;
 						}
 						totnucs += len;
