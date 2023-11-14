@@ -1221,14 +1221,15 @@ static void parseOption(int next_option, const char *arg) {
 		break;
 	}
 	case 'a': {
-		msample = false;
-		allHits = true;
-		mhits = 0; // disable -M
-		if(saw_M || saw_k) {
-			cerr << "Warning: -M, -k and -a are mutually exclusive. "
-			     << "-a will override" << endl;
-		}
-		saw_a = true;
+		cerr << "WARNING: allHits not supported" << endl;
+		//msample = false;
+		//allHits = true;
+		//mhits = 0; // disable -M
+		//if(saw_M || saw_k) {
+		//	cerr << "Warning: -M, -k and -a are mutually exclusive. "
+		//	     << "-a will override" << endl;
+		//}
+		//saw_a = true;
 		break;
 	}
 	case 'k': {
@@ -1972,7 +1973,7 @@ static void multiseedSearchWorker() {
 
 		// Instantiate an object for holding reporting-related parameters.
 		ReportingParams rp(
-			(allHits ? std::numeric_limits<THitInt>::max() : khits), // -k
+			khits,             // -k
 			mhits,             // -m/-M
 			0,                 // penalty gap (not used now)
 			msample,           // true -> -M was specified, otherwise assume -m
@@ -2003,6 +2004,12 @@ static void multiseedSearchWorker() {
 		EList<Seed> *seeds[2] = { &seeds1, &seeds2 };
 
 		PerReadMetrics prm;
+
+		// Calculate streak length
+		const size_t streak    = (khits > 1) ? ((khits-1) * maxStreakIncr) : maxDpStreak;
+		const size_t mxDp      = (khits > 1) ? ((khits-1) * maxItersIncr) : maxDp;
+		const size_t mxUg      = (khits > 1) ? ((khits-1) * maxItersIncr) : maxUg;
+		const size_t mxIter    = (khits > 1) ? ((khits-1) * maxItersIncr) : maxIters;
 
 		// Used by thread with threadid == 1 to measure time elapsed
 		time_t iTime = time(0);
@@ -2108,29 +2115,8 @@ static void multiseedSearchWorker() {
 					// size_t matemap[2] = { 0, 1 };
 					rnd.init(rds[mate]->seed);
 
-					// Calculate streak length
-					size_t streak[2]    = { maxDpStreak,   maxDpStreak };
-					size_t mtStreak[2]  = { maxMateStreak, maxMateStreak };
-					size_t mxDp[2]      = { maxDp,         maxDp       };
-					size_t mxUg[2]      = { maxUg,         maxUg       };
-					size_t mxIter[2]    = { maxIters,      maxIters    };
-					if(allHits) {
-						streak[0]   = streak[1]   = std::numeric_limits<size_t>::max();
-						mtStreak[0] = mtStreak[1] = std::numeric_limits<size_t>::max();
-						mxDp[0]     = mxDp[1]     = std::numeric_limits<size_t>::max();
-						mxUg[0]     = mxUg[1]     = std::numeric_limits<size_t>::max();
-						mxIter[0]   = mxIter[1]   = std::numeric_limits<size_t>::max();
-					} else if(khits > 1) {
-						for(size_t matei = 0; matei < 2; matei++) {
-							streak[matei]   += (khits-1) * maxStreakIncr;
-							mtStreak[matei] += (khits-1) * maxStreakIncr;
-							mxDp[matei]     += (khits-1) * maxItersIncr;
-							mxUg[matei]     += (khits-1) * maxItersIncr;
-							mxIter[matei]   += (khits-1) * maxItersIncr;
-						}
-					}
-					prm.maxDPFails = streak[0];
-					assert_gt(streak[0], 0);
+					prm.maxDPFails = streak;
+					assert_gt(streak, 0);
 					// Increment counters according to what got filtered
                                         {
                                                 //const size_t mate = 0;
@@ -2202,11 +2188,11 @@ static void multiseedSearchWorker() {
 									nceil,          // N ceil for anchor
 									maxhalf,        // max width on one DP side
 									doUngapped,     // do ungapped alignment
-									mxIter[mate],   // max extend loop iters
-									mxUg[mate],     // max # ungapped extends
-									mxDp[mate],     // max # DPs
-									streak[mate],   // stop after streak of this many end-to-end fails
-									streak[mate],   // stop after streak of this many ungap fails
+									mxIter,         // max extend loop iters
+									mxUg,           // max # ungapped extends
+									mxDp,           // max # DPs
+									streak,         // stop after streak of this many end-to-end fails
+									streak,         // stop after streak of this many ungap fails
 									doExtend,       // extend seed hits
 									enable8,        // use 8-bit SSE where possible
 									cminlen,        // checkpoint if read is longer
@@ -2316,11 +2302,11 @@ static void multiseedSearchWorker() {
 									nceil,          // N ceil for anchor
 									maxhalf,        // max width on one DP side
 									doUngapped,     // do ungapped alignment
-									mxIter[mate],   // max extend loop iters
-									mxUg[mate],     // max # ungapped extends
-									mxDp[mate],     // max # DPs
-									streak[mate],   // stop after streak of this many end-to-end fails
-									streak[mate],   // stop after streak of this many ungap fails
+									mxIter,         // max extend loop iters
+									mxUg,           // max # ungapped extends
+									mxDp,           // max # DPs
+									streak,         // stop after streak of this many end-to-end fails
+									streak,         // stop after streak of this many ungap fails
 									doExtend,       // extend seed hits
 									enable8,        // use 8-bit SSE where possible
 									cminlen,        // checkpoint if read is longer
@@ -2512,11 +2498,11 @@ static void multiseedSearchWorker() {
 										nceil,          // N ceil for anchor
 										maxhalf,        // max width on one DP side
 										doUngapped,     // do ungapped alignment
-										mxIter[mate],   // max extend loop iters
-										mxUg[mate],     // max # ungapped extends
-										mxDp[mate],     // max # DPs
-										streak[mate],   // stop after streak of this many end-to-end fails
-										streak[mate],   // stop after streak of this many ungap fails
+										mxIter,         // max extend loop iters
+										mxUg,           // max # ungapped extends
+										mxDp,           // max # DPs
+										streak,         // stop after streak of this many end-to-end fails
+										streak,         // stop after streak of this many ungap fails
 										doExtend,       // extend seed hits
 										enable8,        // use 8-bit SSE where possible
 										cminlen,        // checkpoint if read is longer
@@ -2596,15 +2582,15 @@ static void multiseedSearchWorker() {
 					for(int i = 0; i < 4; i++) {
 						prm.seedsPerNucMS[i] = totnucs > 0 ? ((float)seedsTriedMS[i] / totnucs) : -1;
 					}
-					for(size_t i = 0; i < 2; i++) {
-						assert_leq(prm.nExIters, mxIter[i]);
-						assert_leq(prm.nExDps,   mxDp[i]);
-						assert_leq(prm.nMateDps, mxDp[i]);
-						assert_leq(prm.nExUgs,   mxUg[i]);
-						assert_leq(prm.nMateUgs, mxUg[i]);
-						assert_leq(prm.nDpFail,  streak[i]);
-						assert_leq(prm.nUgFail,  streak[i]);
-						assert_leq(prm.nEeFail,  streak[i]);
+					{
+						assert_leq(prm.nExIters, mxIter);
+						assert_leq(prm.nExDps,   mxDp);
+						assert_leq(prm.nMateDps, mxDp);
+						assert_leq(prm.nExUgs,   mxUg);
+						assert_leq(prm.nMateUgs, mxUg);
+						assert_leq(prm.nDpFail,  streak);
+						assert_leq(prm.nUgFail,  streak);
+						assert_leq(prm.nEeFail,  streak);
 					}
 
 				// Commit and report paired-end/unpaired alignments
