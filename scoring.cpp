@@ -116,6 +116,22 @@ bool Scoring::nFilter(const BTDnaString& rd, size_t& ns) const {
 	return true; // passes
 }
 
+bool Scoring::nFilter(const BTDnaString& rd) const {
+        size_t ns = 0;
+	size_t rdlen = rd.length();
+	size_t maxns = nCeil.f<size_t>((double)rdlen);
+	assert_geq(rd.length(), 0);
+	for(size_t i = 0; i < rdlen; i++) {
+		if(rd[i] == 4) {
+			ns++;
+			if(ns > maxns) {
+				return false; // doesn't pass
+			}
+		}
+	}
+	return true; // passes
+}
+
 /**
  * Given a read sequence, return true iff the read passes the N filter.
  * The N filter rejects reads with more than the number of Ns.

@@ -386,6 +386,7 @@ public:
 	 * taking nCeilConst + nCeilLinear * read length.
 	 */
 	bool nFilter(const BTDnaString& rd, size_t& ns) const;
+	bool nFilter(const BTDnaString& rd) const;
 
 	/**
 	 * Given a read sequence, return true iff the read passes the N filter.
