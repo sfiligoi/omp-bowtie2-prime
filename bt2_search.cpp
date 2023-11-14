@@ -2005,10 +2005,11 @@ static void multiseedSearchWorker() {
 		PerReadMetrics prm;
 
 		// Calculate streak length
-		const size_t streak    = (khits > 1) ? ((khits-1) * maxStreakIncr) : maxDpStreak;
-		const size_t mxDp      = (khits > 1) ? ((khits-1) * maxItersIncr) : maxDp;
-		const size_t mxUg      = (khits > 1) ? ((khits-1) * maxItersIncr) : maxUg;
-		const size_t mxIter    = (khits > 1) ? ((khits-1) * maxItersIncr) : maxIters;
+		const size_t mxKHMul = (khits > 1) ? (khits-1) : 0;
+		const size_t streak    = maxDpStreak + mxKHMul * maxStreakIncr;
+		const size_t mxDp      = maxDp       + mxKHMul * maxItersIncr;
+		const size_t mxUg      = maxUg       + mxKHMul * maxItersIncr;
+		const size_t mxIter    = maxIters    + mxKHMul * maxItersIncr;
 
 		// Used by thread with threadid == 1 to measure time elapsed
 		time_t iTime = time(0);
