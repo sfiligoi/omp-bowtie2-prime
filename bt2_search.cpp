@@ -1999,7 +1999,6 @@ static void multiseedSearchWorker() {
 
 		ASSERT_ONLY(BTDnaString tmp);
 
-		BTString nametmp;
 		EList<Seed> seeds1, seeds2;
 		EList<Seed> *seeds[2] = { &seeds1, &seeds2 };
 
@@ -2038,8 +2037,6 @@ static void multiseedSearchWorker() {
 		size_t minedrc[2] = { 0, 0 };
 		size_t nelt[2] = {0, 0};
 
-		int mergei = 0;
-		int mergeival = 16;
                 std::unique_ptr<PatternSourceReadAhead> g_psrah(new PatternSourceReadAhead(readahead_factory));
                 do { //while have_next_read(g_psrah)
                         pair<bool, bool> ret = g_psrah.get()->nextReadPair();
@@ -2705,7 +2702,6 @@ static void multiseedSearchWorkerPaired() {
 			gOlapMatesOK,
 			gExpandToFrag);
 
-		BTString nametmp;
 		EList<Seed> seeds1, seeds2;
 		EList<Seed> *seeds[2] = { &seeds1, &seeds2 };
 
@@ -2729,8 +2725,6 @@ static void multiseedSearchWorkerPaired() {
 		// Keep track of whether mates 1/2 were filtered out by upstream qc
 		bool qcfilt[2]  = { true, true };
 
-		int mergei = 0;
-		int mergeival = 16;
                 std::unique_ptr<PatternSourceReadAhead> g_psrah(new PatternSourceReadAhead(readahead_factory));
                 do { //while have_next_read(g_psrah)
                         pair<bool, bool> ret = g_psrah.get()->nextReadPair();
@@ -3674,8 +3668,6 @@ static void multiseedSearchWorker_2p5() {
 		descentTotSz,        // limit on total bytes of best-first search data
 		descentTotFmops);    // limit on total number of FM index ops in BFS
 
-	BTString nametmp;
-
 	PerReadMetrics prm;
 
 	// Used by thread with threadid == 1 to measure time elapsed
@@ -3696,8 +3688,6 @@ static void multiseedSearchWorker_2p5() {
 	// Keep track of whether mates 1/2 were filtered out by upstream qc
 	bool qcfilt[2]  = { true, true };
 
-	int mergei = 0;
-	int mergeival = 16;
 	while(true) {
 	   PatternSourceReadAhead psrah(readahead_factory);
 	   PatternSourcePerThread* const ps = psrah.ptr();
