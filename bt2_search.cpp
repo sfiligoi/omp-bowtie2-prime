@@ -1957,6 +1957,8 @@ static void multiseedSearchWorker() {
 	const BitPairReference& ref      = *multiseed_refs;
 	AlnSink&                msink    = *multiseed_msink;
 
+	bool paired = false;
+
 	{
 		// Sinks: these are so that we can print tables encoding counts for
 		// events of interest on a per-read, per-seed, per-join, or per-SW
@@ -2046,9 +2048,15 @@ static void multiseedSearchWorker() {
 		size_t minedrc[2] = { 0, 0 };
 		size_t nelt[2] = {0, 0};
 
-                std::unique_ptr<PatternSourceReadAhead> g_psrah(new PatternSourceReadAhead(readahead_factory));
-                do { //while have_next_read(g_psrah)
-                        pair<bool, bool> ret = g_psrah.get()->nextReadPair();
+                std::unique_ptr<PatternSourceReadAhead> g_psrah[2];
+		g_psrah[0].reset(new PatternSourceReadAhead(readahead_factory));
+		// TODO: initialize g_psrah[1]
+		PatternSourcePerThread* ps[2] = {NULL, NULL};
+
+                do { //while have_next_read(g_psrah[mate])
+			const size_t mate = 0; // Note: Will use mate to distinguish between tread-specific elements
+
+                        pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
 			{
 			  bool success = ret.first;
 			  bool done = ret.second;
@@ -2059,11 +2067,9 @@ static void multiseedSearchWorker() {
 			  }
 			}
 
-			bool paired = false;
-			const size_t mate = 0; // Note: Will use mate to distinguish between tread-specific elements
-			PatternSourcePerThread* const ps = g_psrah.get()->ptr();
+			ps[mate] = g_psrah[mate].get()->ptr();
 
-			rds[mate] = &ps->read_a();	
+			rds[mate] = &ps[mate]->read_a();	
 			TReadId rdid = rds[mate]->rdid;
 
 				// Align this read/pair
@@ -2087,7 +2093,7 @@ static void multiseedSearchWorker() {
 					assert(msinkwrap[mate]->inited());
 					minsc[mate] = scoreMin.f<TAlScore>(rdlen);
 					if(minsc[mate] > 0) {
-						if(!gQuiet) printEEScoreMsg(*ps, paired, true);
+						if(!gQuiet) printEEScoreMsg(*ps[mate], paired, true);
 						minsc[mate] = 0;
 					}
 					// N filter; does the read have too many Ns?
@@ -2098,11 +2104,11 @@ static void multiseedSearchWorker() {
 					scfilt[mate] = sc.scoreFilter(minsc[mate], rdlen);
 					lenfilt[mate] = true;
 					if(rdlen <= (size_t)multiseedMms || rdlen < 2) {
-						if(!gQuiet) printMmsSkipMsg(*ps, paired, true, multiseedMms);
+						if(!gQuiet) printMmsSkipMsg(*ps[mate], paired, true, multiseedMms);
 						lenfilt[mate] = false;
 					}
 					if(rdlen < 2) {
-						if(!gQuiet) printLenSkipMsg(*ps, paired, true);
+						if(!gQuiet) printLenSkipMsg(*ps[mate], paired, true);
 						lenfilt[mate] = false;
 					}
 					qcfilt[mate] = true;
@@ -2625,7 +2631,7 @@ static void multiseedSearchWorker() {
 					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 					xeq);
 
-		} while (have_next_read(g_psrah)); // must read the whole cached buffer
+		} while (have_next_read(g_psrah[0])); // must read the whole cached buffer
 
 		// Merge in the metrics
 		// Must be done sequentially
