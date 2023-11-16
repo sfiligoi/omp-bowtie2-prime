@@ -713,6 +713,8 @@ public:
 		assert(current_ != NULL);
 	}
 
+	virtual ~AlignmentCacheIface() {}
+
 	/**
 	 * This function is called whenever we start to align a new read or
 	 * read substring.  We make key for it and store the key in qk_.

@@ -18,6 +18,7 @@
  */
 
 #include <cassert>
+#include <vector>
 #include <dirent.h>
 #include <fstream>
 #include <getopt.h>
@@ -1933,6 +1934,15 @@ static inline bool have_next_read(std::unique_ptr<PatternSourceReadAhead> &g_psr
   return have_read;
 }
 
+class AlignmentCacheIfaceBT2 : public AlignmentCacheIface {
+public:
+	AlignmentCacheIfaceBT2()
+	: AlignmentCacheIface(new AlignmentCache(seedCacheCurrentMB * 1024 * 1024, false))
+	{}
+
+	virtual ~AlignmentCacheIfaceBT2() {delete current_;}
+};
+
 /**
  * Called once per thread.  Sets up per-thread pointers to the shared global
  * data structures, creates per-thread structures, then enters the alignment
@@ -1947,7 +1957,7 @@ static inline bool have_next_read(std::unique_ptr<PatternSourceReadAhead> &g_psr
  * -
  */
  /* Work in progress: There is only one such invocation, parallelization inside */
-static void multiseedSearchWorker() {
+static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
 	PatternSourceReadAheadFactory& readahead_factory =  *multiseed_readahead_factory;
@@ -1957,8 +1967,6 @@ static void multiseedSearchWorker() {
 	const BitPairReference& ref      = *multiseed_refs;
 	AlnSink&                msink    = *multiseed_msink;
 
-	// TODO: num_parallel_tasks must be 2 due to fixed arrays
-	const size_t num_parallel_tasks = 2;
 	bool paired = false;
 
 	{
@@ -1977,44 +1985,32 @@ static void multiseedSearchWorker() {
 			gReportMixed);     // report unpaired alignments for paired reads?
 
 		// Instantiate a mapping quality calculator
-		unique_ptr<Mapq> bmapq1(new_mapq(mapqv, scoreMin, sc));
-		unique_ptr<Mapq> bmapq2(new_mapq(mapqv, scoreMin, sc));
-
-		// Make a per-thread wrapper for the global MHitSink object.
-		AlnSinkWrap msinkwrap1(
-			msink,        // global sink
-			rp,           // reporting parameters
-			*bmapq1,      // MAPQ calculator
-			(size_t)0);   // thread id
-		AlnSinkWrap msinkwrap2(
-			msink,        // global sink
-			rp,           // reporting parameters
-			*bmapq2,      // MAPQ calculator
-			(size_t)1);   // thread id
-		AlnSinkWrap *msinkwrap[2] = {&msinkwrap1, &msinkwrap2 };
-
-		AlignmentCache scCurrent1(seedCacheCurrentMB * 1024 * 1024, false);
-		AlignmentCache scCurrent2(seedCacheCurrentMB * 1024 * 1024, false);
+		std::vector< unique_ptr<Mapq> > bmapq(num_parallel_tasks);
+		std::vector<AlnSinkWrap*> msinkwrap(num_parallel_tasks);
+		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			bmapq[mate].reset(new_mapq(mapqv, scoreMin, sc));
+			msinkwrap[mate] = new AlnSinkWrap(
+							msink,        // global sink
+							rp,           // reporting parameters
+							*bmapq[mate], // MAPQ calculator
+							mate);       // thread id
+		}
 
 		// Interfaces for alignment and seed caches
-		AlignmentCacheIface ca1(&scCurrent1);
-		AlignmentCacheIface ca2(&scCurrent2);
-		AlignmentCacheIface *ca[2] = {&ca1,&ca2};
+		std::vector<AlignmentCacheIfaceBT2> ca(num_parallel_tasks);
 
-		SeedAligner al[2];
+		std::vector<SeedAligner> al(num_parallel_tasks);
 
-		SwDriver sd1(exactCacheCurrentMB * 1024 * 1024);
-		SwDriver sd2(exactCacheCurrentMB * 1024 * 1024);
-		SwDriver *sd[2] = {&sd1,&sd2};
+		std::vector<SwDriver> sd(num_parallel_tasks, exactCacheCurrentMB * 1024 * 1024);
 
-		SwAligner sw[2];
-		SeedResults shs[2];
-		ReportingMetrics rpm[2];
-		RandomSource rnd[2];
+		std::vector<SwAligner> sw(num_parallel_tasks);
+		std::vector<SeedResults> shs(num_parallel_tasks);
+		std::vector<ReportingMetrics> rpm(num_parallel_tasks);
+		std::vector<RandomSource> rnd(num_parallel_tasks);
 
-		EList<Seed> seeds[2];
+		std::vector< EList<Seed> > seeds(num_parallel_tasks);
 
-		PerReadMetrics prm[2];
+		std::vector<PerReadMetrics> prm(num_parallel_tasks);
 
 		// Calculate streak length
 		const size_t mxKHMul = (khits > 1) ? (khits-1) : 0;
@@ -2042,19 +2038,19 @@ static void multiseedSearchWorker() {
 		bool qcfilt[2]  = { true, true };
 
 		// read object
-		Read* rds[2] = { NULL, NULL };
+		std::vector<Read*> rds(num_parallel_tasks);
 		// Calculate the minimum valid score threshold for the read
-		TAlScore minsc[2];
+		std::vector<TAlScore> minsc(num_parallel_tasks);
 
-		size_t minedfw[2] = { 0, 0 };
-		size_t minedrc[2] = { 0, 0 };
-		size_t nelt[2] = {0, 0};
+		std::vector<size_t> minedfw(num_parallel_tasks);
+		std::vector<size_t> minedrc(num_parallel_tasks);
+		std::vector<size_t> nelt(num_parallel_tasks);
 
-                std::unique_ptr<PatternSourceReadAhead> g_psrah[2];
+                std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			g_psrah[mate].reset(new PatternSourceReadAhead(readahead_factory));
 		}
-		PatternSourcePerThread* ps[2] = {NULL, NULL};
+		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
 
 		// Note: Will use mate to distinguish between tread-specific elements
 #pragma omp parallel for default(shared)
@@ -2086,8 +2082,8 @@ static void multiseedSearchWorker() {
 					gettimeofday(&prm[mate].tv_beg, &prm[mate].tz_beg);
 				}
 
-					ca[mate]->nextRead(); // clear the cache
-					assert(!ca[mate]->aligning());
+					ca[mate].nextRead(); // clear the cache
+					assert(!ca[mate].aligning());
 					const size_t rdlen = rds[mate]->length();
 					msinkwrap[mate]->nextRead(
 						rds[mate],
@@ -2123,13 +2119,12 @@ static void multiseedSearchWorker() {
 					prm[mate].nFilt += (filt[mate] ? 0 : 1);
 					// For each mate...
 					assert(msinkwrap[mate]->empty());
-					sd[mate]->nextRead(false, rdlen, 0); // SwDriver
+					sd[mate].nextRead(false, rdlen, 0); // SwDriver
 					minedfw[mate] = 0;
 					minedrc[mate] = 0;
 					// Calculate nceil
 					const int nceil = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
 					exhaustive[mate] = false;
-					// size_t matemap[2] = { 0, 1 };
 					rnd[mate].init(rds[mate]->seed);
 
 					prm[mate].maxDPFails = streak;
@@ -2189,7 +2184,7 @@ static void multiseedSearchWorker() {
 							int ret = 0;
                                                         {
 								// Unpaired dynamic programming driver
-								ret = sd[mate]->extendSeeds(
+								ret = sd[mate].extendSeeds(
 									*rds[mate],     // read
 									true,           // mate #1?
 									shs[mate],      // seed hits
@@ -2216,7 +2211,7 @@ static void multiseedSearchWorker() {
 									cpow2,          // checkpointer interval, log2
 									doTri,          // triangular mini-fills
 									tighten,        // -M score tightening mode
-									*ca[mate],      // seed alignment cache
+									ca[mate],       // seed alignment cache
 									rnd[mate],      // pseudo-random source
 									prm[mate],      // per-read metrics
 									msinkwrap[mate],// for organizing hits
@@ -2271,7 +2266,7 @@ static void multiseedSearchWorker() {
 							assert(msinkwrap[mate]->repOk());
 							//rnd.init(ROTL(rds[mate]->seed, 10));
 							assert(shs[mate].empty());
-							assert(shs[mate].repOk(&ca[mate]->current()));
+							assert(shs[mate].repOk(&ca[mate].current()));
 							bool yfw = minedfw[mate] <= 1 && !gNofw;
 							bool yrc = minedrc[mate] <= 1 && !gNorc;
 							if(yfw || yrc) {
@@ -2303,7 +2298,7 @@ static void multiseedSearchWorker() {
 							int ret = 0;
                                                         {
 								// Unpaired dynamic programming driver
-								ret = sd[mate]->extendSeeds(
+								ret = sd[mate].extendSeeds(
 									*rds[mate],     // read
 									true,           // mate #1?
 									shs[mate],      // seed hits
@@ -2330,7 +2325,7 @@ static void multiseedSearchWorker() {
 									cpow2,          // checkpointer interval, log2
 									doTri,          // triangular mini-fills?
 									tighten,        // -M score tightening mode
-									*ca[mate],      // seed alignment cache
+									ca[mate],       // seed alignment cache
 									rnd[mate],      // pseudo-random source
 									prm[mate],      // per-read metrics
 									msinkwrap[mate],// for organizing hits
@@ -2382,10 +2377,10 @@ static void multiseedSearchWorker() {
 					size_t nRepeatSeedsMS[] = {0, 0, 0, 0};
 					size_t seedHitTotMS[] = {0, 0, 0, 0};
 					for(size_t roundi = 0; roundi < nSeedRounds; roundi++) {
-						ca[mate]->nextRead(); // Clear cache in preparation for new search
+						ca[mate].nextRead(); // Clear cache in preparation for new search
 						shs[mate].clearSeeds();
 						assert(shs[mate].empty());
-						assert(shs[mate].repOk(&ca[mate]->current()));
+						assert(shs[mate].repOk(&ca[mate].current()));
 						for(size_t matei = 0; matei < 1; matei++) { // keep the for, due to logic using continue and break
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
@@ -2410,7 +2405,7 @@ static void multiseedSearchWorker() {
 							assert(!msinkwrap[mate]->maxed());
 							assert(msinkwrap[mate]->repOk());
 							//rnd.init(ROTL(rds[mate]->seed, 10));
-							assert(shs[mate].repOk(&ca[mate]->current()));
+							assert(shs[mate].repOk(&ca[mate].current()));
 							// Set up seeds
 							seeds[mate].clear();
 							Seed::mmSeeds(
@@ -2433,11 +2428,11 @@ static void multiseedSearchWorker() {
 								sc,             // scoring scheme
 								gNofw,          // don't align forward read
 								gNorc,          // don't align revcomp read
-								*ca[mate],      // holds some seed hits from previous reads
+								ca[mate],       // holds some seed hits from previous reads
 								shs[mate],      // holds all the seed hits
 								instFw,
 								instRc);
-							assert(shs[mate].repOk(&ca[mate]->current()));
+							assert(shs[mate].repOk(&ca[mate].current()));
 							if(inst.first + inst.second == 0) {
 								// No seed hits!  Done with this mate.
 								assert(shs[mate].empty());
@@ -2454,10 +2449,10 @@ static void multiseedSearchWorker() {
 								ebwtBw,           // BWT' index
 								*rds[mate],       // read
 								sc,               // scoring scheme
-								*ca[mate],        // alignment cache
+								ca[mate],         // alignment cache
 								shs[mate],        // store seed hits here
 								prm[mate]);       // per-read metrics
-							assert(shs[mate].repOk(&ca[mate]->current()));
+							assert(shs[mate].repOk(&ca[mate].current()));
 							if(shs[mate].empty()) {
 								// No seed alignments!  Done with this mate.
 								done[mate] = true;
@@ -2499,7 +2494,7 @@ static void multiseedSearchWorker() {
 								int ret = 0;
                                                                 {
 									// Unpaired dynamic programming driver
-									ret = sd[mate]->extendSeeds(
+									ret = sd[mate].extendSeeds(
 										*rds[mate],     // read
 										true,           // mate #1?
 										shs[mate],      // seed hits
@@ -2526,7 +2521,7 @@ static void multiseedSearchWorker() {
 										cpow2,          // checkpointer interval, log2
 										doTri,          // triangular mini-fills?
 										tighten,        // -M score tightening mode
-										*ca[mate],      // seed alignment cache
+										ca[mate],       // seed alignment cache
 										rnd[mate],      // pseudo-random source
 										prm[mate],      // per-read metrics
 										msinkwrap[mate],// for organizing hits
@@ -2643,6 +2638,11 @@ static void multiseedSearchWorker() {
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			msink.mergeMetricsUnsafe(rpm[mate]);
 		}
+
+		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			delete msinkwrap[mate];
+			msinkwrap[mate] = NULL;
+		}
 	}
 
 	return;
@@ -2650,7 +2650,7 @@ static void multiseedSearchWorker() {
 
 #ifdef SUPPORT_PAIRED
 // NOTE: Unsupported, likely does not work
-static void multiseedSearchWorkerPaired() {
+static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 	int tid = 0;
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
@@ -3614,7 +3614,7 @@ static void multiseedSearchWorkerPaired() {
 // NOTE: Unsupported, likely does not work
 
 //void multiseedSearchWorker_2p5::operator()() const {
-static void multiseedSearchWorker_2p5() {
+static void multiseedSearchWorker_2p5(const size_t num_parallel_tasks) {
 	int tid = 0;
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
@@ -4103,15 +4103,15 @@ static void multiseedSearch(
 
 #ifdef ENABLE_2P5
 			if(bowtie2p5) { // WARNING: generally unsupported
-				multiseedSearchWorker_2p5();
+				multiseedSearchWorker_2p5(nthreads);
 			} else {
 #endif
 #ifdef ENABLE_PAIRED
 			if(paired) { // WARNING: generally unsupported
-				multiseedSearchWorkerPaired();
+				multiseedSearchWorkerPaired(nthreads);
 			} else {
 #endif
-				multiseedSearchWorker();
+				multiseedSearchWorker(2 /*nthreads*/); // TODO, fix hack
 #ifdef ENABLE_2P5
 			}
 #endif
