@@ -1957,6 +1957,8 @@ static void multiseedSearchWorker() {
 	const BitPairReference& ref      = *multiseed_refs;
 	AlnSink&                msink    = *multiseed_msink;
 
+	// TODO: num_parallel_tasks must be 2 due to fixed arrays
+	const size_t num_parallel_tasks = 2;
 	bool paired = false;
 
 	{
@@ -2049,13 +2051,14 @@ static void multiseedSearchWorker() {
 		size_t nelt[2] = {0, 0};
 
                 std::unique_ptr<PatternSourceReadAhead> g_psrah[2];
-		g_psrah[0].reset(new PatternSourceReadAhead(readahead_factory));
-		// TODO: initialize g_psrah[1]
+		for (int mate=0; mate<num_parallel_tasks; mate++) {
+			g_psrah[mate].reset(new PatternSourceReadAhead(readahead_factory));
+		}
 		PatternSourcePerThread* ps[2] = {NULL, NULL};
 
-                do { //while have_next_read(g_psrah[mate])
-			const size_t mate = 0; // Note: Will use mate to distinguish between tread-specific elements
-
+		// Note: Will use mate to distinguish between tread-specific elements
+		for (int mate=0; mate<num_parallel_tasks; mate++) {
+                  do { //while have_next_read(g_psrah[mate])
                         pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
 			{
 			  bool success = ret.first;
@@ -2631,11 +2634,12 @@ static void multiseedSearchWorker() {
 					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 					xeq);
 
-		} while (have_next_read(g_psrah[0])); // must read the whole cached buffer
+		  } while (have_next_read(g_psrah[mate])); // must read the whole cached buffer
+		} // for mate
 
 		// Merge in the metrics
 		// Must be done sequentially
-		for (int mate=0; mate<1; mate++) {
+		for (int mate=0; mate<num_parallel_tasks; mate++) {
 			msink.mergeMetricsUnsafe(rpm[mate]);
 		}
 	}
