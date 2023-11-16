@@ -2038,6 +2038,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		bool *lenfilt = new bool[num_parallel_tasks];
 		// Keep track of whether mates 1/2 were filtered out by upstream qc
 		bool *qcfilt = new bool[num_parallel_tasks];
+		// Whether we're done with mate
+		bool *done = new bool[num_parallel_tasks];
 
 		// read object
 		std::vector<Read*> rds(num_parallel_tasks);
@@ -2061,8 +2063,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
                         pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
 			{
 			  bool success = ret.first;
-			  bool done = ret.second;
-			  if(!success && done) {
+			  bool done_reading = ret.second;
+			  if(!success && done_reading) {
 				break;
 			  } else if(!success) {
 				continue;
@@ -2141,8 +2143,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						}
 					}
 					size_t eePeEeltLimit = std::numeric_limits<size_t>::max();
-					// Whether we're done with mate1 / mate2
-					bool done[2] = { !filt[0], !filt[1] };
+					// Whether we're done with mate
+					done[mate] = !filt[mate];
 
 					nelt[mate] = 0;
 					// Find end-to-end exact alignments for each read
@@ -2370,7 +2372,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					const int interval = max((int)msIval.f<int>((double)rdlen), 1);
 					// Calculate # seed rounds for each mate
 					const size_t nrounds = min<size_t>(nSeedRounds, interval);
-					int seedlens[2] = { multiseedLen, multiseedLen };
+					int seedlens = { multiseedLen};
 					Constraint gc = Constraint::penaltyFuncBased(scoreMin);
 					size_t seedsTried = 0;
 					size_t seedsTriedMS[] = {0, 0, 0, 0};
@@ -2412,7 +2414,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							seeds[mate].clear();
 							Seed::mmSeeds(
 								multiseedMms,    // max # mms per seed
-								seedlens[mate],  // length of a multiseed seed
+								seedlens,        // length of a multiseed seed
 								seeds[mate],     // seeds
 								gc);             // global constraint
 							// Check whether the offset would drive the first seed
@@ -2506,7 +2508,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 										sw[mate],       // dynamic prog aligner
 										sc,             // scoring scheme
 										multiseedMms,   // # mms allowed in a seed
-										seedlens[mate], // length of a seed
+										seedlens,       // length of a seed
 										interval,       // interval between seeds
 										minsc[mate],    // minimum score for valid
 										nceil,          // N ceil for anchor
@@ -2651,6 +2653,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		delete[] scfilt;
 		delete[] lenfilt;
 		delete[] qcfilt;
+		delete[] done;
 	}
 
 	return;
@@ -4119,7 +4122,7 @@ static void multiseedSearch(
 				multiseedSearchWorkerPaired(nthreads);
 			} else {
 #endif
-				multiseedSearchWorker(2 /*nthreads*/); // TODO, fix hack
+				multiseedSearchWorker(nthreads);
 #ifdef ENABLE_2P5
 			}
 #endif
