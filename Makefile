@@ -60,6 +60,8 @@ ifneq (,$(findstring Darwin,$(shell uname)))
   endif
 endif
 
+CXXFLAGS += -fopenmp
+
 BITS := 32
 ARCH ?= $(shell uname -m)
 ifneq (,$(findstring $(ARCH), x86_64 amd64))
@@ -74,14 +76,13 @@ ifneq (,$(findstring $(ARCH), x86_64 amd64))
 else ifneq (,$(findstring $(ARCH), aarch64 arm64 s390x powerpc64 powerpc64le ppc64 ppc64le))
   BITS := 64
   SSE_FLAG :=
-  CXXFLAGS += -fopenmp-simd
   CPPFLAGS += -Ithird_party
   POPCNT_CAPABILITY ?= 0
 endif
 
 ifdef USE_SAIS
   CPPFLAGS += -Ithird_party/libsais/include
-  CXXFLAGS += -fopenmp -DUSE_SAIS
+  CXXFLAGS += -DUSE_SAIS
   LDFLAGS += -Lthird_party/libsais/lib
   LDLIBS += -lsais
 endif

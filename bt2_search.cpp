@@ -2051,13 +2051,14 @@ static void multiseedSearchWorker() {
 		size_t nelt[2] = {0, 0};
 
                 std::unique_ptr<PatternSourceReadAhead> g_psrah[2];
-		for (int mate=0; mate<num_parallel_tasks; mate++) {
+		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			g_psrah[mate].reset(new PatternSourceReadAhead(readahead_factory));
 		}
 		PatternSourcePerThread* ps[2] = {NULL, NULL};
 
 		// Note: Will use mate to distinguish between tread-specific elements
-		for (int mate=0; mate<num_parallel_tasks; mate++) {
+#pragma omp parallel for default(shared)
+		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
                   do { //while have_next_read(g_psrah[mate])
                         pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
 			{
@@ -2639,7 +2640,7 @@ static void multiseedSearchWorker() {
 
 		// Merge in the metrics
 		// Must be done sequentially
-		for (int mate=0; mate<num_parallel_tasks; mate++) {
+		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			msink.mergeMetricsUnsafe(rpm[mate]);
 		}
 	}
