@@ -1997,23 +1997,20 @@ static void multiseedSearchWorker() {
 		AlignmentCacheIface ca2(&scCurrent2);
 		AlignmentCacheIface *ca[2] = {&ca1,&ca2};
 
-		SeedAligner al1;
-		SeedAligner al2;
-		SeedAligner *al[2] = {&al1, &al2};
+		SeedAligner al[2];
 
 		SwDriver sd1(exactCacheCurrentMB * 1024 * 1024);
 		SwDriver sd2(exactCacheCurrentMB * 1024 * 1024);
 		SwDriver *sd[2] = {&sd1,&sd2};
 
-		SwAligner sw(NULL), osw(NULL);
+		SwAligner sw[2];
 		SeedResults shs[2];
-		ReportingMetrics rpm;
-		RandomSource rnd;
+		ReportingMetrics rpm[2];
+		RandomSource rnd[2];
 
-		EList<Seed> seeds1, seeds2;
-		EList<Seed> *seeds[2] = { &seeds1, &seeds2 };
+		EList<Seed> seeds[2];
 
-		PerReadMetrics prm;
+		PerReadMetrics prm[2];
 
 		// Calculate streak length
 		const size_t mxKHMul = (khits > 1) ? (khits-1) : 0;
@@ -2073,10 +2070,10 @@ static void multiseedSearchWorker() {
 				//
 				// Check if there is metrics reporting for us to do.
 				//
-				prm.reset(); // per-read metrics
-				prm.doFmString = false;
+				prm[mate].reset(); // per-read metrics
+				prm[mate].doFmString = false;
 				if(sam_print_xt) {
-					gettimeofday(&prm.tv_beg, &prm.tz_beg);
+					gettimeofday(&prm[mate].tv_beg, &prm[mate].tz_beg);
 				}
 
 					ca[mate]->nextRead(); // clear the cache
@@ -2113,7 +2110,7 @@ static void multiseedSearchWorker() {
 						qcfilt[mate] = (rds[mate]->filter != '0');
 					}
 					filt[mate] = (nfilt[mate] && scfilt[mate] && lenfilt[mate] && qcfilt[mate]);
-					prm.nFilt += (filt[mate] ? 0 : 1);
+					prm[mate].nFilt += (filt[mate] ? 0 : 1);
 					// For each mate...
 					assert(msinkwrap[mate]->empty());
 					sd[mate]->nextRead(false, rdlen, 0); // SwDriver
@@ -2123,9 +2120,9 @@ static void multiseedSearchWorker() {
 					const int nceil = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
 					exhaustive[mate] = false;
 					// size_t matemap[2] = { 0, 1 };
-					rnd.init(rds[mate]->seed);
+					rnd[mate].init(rds[mate]->seed);
 
-					prm.maxDPFails = streak;
+					prm[mate].maxDPFails = streak;
 					assert_gt(streak, 0);
 					// Increment counters according to what got filtered
                                         {
@@ -2150,7 +2147,7 @@ static void multiseedSearchWorker() {
 							if(!filt[mate] || done[mate] || msinkwrap[mate]->state().doneWithMate(true)) {
 								// nothing to do
 							} else {
-							  nelt[mate] = al[mate]->exactSweep(
+							  nelt[mate] = al[mate].exactSweep(
 								ebwtFw,        // index
 								*rds[mate],    // read
 								sc,            // scoring scheme
@@ -2189,7 +2186,7 @@ static void multiseedSearchWorker() {
 									ebwtFw,         // bowtie index
 									ebwtBw,         // rev bowtie index
 									ref,            // packed reference strings
-									sw,             // dynamic prog aligner
+									sw[mate],       // dynamic prog aligner
 									sc,             // scoring scheme
 									-1,             // # mms allowed in a seed
 									0,              // length of a seed
@@ -2210,8 +2207,8 @@ static void multiseedSearchWorker() {
 									doTri,          // triangular mini-fills
 									tighten,        // -M score tightening mode
 									*ca[mate],      // seed alignment cache
-									rnd,            // pseudo-random source
-									prm,            // per-read metrics
+									rnd[mate],      // pseudo-random source
+									prm[mate],      // per-read metrics
 									msinkwrap[mate],// for organizing hits
 									true,           // report hits once found
 									exhaustive[mate]);
@@ -2269,7 +2266,7 @@ static void multiseedSearchWorker() {
 							bool yrc = minedrc[mate] <= 1 && !gNorc;
 							if(yfw || yrc) {
 								// Clear out the exact hits
-								al[mate]->oneMmSearch(
+								al[mate].oneMmSearch(
 									&ebwtFw,        // BWT index
 									ebwtBw,         // BWT' index
 									*rds[mate],     // read
@@ -2303,7 +2300,7 @@ static void multiseedSearchWorker() {
 									ebwtFw,         // bowtie index
 									ebwtBw,         // rev bowtie index
 									ref,            // packed reference strings
-									sw,             // dynamic prog aligner
+									sw[mate],       // dynamic prog aligner
 									sc,             // scoring scheme
 									-1,             // # mms allowed in a seed
 									0,              // length of a seed
@@ -2324,8 +2321,8 @@ static void multiseedSearchWorker() {
 									doTri,          // triangular mini-fills?
 									tighten,        // -M score tightening mode
 									*ca[mate],      // seed alignment cache
-									rnd,            // pseudo-random source
-									prm,            // per-read metrics
+									rnd[mate],      // pseudo-random source
+									prm[mate],      // per-read metrics
 									msinkwrap[mate],// for organizing hits
 									true,           // report hits once found
 									exhaustive[mate]);
@@ -2405,21 +2402,21 @@ static void multiseedSearchWorker() {
 							//rnd.init(ROTL(rds[mate]->seed, 10));
 							assert(shs[mate].repOk(&ca[mate]->current()));
 							// Set up seeds
-							seeds[mate]->clear();
+							seeds[mate].clear();
 							Seed::mmSeeds(
 								multiseedMms,    // max # mms per seed
 								seedlens[mate],  // length of a multiseed seed
-								*seeds[mate],    // seeds
+								seeds[mate],     // seeds
 								gc);             // global constraint
 							// Check whether the offset would drive the first seed
 							// off the end
-							if(offset > 0 && (*seeds[mate])[0].len + offset > rds[mate]->length()) {
+							if(offset > 0 && (seeds[mate])[0].len + offset > rds[mate]->length()) {
 								continue;
 							}
 							// Instantiate the seeds
 							std::pair<int, int> instFw, instRc;
-							std::pair<int, int> inst = al[mate]->instantiateSeeds(
-								*seeds[mate],   // search seeds
+							std::pair<int, int> inst = al[mate].instantiateSeeds(
+								seeds[mate],    // search seeds
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds
 								*rds[mate],     // read to align
@@ -2441,15 +2438,15 @@ static void multiseedSearchWorker() {
 							seedsTriedMS[mate * 2 + 0] = instFw.first + instFw.second;
 							seedsTriedMS[mate * 2 + 1] = instRc.first + instRc.second;
 							// Align seeds
-							al[mate]->searchAllSeeds(
-								*seeds[mate],     // search seeds
+							al[mate].searchAllSeeds(
+								seeds[mate],      // search seeds
 								&ebwtFw,          // BWT index
 								ebwtBw,           // BWT' index
 								*rds[mate],       // read
 								sc,               // scoring scheme
 								*ca[mate],        // alignment cache
 								shs[mate],        // store seed hits here
-								prm);             // per-read metrics
+								prm[mate]);       // per-read metrics
 							assert(shs[mate].repOk(&ca[mate]->current()));
 							if(shs[mate].empty()) {
 								// No seed alignments!  Done with this mate.
@@ -2488,7 +2485,7 @@ static void multiseedSearchWorker() {
 									continue; // on to the next mate
 								}
 								// Sort seed hits into ranks
-								shs[mate].rankSeedHits(rnd, msinkwrap[mate]->allHits());
+								shs[mate].rankSeedHits(rnd[mate], msinkwrap[mate]->allHits());
 								int ret = 0;
                                                                 {
 									// Unpaired dynamic programming driver
@@ -2499,7 +2496,7 @@ static void multiseedSearchWorker() {
 										ebwtFw,         // bowtie index
 										ebwtBw,         // rev bowtie index
 										ref,            // packed reference strings
-										sw,             // dynamic prog aligner
+										sw[mate],       // dynamic prog aligner
 										sc,             // scoring scheme
 										multiseedMms,   // # mms allowed in a seed
 										seedlens[mate], // length of a seed
@@ -2520,8 +2517,8 @@ static void multiseedSearchWorker() {
 										doTri,          // triangular mini-fills?
 										tighten,        // -M score tightening mode
 										*ca[mate],      // seed alignment cache
-										rnd,            // pseudo-random source
-										prm,            // per-read metrics
+										rnd[mate],      // pseudo-random source
+										prm[mate],      // per-read metrics
 										msinkwrap[mate],// for organizing hits
 										true,           // report hits once found
 										exhaustive[mate]);
@@ -2561,23 +2558,23 @@ static void multiseedSearchWorker() {
 						}
 					} // end loop over reseeding rounds
 					if(seedsTried > 0) {
-						prm.seedPctUnique = (float)nUniqueSeeds / seedsTried;
-						prm.seedPctRep = (float)nRepeatSeeds / seedsTried;
-						prm.seedHitAvg = (float)seedHitTot / seedsTried;
+						prm[mate].seedPctUnique = (float)nUniqueSeeds / seedsTried;
+						prm[mate].seedPctRep = (float)nRepeatSeeds / seedsTried;
+						prm[mate].seedHitAvg = (float)seedHitTot / seedsTried;
 					} else {
-						prm.seedPctUnique = -1.0f;
-						prm.seedPctRep = -1.0f;
-						prm.seedHitAvg = -1.0f;
+						prm[mate].seedPctUnique = -1.0f;
+						prm[mate].seedPctRep = -1.0f;
+						prm[mate].seedHitAvg = -1.0f;
 					}
 					for(int i = 0; i < 4; i++) {
 						if(seedsTriedMS[i] > 0) {
-							prm.seedPctUniqueMS[i] = (float)nUniqueSeedsMS[i] / seedsTriedMS[i];
-							prm.seedPctRepMS[i] = (float)nRepeatSeedsMS[i] / seedsTriedMS[i];
-							prm.seedHitAvgMS[i] = (float)seedHitTotMS[i] / seedsTriedMS[i];
+							prm[mate].seedPctUniqueMS[i] = (float)nUniqueSeedsMS[i] / seedsTriedMS[i];
+							prm[mate].seedPctRepMS[i] = (float)nRepeatSeedsMS[i] / seedsTriedMS[i];
+							prm[mate].seedHitAvgMS[i] = (float)seedHitTotMS[i] / seedsTriedMS[i];
 						} else {
-							prm.seedPctUniqueMS[i] = -1.0f;
-							prm.seedPctRepMS[i] = -1.0f;
-							prm.seedHitAvgMS[i] = -1.0f;
+							prm[mate].seedPctUniqueMS[i] = -1.0f;
+							prm[mate].seedPctRepMS[i] = -1.0f;
+							prm[mate].seedHitAvgMS[i] = -1.0f;
 						}
 					}
 					size_t totnucs = 0;
@@ -2588,19 +2585,19 @@ static void multiseedSearchWorker() {
 						}
 						totnucs += len;
 					}
-					prm.seedsPerNuc = totnucs > 0 ? ((float)seedsTried / totnucs) : -1;
+					prm[mate].seedsPerNuc = totnucs > 0 ? ((float)seedsTried / totnucs) : -1;
 					for(int i = 0; i < 4; i++) {
-						prm.seedsPerNucMS[i] = totnucs > 0 ? ((float)seedsTriedMS[i] / totnucs) : -1;
+						prm[mate].seedsPerNucMS[i] = totnucs > 0 ? ((float)seedsTriedMS[i] / totnucs) : -1;
 					}
 					{
-						assert_leq(prm.nExIters, mxIter);
-						assert_leq(prm.nExDps,   mxDp);
-						assert_leq(prm.nMateDps, mxDp);
-						assert_leq(prm.nExUgs,   mxUg);
-						assert_leq(prm.nMateUgs, mxUg);
-						assert_leq(prm.nDpFail,  streak);
-						assert_leq(prm.nUgFail,  streak);
-						assert_leq(prm.nEeFail,  streak);
+						assert_leq(prm[mate].nExIters, mxIter);
+						assert_leq(prm[mate].nExDps,   mxDp);
+						assert_leq(prm[mate].nMateDps, mxDp);
+						assert_leq(prm[mate].nExUgs,   mxUg);
+						assert_leq(prm[mate].nMateUgs, mxUg);
+						assert_leq(prm[mate].nDpFail,  streak);
+						assert_leq(prm[mate].nUgFail,  streak);
+						assert_leq(prm[mate].nEeFail,  streak);
 					}
 
 				// Commit and report paired-end/unpaired alignments
@@ -2619,9 +2616,9 @@ static void multiseedSearchWorker() {
 					true,
 					qcfilt[mate],
 					true,
-					rnd,                  // pseudo-random generator
-					rpm,                  // reporting metrics
-					prm,                  // per-read metrics
+					rnd[mate],            // pseudo-random generator
+					rpm[mate],            // reporting metrics
+					prm[mate],            // per-read metrics
 					sc,                   // scoring scheme
 					true,                 // suppress seed summaries?
 					false,                // suppress alignments?
@@ -2631,7 +2628,10 @@ static void multiseedSearchWorker() {
 		} while (have_next_read(g_psrah)); // must read the whole cached buffer
 
 		// Merge in the metrics
-		msink.mergeMetricsUnsafe(rpm);
+		// Must be done sequentially
+		for (int mate=0; mate<1; mate++) {
+			msink.mergeMetricsUnsafe(rpm[mate]);
+		}
 	}
 
 	return;

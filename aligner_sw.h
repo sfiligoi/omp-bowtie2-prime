@@ -204,6 +204,36 @@ class SwAligner {
 
 public:
 
+	SwAligner() :
+		sseU8fw_(DP_CAT),
+		sseU8rc_(DP_CAT),
+		sseI16fw_(DP_CAT),
+		sseI16rc_(DP_CAT),
+		state_(STATE_UNINIT),
+		initedRead_(false),
+		readSse16_(false),
+		initedRef_(false),
+		rfwbuf_(DP_CAT),
+		btnstack_(DP_CAT),
+		btcells_(DP_CAT),
+		btdiag_(),
+		btncand_(DP_CAT),
+		btncanddone_(DP_CAT),
+		btncanddoneSucc_(0),
+		btncanddoneFail_(0),
+		cper_(),
+		cperMinlen_(),
+		cperPerPow2_(),
+		cperEf_(),
+		cperTri_(),
+		colstop_(0),
+		lastsolcol_(0),
+		cural_(0),
+		dpLog_(NULL),
+		firstRead_(true)
+		ASSERT_ONLY(, cand_tmp_(DP_CAT))
+	{ }
+
 	explicit SwAligner(std::ostream *dpLog, bool firstRead = true) :
 		sseU8fw_(DP_CAT),
 		sseU8rc_(DP_CAT),
