@@ -2022,20 +2022,22 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// Used by thread with threadid == 1 to measure time elapsed
 		time_t iTime = time(0);
 
+		// Note: Cannot use vector<bool>, since it is not thread-safe
+
 		// Keep track of whether last search was exhaustive for mates 1 and 2
-		bool exhaustive[2] = { false, false };
+		bool *exhaustive = new bool[num_parallel_tasks];
 		// Keep track of whether mates 1/2 were filtered out last time through
-		bool filt[2]    = { false, false };
+		bool *filt = new bool[num_parallel_tasks];
 		// Keep track of whether mates 1/2 were filtered out due Ns last time
-		bool nfilt[2]   = { true, true };
+		bool *nfilt = new bool[num_parallel_tasks];
 		// Keep track of whether mates 1/2 were filtered out due to not having
 		// enough characters to rise about the score threshold.
-		bool scfilt[2]  = { true, true };
+		bool *scfilt = new bool[num_parallel_tasks];
 		// Keep track of whether mates 1/2 were filtered out due to not having
 		// more characters than the number of mismatches permitted in a seed.
-		bool lenfilt[2] = { true, true };
+		bool *lenfilt = new bool[num_parallel_tasks];
 		// Keep track of whether mates 1/2 were filtered out by upstream qc
-		bool qcfilt[2]  = { true, true };
+		bool *qcfilt = new bool[num_parallel_tasks];
 
 		// read object
 		std::vector<Read*> rds(num_parallel_tasks);
@@ -2643,6 +2645,12 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			delete msinkwrap[mate];
 			msinkwrap[mate] = NULL;
 		}
+		delete[] exhaustive;
+		delete[] filt;
+		delete[] nfilt;
+		delete[] scfilt;
+		delete[] lenfilt;
+		delete[] qcfilt;
 	}
 
 	return;
