@@ -1922,14 +1922,21 @@ void get_cpu_and_node(int& cpu, int& node) {
 #endif
 
 static inline bool have_next_read(std::unique_ptr<PatternSourceReadAhead> &g_psrah) {
-  PatternSourcePerThread* ps = g_psrah.get()->ptr();
-  bool have_read = ps->nextReadPairReady();
-  if (!have_read) {
-     // finished current batch, but there may be more
-     g_psrah.reset(); // destroy the old object before allocating the new one
-     g_psrah.reset(new PatternSourceReadAhead(*multiseed_readahead_factory));
-     ps = g_psrah.get()->ptr();
-     have_read = ps->nextReadPairReady();
+  bool have_read;
+  if (g_psrah) { // default case, we have already a ps
+	  PatternSourcePerThread* ps = g_psrah.get()->ptr();
+	  have_read = ps->nextReadPairReady();
+	  if (!have_read) {
+	     // finished current batch, but there may be more
+	     g_psrah.reset(); // destroy the old object before allocating the new one
+	     g_psrah.reset(new PatternSourceReadAhead(*multiseed_readahead_factory));
+	     ps = g_psrah.get()->ptr();
+	     have_read = ps->nextReadPairReady();
+  	  }
+  } else { // first read, just create ps
+	     g_psrah.reset(new PatternSourceReadAhead(*multiseed_readahead_factory));
+	     PatternSourcePerThread* ps = g_psrah.get()->ptr();
+	     have_read = ps->nextReadPairReady();
   }
   return have_read;
 }
@@ -1973,7 +1980,6 @@ public:
 static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
-	PatternSourceReadAheadFactory& readahead_factory =  *multiseed_readahead_factory;
 	const Ebwt&             ebwtFw   = *multiseed_ebwtFw;
 	const Ebwt*             ebwtBw   = multiseed_ebwtBw;
 	const Scoring&          sc       = *multiseed_sc;
@@ -2053,8 +2059,11 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		bool *qcfilt = new bool[num_parallel_tasks];
 		// Whether we're done with mate
 		bool *done = new bool[num_parallel_tasks];
-		// Whether we're done with mate
+		// Whether we're done with g_psrah mate
 		bool *done_reading = new bool[num_parallel_tasks];
+		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			done_reading[mate] = false;
+		}
 
 		// read object
 		std::vector<Read*> rds(num_parallel_tasks);
@@ -2066,18 +2075,18 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		std::vector<size_t> nelt(num_parallel_tasks);
 
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			g_psrah[mate].reset(new PatternSourceReadAhead(readahead_factory));
-			done_reading[mate] = false;
-		}
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
 
 		// Note: Will use mate to distinguish between tread-specific elements
 #pragma omp parallel for default(shared)
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-                  do { //while have_next_read(g_psrah[mate])
-                        pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
+                  while (!done_reading[mate]) { // Must read the whole cached buffer
 			{
+			  done_reading[mate] = !have_next_read(g_psrah[mate]);
+			  if (done_reading[mate]) break;
+			}
+			{
+                          pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
 			  bool success = ret.first;
 			  if(!success) {
 				done_reading[mate] = ret.second;
@@ -2652,7 +2661,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 					xeq);
 
-		  } while (have_next_read(g_psrah[mate])); // must read the whole cached buffer
+		  } // while (!done_reading[mate])
 		} // for mate
 
 		// Merge in the metrics
