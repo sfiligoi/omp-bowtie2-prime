@@ -948,7 +948,7 @@ public:
 	/**
 	 * Set alignment score for this alignment.
 	 */
-	void setScore(AlnScore score) {
+	void setScore(const AlnScore& score) {
 		score_ = score;
 	}
 
@@ -991,8 +991,8 @@ public:
 		return refcoord_.fw();
 	}
 
-	AlnScore           score()          const { return score_;    }
-	AlnScore           oscore()         const { return oscore_;   }
+	const AlnScore&    score()          const { return score_;    }
+	const AlnScore&    oscore()         const { return oscore_;   }
 	EList<Edit>&       ned()                  { return ned_;      }
 	EList<Edit>&       aed()                  { return aed_;      }
 	const EList<Edit>& ned()            const { return ned_;      }
@@ -1357,7 +1357,7 @@ public:
 	 */
 	void init(
 		size_t             rdlen,           // # chars after hard trimming
-		AlnScore           score,           // alignment score
+		const AlnScore&    score,           // alignment score
 		const EList<Edit>* ned,             // nucleotide edits
 		size_t             ned_i,           // first position to copy
 		size_t             ned_n,           // # positions to copy
@@ -1829,35 +1829,35 @@ public:
 	TRefId   orefid()        const { return orefid_;        }
 	TRefOff  orefoff()       const { return orefoff_;       }
 
-	AlnScore bestUScore()  const { return bestUScore_;  }
-	AlnScore bestP1Score() const { return bestP1Score_; }
-	AlnScore bestP2Score() const { return bestP2Score_; }
-	AlnScore bestCScore()  const { return bestCScore_;  }
-	AlnScore bestUDist()   const { return bestUDist_;  }
-	AlnScore bestP1Dist()  const { return bestP1Dist_; }
-	AlnScore bestP2Dist()  const { return bestP2Dist_; }
-	AlnScore bestCDist()   const { return bestCDist_;  }
+	const AlnScore& bestUScore()  const { return bestUScore_;  }
+	const AlnScore& bestP1Score() const { return bestP1Score_; }
+	const AlnScore& bestP2Score() const { return bestP2Score_; }
+	const AlnScore& bestCScore()  const { return bestCScore_;  }
+	const AlnScore& bestUDist()   const { return bestUDist_;  }
+	const AlnScore& bestP1Dist()  const { return bestP1Dist_; }
+	const AlnScore& bestP2Dist()  const { return bestP2Dist_; }
+	const AlnScore& bestCDist()   const { return bestCDist_;  }
 
-	AlnScore bestUnchosenUScore()  const { return bestUnchosenUScore_;  }
-	AlnScore bestUnchosenP1Score() const { return bestUnchosenP1Score_; }
-	AlnScore bestUnchosenP2Score() const { return bestUnchosenP2Score_; }
-	AlnScore bestUnchosenCScore()  const { return bestUnchosenCScore_;  }
-	AlnScore bestUnchosenUDist()   const { return bestUnchosenUDist_;  }
-	AlnScore bestUnchosenP1Dist()  const { return bestUnchosenP1Dist_; }
-	AlnScore bestUnchosenP2Dist()  const { return bestUnchosenP2Dist_; }
-	AlnScore bestUnchosenCDist()   const { return bestUnchosenCDist_;  }
+	const AlnScore& bestUnchosenUScore()  const { return bestUnchosenUScore_;  }
+	const AlnScore& bestUnchosenP1Score() const { return bestUnchosenP1Score_; }
+	const AlnScore& bestUnchosenP2Score() const { return bestUnchosenP2Score_; }
+	const AlnScore& bestUnchosenCScore()  const { return bestUnchosenCScore_;  }
+	const AlnScore& bestUnchosenUDist()   const { return bestUnchosenUDist_;  }
+	const AlnScore& bestUnchosenP1Dist()  const { return bestUnchosenP1Dist_; }
+	const AlnScore& bestUnchosenP2Dist()  const { return bestUnchosenP2Dist_; }
+	const AlnScore& bestUnchosenCDist()   const { return bestUnchosenCDist_;  }
 
 	/**
 	 * Return best unchosen alignment score for end 1 or 2 of a pair.
 	 */
-	AlnScore bestUnchosenPScore(bool mate1) const {
+	const AlnScore& bestUnchosenPScore(bool mate1) const {
 		return mate1 ? bestUnchosenP1Score_ : bestUnchosenP2Score_;
 	}
 
 	/**
 	 * Return best unchosen edit distance for end 1 or 2 of a pair.
 	 */
-	AlnScore bestUnchosenPDist(bool mate1) const {
+	const AlnScore& bestUnchosenPDist(bool mate1) const {
 		return mate1 ? bestUnchosenP1Dist_ : bestUnchosenP2Dist_;
 	}
 
@@ -1865,7 +1865,7 @@ public:
 	 * Return best unchosen alignment score for end 1 or 2 whether
 	 * the read is a pair or not.
 	 */
-	AlnScore bestUnchosenScore(bool mate1) const {
+	const AlnScore& bestUnchosenScore(bool mate1) const {
 		return paired_ ? (mate1 ? bestUnchosenP1Score_ : bestUnchosenP2Score_) : bestUnchosenUScore();
 	}
 
@@ -1873,7 +1873,7 @@ public:
 	 * Return best unchosen edit distance for end 1 or 2 whether
 	 * the read is a pair or not.
 	 */
-	AlnScore bestUnchosenDist(bool mate1) const {
+	const AlnScore& bestUnchosenDist(bool mate1) const {
 		return paired_ ? (mate1 ? bestUnchosenP1Dist_ : bestUnchosenP2Dist_) : bestUnchosenUDist();
 	}
 
@@ -1885,7 +1885,7 @@ public:
 	 * Return best alignment score for end 1 or 2 whether the read is
 	 * a pair or not.
 	 */
-	AlnScore bestScore(bool mate1) const {
+	const AlnScore& bestScore(bool mate1) const {
 		return paired_ ? (mate1 ? bestP1Score_ : bestP2Score_) : bestUScore_;
 	}
 
@@ -1893,7 +1893,7 @@ public:
 	 * Return best edit distance for end 1 or 2 whether the read is
 	 * a pair or not.
 	 */
-	AlnScore bestDist(bool mate1) const {
+	const AlnScore& bestDist(bool mate1) const {
 		return paired_ ? (mate1 ? bestP1Dist_ : bestP2Dist_) : bestUDist_;
 	}
 
@@ -1907,22 +1907,22 @@ public:
 	 * quality.
 	 */
 	void setBest(
-		AlnScore bestUScore,
-		AlnScore bestUDist,
-		AlnScore bestP1Score,
-		AlnScore bestP1Dist,
-		AlnScore bestP2Score,
-		AlnScore bestP2Dist,
-		AlnScore bestCScore,
-		AlnScore bestCDist,
-		AlnScore bestUnchosenUScore,
-		AlnScore bestUnchosenUDist,
-		AlnScore bestUnchosenP1Score,
-		AlnScore bestUnchosenP1Dist,
-		AlnScore bestUnchosenP2Score,
-		AlnScore bestUnchosenP2Dist,
-		AlnScore bestUnchosenCScore,
-		AlnScore bestUnchosenCDist)
+		const AlnScore& bestUScore,
+		const AlnScore& bestUDist,
+		const AlnScore& bestP1Score,
+		const AlnScore& bestP1Dist,
+		const AlnScore& bestP2Score,
+		const AlnScore& bestP2Dist,
+		const AlnScore& bestCScore,
+		const AlnScore& bestCDist,
+		const AlnScore& bestUnchosenUScore,
+		const AlnScore& bestUnchosenUDist,
+		const AlnScore& bestUnchosenP1Score,
+		const AlnScore& bestUnchosenP1Dist,
+		const AlnScore& bestUnchosenP2Score,
+		const AlnScore& bestUnchosenP2Dist,
+		const AlnScore& bestUnchosenCScore,
+		const AlnScore& bestUnchosenCDist)
 	{
 		assert(bestUScore.valid() == bestUDist.valid());
 		assert(bestP1Score.valid() == bestP1Dist.valid());

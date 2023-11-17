@@ -214,6 +214,9 @@ public:
 		delete sel_;
 	}
 
+	AlignerDriver(const AlignerDriver& other) = delete;
+	AlignerDriver& operator=(const AlignerDriver& other) = delete;
+
 	/**
 	 * Initialize driver with respect to a new read or pair.
 	 */

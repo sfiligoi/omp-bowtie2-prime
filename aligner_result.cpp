@@ -126,7 +126,7 @@ void AlnRes::setShape(
  */
 void AlnRes::init(
 	size_t             rdlen,           // # chars after hard trimming
-	AlnScore           score,           // alignment score
+	const AlnScore&    score,           // alignment score
 	const EList<Edit>* ned,             // nucleotide edits
 	size_t             ned_i,           // first position to copy
 	size_t             ned_n,           // # positions to copy

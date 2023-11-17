@@ -264,6 +264,9 @@ public:
 		ASSERT_ONLY(, cand_tmp_(DP_CAT))
 	{ }
 
+	SwAligner(const SwAligner& other) = delete;
+	SwAligner& operator=(const SwAligner& other) = delete;
+
 	/**
 	 * Prepare the dynamic programming driver with a new read and a new scoring
 	 * scheme.

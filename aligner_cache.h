@@ -480,6 +480,9 @@ public:
 		mutex_m(),
 		version_(0) { }
 
+	AlignmentCache(const AlignmentCache& other) = delete;
+	AlignmentCache& operator=(const AlignmentCache& other) = delete;
+
 	/**
 	 * Given a QVal, populate the given EList of SATuples with records
 	 * describing all of the cached information about the QVal's
@@ -714,6 +717,9 @@ public:
 	}
 
 	virtual ~AlignmentCacheIface() {}
+
+	AlignmentCacheIface(const AlignmentCacheIface& other) = delete;
+	AlignmentCacheIface& operator=(const AlignmentCacheIface& other) = delete;
 
 	/**
 	 * This function is called whenever we start to align a new read or

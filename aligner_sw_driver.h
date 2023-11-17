@@ -309,6 +309,9 @@ public:
 		salistEe_(DP_CAT),
 		gwstate_(GW_CAT) { }
 
+	SwDriver(const SwDriver& other) = delete;
+	SwDriver& operator=(const SwDriver& other) = delete;
+
 	/**
 	 * Given a collection of SeedHits for a single read, extend seed alignments
 	 * into full alignments.  Where possible, try to avoid redundant offset

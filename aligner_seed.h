@@ -631,6 +631,9 @@ public:
 		clear();
 	}
 	
+	SeedResults(const SeedResults& other) = delete;
+	SeedResults& operator=(const SeedResults& other) = delete;
+
 	/**
 	 * Set the current read.
 	 */
