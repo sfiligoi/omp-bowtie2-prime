@@ -2053,6 +2053,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		bool *qcfilt = new bool[num_parallel_tasks];
 		// Whether we're done with mate
 		bool *done = new bool[num_parallel_tasks];
+		// Whether we're done with mate
+		bool *done_reading = new bool[num_parallel_tasks];
 
 		// read object
 		std::vector<Read*> rds(num_parallel_tasks);
@@ -2066,6 +2068,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			g_psrah[mate].reset(new PatternSourceReadAhead(readahead_factory));
+			done_reading[mate] = false;
 		}
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
 
@@ -2076,11 +2079,13 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
                         pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
 			{
 			  bool success = ret.first;
-			  bool done_reading = ret.second;
-			  if(!success && done_reading) {
-				break;
-			  } else if(!success) {
-				continue;
+			  if(!success) {
+				done_reading[mate] = ret.second;
+				if (done_reading[mate]) {
+					break;
+				} else {
+					continue;
+				}
 			  }
 			}
 
