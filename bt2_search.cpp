@@ -1934,6 +1934,7 @@ static inline bool have_next_read(std::unique_ptr<PatternSourceReadAhead> &g_psr
   return have_read;
 }
 
+// a couple helper functions to allow default constructors to be used
 class AlignmentCacheIfaceBT2 : public AlignmentCacheIface {
 public:
 	AlignmentCacheIfaceBT2()
@@ -1944,6 +1945,15 @@ public:
 
 	AlignmentCacheIfaceBT2(const AlignmentCacheIfaceBT2& other) = delete;
 	AlignmentCacheIfaceBT2& operator=(const AlignmentCacheIfaceBT2& other) = delete;
+};
+
+class SwDriverBT2 : public SwDriver {
+public:
+	SwDriverBT2()
+	: SwDriver(exactCacheCurrentMB * 1024 * 1024) {}
+
+	SwDriverBT2(const SwDriverBT2& other) = delete;
+	SwDriverBT2& operator=(const SwDriverBT2& other) = delete;
 };
 
 /**
@@ -2004,7 +2014,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		std::vector<SeedAligner> al(num_parallel_tasks);
 
-		std::vector<SwDriver> sd(num_parallel_tasks, exactCacheCurrentMB * 1024 * 1024);
+		std::vector<SwDriverBT2> sd(num_parallel_tasks);
 
 		std::vector<SwAligner> sw(num_parallel_tasks);
 		std::vector<SeedResults> shs(num_parallel_tasks);
