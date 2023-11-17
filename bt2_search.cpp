@@ -2118,10 +2118,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			if (!found_unread) break; // nothing else to do
 		   }
 
-			// we can do all of the "mates" in parallel
-#pragma omp parallel for default(shared)
+		   // we could do all of the "mates" in parallel, but the overhead is likely higher than the speedup
+//pragma omp parallel for default(shared)
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if (!done_reading[mate]) { // only do it for valid ones
+			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
 			   TReadId rdid = rds[mate]->rdid;
 
 				// Align this read/pair
@@ -2174,8 +2174,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					sd[mate].nextRead(false, rdlen, 0); // SwDriver
 					minedfw[mate] = 0;
 					minedrc[mate] = 0;
-					// Calculate nceil
-					const int nceil = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
 					exhaustive[mate] = false;
 					rnd[mate].init(rds[mate]->seed);
 
@@ -2190,11 +2188,21 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							assert(shs[mate].empty());
 						}
 					}
-					size_t eePeEeltLimit = std::numeric_limits<size_t>::max();
 					// Whether we're done with mate
 					done[mate] = !filt[mate];
 
 					nelt[mate] = 0;
+			} // if (!done_reading[mate])
+		   } // for mate
+
+		   // we can do all of the "mates" in parallel
+#pragma omp parallel for default(shared)
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
+					const size_t rdlen = rds[mate]->length();
+					// Calculate nceil
+					const int nceil = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
+					size_t eePeEeltLimit = std::numeric_limits<size_t>::max();
 					// Find end-to-end exact alignments for each read
 					{
                                                 {
@@ -2619,6 +2627,14 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							}
 						}
 					} // end loop over reseeding rounds
+			} // if (!done_reading[mate])
+		   } // for mate
+
+		   // we could do all of the "mates" in parallel, but the overhead is likely higher than the speedup
+//pragma omp parallel for default(shared)
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
+					const size_t rdlen = rds[mate]->length();
 					if(seedsTried[mate] > 0) {
 						prm[mate].seedPctUnique = (float)nUniqueSeeds[mate] / seedsTried[mate];
 						prm[mate].seedPctRep = (float)nRepeatSeeds[mate] / seedsTried[mate];
