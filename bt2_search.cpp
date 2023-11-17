@@ -2077,31 +2077,42 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
 
-		// Note: Will use mate to distinguish between tread-specific elements
-#pragma omp parallel for default(shared)
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-                  while (!done_reading[mate]) { // Must read the whole cached buffer
-			{
-			  done_reading[mate] = !have_next_read(g_psrah[mate]);
-			  if (done_reading[mate]) break;
-			}
-			{
-                          pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
-			  bool success = ret.first;
-			  if(!success) {
-				done_reading[mate] = ret.second;
-				if (done_reading[mate]) {
+		while (true) { // will exit with a break
+		   {
+			bool found_unread = false;
+			// Note: Will use mate to distinguish between tread-specific elements
+			// Note2: we could potentially run this as OMP, but the overhead is likely higher than the speedup
+			for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+				while (!done_reading[mate]) { // Must read the whole cached buffer
+					done_reading[mate] = !have_next_read(g_psrah[mate]);
+					if (!done_reading[mate]) {
+						pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
+						bool success = ret.first;
+						if(!success) {
+							done_reading[mate] = ret.second;
+							if (!done_reading[mate]) {
+								// just retry the inner while
+								continue;
+							}
+						}
+					}
+					// if we got here, do not retry inner loop anymore
 					break;
-				} else {
-					continue;
 				}
-			  }
-			}
+				if (!done_reading[mate]) {
+					found_unread = true;
+					ps[mate] = g_psrah[mate].get()->ptr();
+					rds[mate] = &ps[mate]->read_a();
+		    		}
+			} // for mate - found_unread
+			if (!found_unread) break; // nothing else to do
+		   }
 
-			ps[mate] = g_psrah[mate].get()->ptr();
-
-			rds[mate] = &ps[mate]->read_a();	
-			TReadId rdid = rds[mate]->rdid;
+			// we can do all of the "mates" in parallel
+#pragma omp parallel for default(shared)
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if (!done_reading[mate]) { // only do it for valid ones
+			   TReadId rdid = rds[mate]->rdid;
 
 				// Align this read/pair
 				//
@@ -2661,8 +2672,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 					xeq);
 
-		  } // while (!done_reading[mate])
-		} // for mate
+			} // if (!done_reading[mate])
+		   } // for mate
+		} // while(true)
 
 		// Merge in the metrics
 		// Must be done sequentially
