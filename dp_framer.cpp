@@ -86,7 +86,7 @@ bool DynProgFramer::frameSeedExtensionRect(
 	size_t   maxrfgap, // max # of ref gaps permitted in opp mate alignment
 	int64_t  maxns,    // # Ns permitted
 	size_t   maxhalf,  // max width in either direction
-	DPRect&  rect)     // out: DP rectangle
+	DPRect&  rect) const    // out: DP rectangle
 {
 	assert_gt(rdlen, 0);
 	assert_gt(reflen, 0);
