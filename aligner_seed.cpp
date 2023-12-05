@@ -611,7 +611,7 @@ void SeedAligner::searchAllSeeds(
 	sc_ = &pens;
 	read_ = &read;
 	bwops_ = bwedits_ = 0;
-	uint64_t possearches = 0, seedsearches = 0, intrahits = 0, interhits = 0, ooms = 0;
+	uint64_t possearches = 0, seedsearches = 0, ooms = 0;
 
 	/**
 	 * TODO: Define is somewhere else
