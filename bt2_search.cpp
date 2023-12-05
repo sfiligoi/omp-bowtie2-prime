@@ -210,7 +210,6 @@ static uint32_t seedCacheCurrentMB; // # MB to use for current-read seed hit cac
 static uint32_t exactCacheCurrentMB; // # MB to use for current-read seed hit cacheing
 static size_t maxhalf;        // max width on one side of DP table
 static bool scUnMapped;       // consider soft-clipped bases unmapped when calculating TLEN
-static bool doUngapped;       // do ungapped alignment
 static bool xeq;              // use X/= instead of M in CIGAR string
 static size_t maxIters;       // stop after this many extend loop iterations
 static size_t maxUg;          // stop after this many ungap extends
@@ -409,7 +408,6 @@ static void resetOptions() {
 	maxhalf		    = 15;	// max width on one side of DP table
 	scUnMapped	    = false;	// consider soft clipped bases unmapped when calculating TLEN
 	xeq		    = false;	// use =/X instead of M in CIGAR string
-	doUngapped	    = true;	// do ungapped alignment
 	maxIters	    = 400;	// max iterations of extend loop
 	maxUg		    = 300;	// stop after this many ungap extends
 	maxDp		    = 300;	// stop after this many dp extends
@@ -1355,8 +1353,10 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_END_TO_END: localAlign = false; break;
 	case ARG_SSE8: enable8 = true; break;
 	case ARG_SSE8_NO: enable8 = false; break;
-	case ARG_UNGAPPED: doUngapped = true; break;
-	case ARG_UNGAPPED_NO: doUngapped = false; break;
+	case ARG_UNGAPPED:  // silently ignore
+                break;
+	case ARG_UNGAPPED_NO: // silently ignore
+                break;
 	case ARG_NO_DOVETAIL: gDovetailMatesOK = false; break;
 	case ARG_NO_CONTAIN:  gContainMatesOK  = false; break;
 	case ARG_NO_OVERLAP:  gOlapMatesOK     = false; break;
@@ -2259,7 +2259,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									minsc[mate],    // minimum score for valid
 									nceil,          // N ceil for anchor
 									maxhalf,        // max width on one DP side
-									doUngapped,     // do ungapped alignment
 									mxIter,         // max extend loop iters
 									mxUg,           // max # ungapped extends
 									mxDp,           // max # DPs
@@ -2373,7 +2372,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									minsc[mate],    // minimum score for valid
 									nceil,          // N ceil for anchor
 									maxhalf,        // max width on one DP side
-									doUngapped,     // do ungapped alignment
 									mxIter,         // max extend loop iters
 									mxUg,           // max # ungapped extends
 									mxDp,           // max # DPs
@@ -2574,7 +2572,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 										minsc[mate],    // minimum score for valid
 										nceil,          // N ceil for anchor
 										maxhalf,        // max width on one DP side
-										doUngapped,     // do ungapped alignment
 										mxIter,         // max extend loop iters
 										mxUg,           // max # ungapped extends
 										mxDp,           // max # DPs
@@ -3085,7 +3082,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 									nofw[mate],     // don't align forward read
 									norc[mate],     // don't align revcomp read
 									maxhalf,        // max width on one DP side
-									doUngapped,     // do ungapped alignment
 									mxIter[mate],   // max extend loop iters
 									mxUg[mate],     // max # ungapped extends
 									mxDp[mate],     // max # DPs
@@ -3126,7 +3122,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 									minsc[mate],    // minimum score for valid
 									nceil[mate],    // N ceil for anchor
 									maxhalf,        // max width on one DP side
-									doUngapped,     // do ungapped alignment
 									mxIter[mate],   // max extend loop iters
 									mxUg[mate],     // max # ungapped extends
 									mxDp[mate],     // max # DPs
@@ -3257,7 +3252,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 									nofw[mate],     // don't align forward read
 									norc[mate],     // don't align revcomp read
 									maxhalf,        // max width on one DP side
-									doUngapped,     // do ungapped alignment
 									mxIter[mate],   // max extend loop iters
 									mxUg[mate],     // max # ungapped extends
 									mxDp[mate],     // max # DPs
@@ -3298,7 +3292,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 									minsc[mate],    // minimum score for valid
 									nceil[mate],    // N ceil for anchor
 									maxhalf,        // max width on one DP side
-									doUngapped,     // do ungapped alignment
 									mxIter[mate],   // max extend loop iters
 									mxUg[mate],     // max # ungapped extends
 									mxDp[mate],     // max # DPs
@@ -3522,7 +3515,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 										nofw[mate],     // don't align forward read
 										norc[mate],     // don't align revcomp read
 										maxhalf,        // max width on one DP side
-										doUngapped,     // do ungapped alignment
 										mxIter[mate],   // max extend loop iters
 										mxUg[mate],     // max # ungapped extends
 										mxDp[mate],     // max # DPs
@@ -3563,7 +3555,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 										minsc[mate],    // minimum score for valid
 										nceil[mate],    // N ceil for anchor
 										maxhalf,        // max width on one DP side
-										doUngapped,     // do ungapped alignment
 										mxIter[mate],   // max extend loop iters
 										mxUg[mate],     // max # ungapped extends
 										mxDp[mate],     // max # DPs

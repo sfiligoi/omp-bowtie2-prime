@@ -337,7 +337,6 @@ public:
 		TAlScore& minsc,             // minimum score for anchor
 		int nceil,                   // maximum # Ns permitted in ref portion
 		size_t maxhalf,              // maximum width on one side of DP table
-		bool doUngapped,             // do ungapped alignment
 		size_t maxIters,             // stop after this many seed-extend loop iters
 		size_t maxUg,                // max # ungapped extends
 		size_t maxDp,                // max # DPs
@@ -356,6 +355,8 @@ public:
 		bool reportImmediately,      // whether to report hits immediately to mhs
 		bool& exhaustive);
 
+#ifdef SUPPORT_PAIRED
+// NOTE: Unsupported, likely does not work
 	/**
 	 * Given a collection of SeedHits for a read pair, extend seed
 	 * alignments into full alignments and then look for the opposite
@@ -413,6 +414,7 @@ public:
 		bool discord,                // look for discordant alignments?
 		bool mixed,                  // look for unpaired as well as paired alns?
 		bool& exhaustive);
+#endif
 
 	/**
 	 * Prepare for a new read.

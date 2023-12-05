@@ -744,7 +744,6 @@ int SwDriver::extendSeeds(
 	TAlScore& minsc,             // minimum score for anchor
 	int nceil,                   // maximum # Ns permitted in reference portion
 	size_t maxhalf,  	         // max width in either direction for DP tables
-	bool doUngapped,             // do ungapped alignment
 	size_t maxIters,             // stop after this many seed-extend loop iters
 	size_t maxUg,                // stop after this many ungaps
 	size_t maxDp,                // stop after this many dps
@@ -960,11 +959,9 @@ int SwDriver::extendSeeds(
 				// We do #1 here, since it is simple and we have all the seed-hit
 				// information here.  #2 and #3 are handled in the DynProgFramer.
 				int readGaps = 0, refGaps = 0;
-				bool ungapped = false;
 				if(!eeMode) {
 					readGaps = sc.maxReadGaps(minsc, rdlen);
 					refGaps  = sc.maxRefGaps(minsc, rdlen);
-					ungapped = (readGaps == 0 && refGaps == 0);
 				}
 				int state = FOUND_NONE;
 				bool found = false;
@@ -999,44 +996,6 @@ int SwDriver::extendSeeds(
 					found = true;
 					Interval refival(refcoord, 1);
 					seenDiags1_.add(refival);
-				} else if(doUngapped && ungapped) {
-					resUngap_.reset();
-					int al = swa.ungappedAlign(
-						fw ? rd.patFw : rd.patRc,
-						fw ? rd.qual  : rd.qualRev,
-						refcoord,
-						ref,
-						tlen,
-						sc,
-						gReportOverhangs,
-						minsc,
-						resUngap_);
-					Interval refival(refcoord, 1);
-					seenDiags1_.add(refival);
-					prm.nExUgs++;
-					if(al == 0) {
-						prm.nExUgFails++;
-						prm.nUgFail++;
-						if(prm.nUgFail >= maxUgStreak) {
-							return EXTEND_EXCEEDED_SOFT_LIMIT;
-						}
-						continue;
-					} else if(al == -1) {
-						prm.nExUgFails++;
-						prm.nUgFail++; // count this as failure
-						if(prm.nUgFail >= maxUgStreak) {
-							return EXTEND_EXCEEDED_SOFT_LIMIT;
-						}
-					} else {
-						prm.nExUgSuccs++;
-						prm.nUgLastSucc = prm.nExUgs-1;
-						if(prm.nUgFail > prm.nUgFailStreak) {
-							prm.nUgFailStreak = prm.nUgFail;
-						}
-						prm.nUgFail = 0;
-						found = true;
-						state = FOUND_UNGAPPED;
-					}
 				}
 				// int64_t pastedRefoff = (int64_t)wr.toff - rdoff;
 				DPRect rect;
@@ -1261,6 +1220,9 @@ int SwDriver::extendSeeds(
 	// Short-circuited because a limit, e.g. -k, -m or -M, was exceeded
 	return EXTEND_EXHAUSTED_CANDIDATES;
 }
+
+#ifdef SUPPORT_PAIRED
+// NOTE: Unsupported, likely does not work
 
 /**
  * Given a collection of SeedHits for both mates in a read pair, extend seed
@@ -2354,4 +2316,6 @@ int SwDriver::extendSeedsPaired(
 	}
 	return EXTEND_EXHAUSTED_CANDIDATES;
 }
+
+#endif
 
