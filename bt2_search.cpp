@@ -2345,14 +2345,13 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					const size_t rdlen = rds[mate]->length();
 					// Calculate nceil
 					const int nceil = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
-					size_t eePeEeltLimit = std::numeric_limits<size_t>::max();
 					// Find end-to-end exact alignments for each read
 					{
                                                 {
                                                         //const size_t matei = 0;
 							//size_t mate = matemap[matei];
                                                         //const size_t mate = 0;
-							if(!filt[mate] || done[mate] || msinkwrap.state().doneWithMate(true)) {
+							if(done[mate] || msinkwrap.state().doneWithMate(true)) {
 								// nothing to do
 							} else {
 							  nelt[mate] = al[mate].exactSweep(
@@ -2371,7 +2370,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						for(size_t matei = 0; matei < 1; matei++) {
 							//size_t mate = matemap[matei];
                                                         //const size_t mate = matei;
-							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
+							if(nelt[mate] == 0) {
 								shs[mate].clearExactE2eHits();
 								continue;
 							}
@@ -2380,7 +2379,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								done[mate] = true;
 								continue;
 							}
-							assert(filt[mate]);
 							//assert(matei == 0 || paired);
 							assert(!msinkwrap.maxed());
 							assert(msinkwrap.repOk());
@@ -2441,8 +2439,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								// Not done yet
 							} else {
 								//
-								cerr << "Bad return value: " << ret << endl;
-								throw 1;
+								cerr << "Runtime ERROR: Bad return value: " << ret << endl;
+								// We do not have clean exception handling, so just report to the user 
+								done[mate] = true;
 							}
 							if(!done[mate]) {
 								TAlScore perfectScore = sc.perfectScore(rdlen);
@@ -2458,7 +2457,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
                                                 //const size_t matei = 0;
 						//size_t mate = matemap[matei];
                                                 // const size_t mate = 0;
-						if(!filt[mate] || done[mate] || nelt[mate] > eePeEeltLimit) {
+						if(done[mate]) {
 								// Done with this mate
 								shs[mate].clear1mmE2eHits();
 								nelt[mate] = 0;
@@ -2490,7 +2489,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						for(size_t matei = 0; matei < 1; matei++) {
 							// size_t mate = matemap[matei];
 							// const size_t mate = matei;
-							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
+							if(nelt[mate] == 0) {
 								continue;
 							}
 							if(msinkwrap.state().doneWithMate(true)) {
@@ -2555,7 +2554,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							} else {
 								//
 								cerr << "Bad return value: " << ret << endl;
-								throw 1;
+								// We do not have clean exception handling, so just report to the user 
+								done[mate] = true;
 							}
 							if(!done[mate]) {
 								TAlScore perfectScore = sc.perfectScore(rdlen);
@@ -2728,7 +2728,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								} else {
 									//
 									cerr << "Bad return value: " << ret << endl;
-									throw 1;
+									// We do not have clean exception handling, so just report to the user 
+									done[mate] = true;
 								}
 							}
 						} // for(size_t matei = 0; matei < 1; matei++)
@@ -2754,7 +2755,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		
 				const size_t rdlen = rds[mate]->length();
 				size_t totnucs = 0;
-				if(filt[mate]) {
+				{
 					size_t len = rdlen;
 					if(!gNofw && !gNorc) {
 						len *= 2;
@@ -3072,7 +3073,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 							assert(shs[mate].empty());
 						}
 					}
-					size_t eePeEeltLimit = std::numeric_limits<size_t>::max();
+					const size_t eePeEeltLimit = std::numeric_limits<size_t>::max();
 					// Whether we're done with mate1 / mate2
 					bool done[2] = { !filt[0], !filt[1] };
 					size_t nelt[2] = {0, 0};
@@ -3226,7 +3227,8 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 							} else {
 								//
 								cerr << "Bad return value: " << ret << endl;
-								throw 1;
+								// We do not have clean exception handling, so just report to the user 
+								done[mate] = true;
 							}
 							if(!done[mate]) {
 								TAlScore perfectScore = sc.perfectScore(rdlens[mate]);
@@ -3396,7 +3398,8 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 							} else {
 								//
 								cerr << "Bad return value: " << ret << endl;
-								throw 1;
+								// We do not have clean exception handling, so just report to the user 
+								done[mate] = true;
 							}
 							if(!done[mate]) {
 								TAlScore perfectScore = sc.perfectScore(rdlens[mate]);
@@ -3656,7 +3659,8 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 								} else {
 									//
 									cerr << "Bad return value: " << ret << endl;
-									throw 1;
+									// We do not have clean exception handling, so just report to the user 
+									done[mate] = true;
 								}
 							}
 						} // for(size_t matei = 0; matei < 2; matei++)
@@ -4030,6 +4034,7 @@ static void errno_message() {
 	perror("perror error: ");
 }
 
+#if 0
 /**
  * Delete PID file.  Raise error if the file doesn't exist or if
  * we fail to delete it.
@@ -4154,6 +4159,8 @@ static int read_dir(const char* dirname, int* num_pids) {
 	free(fname);
 	return lowest_pid;
 }
+#endif
+
 
 #endif
 /**
