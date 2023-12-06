@@ -2240,24 +2240,16 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					found_unread = true;
 					ps[mate] = g_psrah[mate].get()->ptr();
 					rds[mate] = &ps[mate]->read_a();
-		    		}
-			} // for mate - found_unread
-			if (!found_unread) break; // nothing else to do
-		   }
 
-		   // we could do all of the "mates" in parallel, but the overhead is likely higher than the speedup
-//pragma omp parallel for default(shared)
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
-				AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
-				TReadId rdid = rds[mate]->rdid;
+					AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
+					TReadId rdid = rds[mate]->rdid;
 
-				// Align this read/pair
-				//
-				// Check if there is metrics reporting for us to do.
-				//
-				msinkwrap.prm.reset(); // per-read metrics
-				msinkwrap.prm.doFmString = false;
+					// Align this read/pair
+					//
+					// Check if there is metrics reporting for us to do.
+					//
+					msinkwrap.prm.reset(); // per-read metrics
+					msinkwrap.prm.doFmString = false;
 
 					ca[mate].nextRead(); // clear the cache
 					assert(!ca[mate].aligning());
@@ -2308,7 +2300,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					assert_gt(streak, 0);
 					// Increment counters according to what got filtered
                                         {
-                                                //const size_t mate = 0;
 						if(filt[mate]) {
 							shs[mate].clear();
 							shs[mate].nextRead(*rds[mate]);
@@ -2319,8 +2310,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					done[mate] = !filt[mate];
 
 					nelt[mate] = 0;
-			} // if (!done_reading[mate])
-		   } // for mate
+		    		} // if (!done_reading[mate])
+			} // for mate - found_unread
+			if (!found_unread) break; // nothing else to do
+		   }
 
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
