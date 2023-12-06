@@ -1304,6 +1304,74 @@ protected:
 	StackedAln staln_;
 };
 
+class AlnSinkWrapOne : public AlnSinkWrap {
+public:
+
+	AlnSinkWrapOne(
+		AlnSink& g,                // AlnSink being wrapped
+		const ReportingParams& rp, // Parameters governing reporting
+		Mapq& mapq,                // Mapq calculator
+		size_t threadId) :         // Thread ID
+	AlnSinkWrap(g, rp, mapq, threadId) ,
+	nfilt(false) ,
+	scfilt(false) ,
+	lenfilt(false) ,
+	qcfilt(false) {}
+
+	/**
+	 * Inform global, shared AlnSink object that we're finished with
+	 * this read.  The global AlnSink is responsible for updating
+	 * counters, creating the output record, and delivering the record
+	 * to the appropriate output stream.
+	 */
+	void finishReadOne(
+		const SeedResults *sr,          // seed alignment results
+		bool               exhaust,     // mate  exhausted?
+		RandomSource&      rnd,         // pseudo-random generator
+		ReportingMetrics&  met,         // reporting metrics
+		const PerReadMetrics& prm,      // per-read metrics
+		const Scoring& sc,              // scoring scheme
+		bool suppressSeedSummary = true,
+		bool suppressAlignments = false,
+		bool scUnMapped = false,
+		bool xeq = false) {
+			finishRead(
+					sr,                   // seed results for mate 1
+					NULL,                 // seed results for mate 2 (NULL, since unpired)
+					exhaust,              // exhausted seed hits for mate 1?
+					false,                // exhausted seed hits for mate 2? (false, since upaired)
+					nfilt,
+					false,
+					scfilt,
+					false,
+					lenfilt,
+					true,
+					qcfilt,
+					true,
+					rnd,                  // pseudo-random generator
+					met,                  // reporting metrics
+					prm,                  // per-read metrics
+					sc,                   // scoring scheme
+					true,                 // suppress seed summaries?
+					false,                // suppress alignments?
+					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
+					xeq);
+	}
+
+	bool isFilt() const { return nfilt && scfilt && lenfilt && qcfilt;}
+public:
+	// Keep track of whether mates 1/2 were filtered out due Ns last time
+	bool nfilt;
+	// Keep track of whether mates 1/2 were filtered out due to not having
+	// enough characters to rise about the score threshold.
+	bool scfilt;
+	// Keep track of whether mates 1/2 were filtered out due to not having
+	// more characters than the number of mismatches permitted in a seed.
+	bool lenfilt;
+	// Keep track of whether mates 1/2 were filtered out by upstream qc
+	bool qcfilt;
+};
+
 /**
  * An AlnSink concrete subclass for printing SAM alignments.  The user might
  * want to customize SAM output in various ways.  We encapsulate all these

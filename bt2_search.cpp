@@ -2005,10 +2005,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		// Instantiate a mapping quality calculator
 		std::vector< unique_ptr<Mapq> > bmapq(num_parallel_tasks);
-		std::vector<AlnSinkWrap*> msinkwrap(num_parallel_tasks);
+		std::vector<AlnSinkWrapOne*> msinkwrap(num_parallel_tasks);
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			bmapq[mate].reset(new_mapq(mapqv, scoreMin, sc));
-			msinkwrap[mate] = new AlnSinkWrap(
+			msinkwrap[mate] = new AlnSinkWrapOne(
 							msink,        // global sink
 							rp,           // reporting parameters
 							*bmapq[mate], // MAPQ calculator
@@ -2047,16 +2047,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		bool *exhaustive = new bool[num_parallel_tasks];
 		// Keep track of whether mates 1/2 were filtered out last time through
 		bool *filt = new bool[num_parallel_tasks];
-		// Keep track of whether mates 1/2 were filtered out due Ns last time
-		bool *nfilt = new bool[num_parallel_tasks];
-		// Keep track of whether mates 1/2 were filtered out due to not having
-		// enough characters to rise about the score threshold.
-		bool *scfilt = new bool[num_parallel_tasks];
-		// Keep track of whether mates 1/2 were filtered out due to not having
-		// more characters than the number of mismatches permitted in a seed.
-		bool *lenfilt = new bool[num_parallel_tasks];
-		// Keep track of whether mates 1/2 were filtered out by upstream qc
-		bool *qcfilt = new bool[num_parallel_tasks];
 		// Whether we're done with mate
 		bool *done = new bool[num_parallel_tasks];
 		// Whether we're done with g_psrah mate
@@ -2149,25 +2139,25 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						minsc[mate] = 0;
 					}
 					// N filter; does the read have too many Ns?
-					nfilt[mate] = sc.nFilter(rds[mate]->patFw);
+					msinkwrap[mate]->nfilt = sc.nFilter(rds[mate]->patFw);
 
 					// Score filter; does the read enough character to rise above
 					// the score threshold?
-					scfilt[mate] = sc.scoreFilter(minsc[mate], rdlen);
-					lenfilt[mate] = true;
+					msinkwrap[mate]->scfilt = sc.scoreFilter(minsc[mate], rdlen);
+					msinkwrap[mate]->lenfilt = true;
 					if(rdlen <= (size_t)multiseedMms || rdlen < 2) {
 						if(!gQuiet) printMmsSkipMsg(*ps[mate], paired, true, multiseedMms);
-						lenfilt[mate] = false;
+						msinkwrap[mate]->lenfilt = false;
 					}
 					if(rdlen < 2) {
 						if(!gQuiet) printLenSkipMsg(*ps[mate], paired, true);
-						lenfilt[mate] = false;
+						msinkwrap[mate]->lenfilt = false;
 					}
-					qcfilt[mate] = true;
+					msinkwrap[mate]->qcfilt = true;
 					if(qcFilter) {
-						qcfilt[mate] = (rds[mate]->filter != '0');
+						msinkwrap[mate]->qcfilt = (rds[mate]->filter != '0');
 					}
-					filt[mate] = (nfilt[mate] && scfilt[mate] && lenfilt[mate] && qcfilt[mate]);
+					filt[mate] = msinkwrap[mate]->isFilt();
 					prm[mate].nFilt += (filt[mate] ? 0 : 1);
 					// For each mate...
 					assert(msinkwrap[mate]->empty());
@@ -2686,19 +2676,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 				// Commit and report paired-end/unpaired alignments
 				//uint32_t sd = rds[0]->seed ^ rds[1]->seed;
 				//rnd.init(ROTL(sd, 20));
-				msinkwrap[mate]->finishRead(
+				msinkwrap[mate]->finishReadOne(
 					&shs[mate],           // seed results for mate 1
-					NULL,                 // seed results for mate 2 (NULL, since unpired)
 					exhaustive[mate],     // exhausted seed hits for mate 1?
-					false,                // exhausted seed hits for mate 2? (false, since upaired)
-					nfilt[mate],
-					false,
-					scfilt[mate],
-					false,
-					lenfilt[mate],
-					true,
-					qcfilt[mate],
-					true,
 					rnd[mate],            // pseudo-random generator
 					rpm[mate],            // reporting metrics
 					prm[mate],            // per-read metrics
@@ -2724,10 +2704,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		}
 		delete[] exhaustive;
 		delete[] filt;
-		delete[] nfilt;
-		delete[] scfilt;
-		delete[] lenfilt;
-		delete[] qcfilt;
 		delete[] done;
 	}
 
