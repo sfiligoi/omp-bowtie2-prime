@@ -1961,7 +1961,8 @@ public:
 		Mapq& mapq,                // Mapq calculator
 		size_t threadId) :         // Thread ID
 	AlnSinkWrap(g, rp, mapq, threadId) ,
-	prm() {}
+	prm() ,
+	rpm() {}
 
 	// Set filter subsets, reset counters and return overal filter
 	bool setAndComputeFilter(const bool nfilt_, const bool scfilt_, const bool lenfilt_, const bool qcfilt_) {
@@ -2011,7 +2012,6 @@ public:
 		const SeedResults *sr,          // seed alignment results
 		bool               exhaust,     // mate  exhausted?
 		RandomSource&      rnd,         // pseudo-random generator
-		ReportingMetrics&  met,         // reporting metrics
 		const Scoring& sc,              // scoring scheme
 		bool suppressSeedSummary = true,
 		bool suppressAlignments = false,
@@ -2031,7 +2031,7 @@ public:
 					qcfilt,
 					true,
 					rnd,                  // pseudo-random generator
-					met,                  // reporting metrics
+					rpm,                  // reporting metrics
 					prm,                  // per-read metrics
 					sc,                   // scoring scheme
 					true,                 // suppress seed summaries?
@@ -2088,6 +2088,8 @@ public:
 public:
 	// per-read metrics
 	PerReadMetrics prm;
+	// global metrics, per-thread but will merge at the end
+	ReportingMetrics rpm;
 
 	// Keep track of whether mate was filtered out due Ns last time
 	bool nfilt;
@@ -2173,7 +2175,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		std::vector<SwAligner> sw(num_parallel_tasks);
 		std::vector<SeedResults> shs(num_parallel_tasks);
-		std::vector<ReportingMetrics> rpm(num_parallel_tasks);
 		std::vector<RandomSource> rnd(num_parallel_tasks);
 
 		std::vector< EList<Seed> > seeds(num_parallel_tasks);
@@ -2220,7 +2221,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			// Note: Will use mate to distinguish between tread-specific elements
 			// Note2: we could potentially run this as OMP, but the overhead is likely higher than the speedup
 			for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-				while (!done_reading[mate]) { // Must read the whole cached buffer
+			    while (!done_reading[mate]) { // External loop, including filtering
+
+				while (!done_reading[mate]) { // Internal loop, just buffer reads and retries
 					done_reading[mate] = !have_next_read(g_psrah[mate]);
 					if (!done_reading[mate]) {
 						pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
@@ -2235,9 +2238,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					}
 					// if we got here, do not retry inner loop anymore
 					break;
-				}
+				} // internal while loop
+
 				if (!done_reading[mate]) {
-					found_unread = true;
 					ps[mate] = g_psrah[mate].get()->ptr();
 					rds[mate] = &ps[mate]->read_a();
 
@@ -2298,19 +2301,38 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 					msinkwrap.prm.maxDPFails = streak;
 					assert_gt(streak, 0);
-					// Increment counters according to what got filtered
-                                        {
-						if(filt[mate]) {
-							shs[mate].clear();
-							shs[mate].nextRead(*rds[mate]);
-							assert(shs[mate].empty());
-						}
-					}
+					shs[mate].clear();
+
 					// Whether we're done with mate
 					done[mate] = !filt[mate];
+					// Increment counters according to what got filtered
+					if(filt[mate]) { // done[mate] == false
+						shs[mate].nextRead(*rds[mate]);
+						assert(shs[mate].empty());
 
-					nelt[mate] = 0;
+						nelt[mate] = 0;
+						found_unread = true;
+						break; // we found a good read, can get out
+					} else { // done[mate] == true
+						// we are already done... finalize and read next
+
+						msinkwrap.finalizePRM(0);
+
+						msinkwrap.finishReadOne(
+							&shs[mate],           // seed results for mate 1
+							exhaustive[mate],     // exhausted seed hits for mate 1?
+							rnd[mate],            // pseudo-random generator
+							sc,                   // scoring scheme
+							true,                 // suppress seed summaries?
+							false,                // suppress alignments?
+							scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
+							xeq);
+					}
+
 		    		} // if (!done_reading[mate])
+
+			   } // external while loop
+
 			} // for mate - found_unread
 			if (!found_unread) break; // nothing else to do
 		   }
@@ -2748,7 +2770,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					&shs[mate],           // seed results for mate 1
 					exhaustive[mate],     // exhausted seed hits for mate 1?
 					rnd[mate],            // pseudo-random generator
-					rpm[mate],            // reporting metrics
 					sc,                   // scoring scheme
 					true,                 // suppress seed summaries?
 					false,                // suppress alignments?
@@ -2762,7 +2783,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// Merge in the metrics
 		// Must be done sequentially
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			msink.mergeMetricsUnsafe(rpm[mate]);
+			msink.mergeMetricsUnsafe(g_msinkwrap[mate]->rpm);
 		}
 
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
