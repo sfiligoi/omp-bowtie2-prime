@@ -369,9 +369,6 @@ struct PerReadMetrics {
 		fmString.reset();
 	}
 
-	struct timeval  tv_beg; // timer start to measure how long alignment takes
-	struct timezone tz_beg; // timer start to measure how long alignment takes
-
 	uint64_t nExIters;      // iterations of seed hit extend loop
 
 	uint64_t nExDps;        // # extend DPs run on this read

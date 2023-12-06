@@ -1298,18 +1298,7 @@ static void parseOption(int next_option, const char *arg) {
 		break;
 	}
 	case ARG_READ_TIMES: {
-		sam_print_xt = true;
-		sam_print_xd = true;
-		sam_print_xu = true;
-		sam_print_yl = true;
-		sam_print_ye = true;
-		sam_print_yu = true;
-		sam_print_yr = true;
-		sam_print_zb = true;
-		sam_print_zr = true;
-		sam_print_zf = true;
-		sam_print_zm = true;
-		sam_print_zi = true;
+		cerr << "WARNING: Read_Times not supported" << endl;
 		break;
 	}
 	case ARG_SAM_RG: {
@@ -2120,9 +2109,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 				//
 				prm[mate].reset(); // per-read metrics
 				prm[mate].doFmString = false;
-				if(sam_print_xt) {
-					gettimeofday(&prm[mate].tv_beg, &prm[mate].tz_beg);
-				}
 
 					ca[mate].nextRead(); // clear the cache
 					assert(!ca[mate].aligning());
@@ -2830,9 +2816,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 				//
 				prm.reset(); // per-read metrics
 				prm.doFmString = false;
-				if(sam_print_xt) {
-					gettimeofday(&prm.tv_beg, &prm.tz_beg);
-				}
 
 					ca.nextRead(); // clear the cache
 					assert(!ca.aligning());
@@ -3784,9 +3767,6 @@ static void multiseedSearchWorker_2p5(const size_t num_parallel_tasks) {
 			prm.doFmString = sam_print_zm;
 			// If we're reporting how long each read takes, get the initial time
 			// measurement here
-			if(sam_print_xt) {
-				gettimeofday(&prm.tv_beg, &prm.tz_beg);
-			}
 			// Try to align this read
 			bool paired = !ps->read_b().empty();
 			const size_t rdlen1 = ps->read_a().length();

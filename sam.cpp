@@ -386,17 +386,7 @@ void SamConfig::printAlignedOptFlags(
 		o.append(rgs_.c_str());
 	}
 	if(print_xt_) {
-		// XT:i: Timing
-		WRITE_SEP();
-		struct timeval  tv_end;
-		struct timezone tz_end;
-		gettimeofday(&tv_end, &tz_end);
-		size_t total_usecs =
-			(tv_end.tv_sec  - prm.tv_beg.tv_sec) * 1000000 +
-			(tv_end.tv_usec - prm.tv_beg.tv_usec);
-		itoa10<size_t>(total_usecs, buf);
-		o.append("XT:i:");
-		o.append(buf);
+		/* NOOP, deprecated */
 	}
 	if(print_xd_) {
 		// XD:i: Extend DPs
@@ -736,17 +726,7 @@ void SamConfig::printEmptyOptFlags(
 		o.append(rgs_.c_str());
 	}
 	if(print_xt_) {
-		// XT:i: Timing
-		WRITE_SEP();
-		struct timeval  tv_end;
-		struct timezone tz_end;
-		gettimeofday(&tv_end, &tz_end);
-		size_t total_usecs =
-			(tv_end.tv_sec  - prm.tv_beg.tv_sec) * 1000000 +
-			(tv_end.tv_usec - prm.tv_beg.tv_usec);
-		itoa10<size_t>(total_usecs, buf);
-		o.append("XT:i:");
-		o.append(buf);
+		/* NOOP, deprecated */
 	}
 	if(print_xd_) {
 		// XD:i: Extend DPs
