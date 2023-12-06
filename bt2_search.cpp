@@ -1952,6 +1952,166 @@ public:
 	SwDriverBT2& operator=(const SwDriverBT2& other) = delete;
 };
 
+class AlnSinkWrapOne : public AlnSinkWrap {
+public:
+
+	AlnSinkWrapOne(
+		AlnSink& g,                // AlnSink being wrapped
+		const ReportingParams& rp, // Parameters governing reporting
+		Mapq& mapq,                // Mapq calculator
+		size_t threadId) :         // Thread ID
+	AlnSinkWrap(g, rp, mapq, threadId) ,
+	prm() {}
+
+	// Set filter subsets, reset counters and return overal filter
+	bool setAndComputeFilter(const bool nfilt_, const bool scfilt_, const bool lenfilt_, const bool qcfilt_) {
+		nfilt   = nfilt_;
+		scfilt  = scfilt_;
+		lenfilt = lenfilt_;
+		qcfilt  = qcfilt_;
+
+		// also reset counters
+		seedsTried = 0;
+		nUniqueSeeds = 0;
+		nRepeatSeeds = 0;
+		seedHitTot = 0;
+		for (size_t i=0; i<2; i++) {
+			seedsTriedMS[i] = 0;
+			nUniqueSeedsMS[i] = 0;
+			nRepeatSeedsMS[i] = 0;
+			seedHitTotMS[i] = 0;
+		}
+
+		return nfilt_ && scfilt_ && lenfilt_ && qcfilt_;
+	}
+
+	void updateSHSCounters(const SeedResults& shs) {
+		// shs contain what we need to know to update our seed
+		// summaries for this seeding
+		if(!shs.empty()) {
+			nUniqueSeeds += shs.numUniqueSeeds();
+			nUniqueSeedsMS[0] += shs.numUniqueSeedsStrand(true);
+			nUniqueSeedsMS[1] += shs.numUniqueSeedsStrand(false);
+			nRepeatSeeds += shs.numRepeatSeeds();
+			nRepeatSeedsMS[0] += shs.numRepeatSeedsStrand(true);
+			nRepeatSeedsMS[1] += shs.numRepeatSeedsStrand(false);
+			seedHitTot += shs.numElts();
+			seedHitTotMS[0] += shs.numEltsFw();
+			seedHitTotMS[1] += shs.numEltsRc();
+		}
+	}
+
+	/**
+	 * Inform global, shared AlnSink object that we're finished with
+	 * this read.  The global AlnSink is responsible for updating
+	 * counters, creating the output record, and delivering the record
+	 * to the appropriate output stream.
+	 */
+	void finishReadOne(
+		const SeedResults *sr,          // seed alignment results
+		bool               exhaust,     // mate  exhausted?
+		RandomSource&      rnd,         // pseudo-random generator
+		ReportingMetrics&  met,         // reporting metrics
+		const Scoring& sc,              // scoring scheme
+		bool suppressSeedSummary = true,
+		bool suppressAlignments = false,
+		bool scUnMapped = false,
+		bool xeq = false) {
+			finishRead(
+					sr,                   // seed results for mate 1
+					NULL,                 // seed results for mate 2 (NULL, since unpired)
+					exhaust,              // exhausted seed hits for mate 1?
+					false,                // exhausted seed hits for mate 2? (false, since upaired)
+					nfilt,
+					false,
+					scfilt,
+					false,
+					lenfilt,
+					true,
+					qcfilt,
+					true,
+					rnd,                  // pseudo-random generator
+					met,                  // reporting metrics
+					prm,                  // per-read metrics
+					sc,                   // scoring scheme
+					true,                 // suppress seed summaries?
+					false,                // suppress alignments?
+					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
+					xeq);
+	}
+
+	void finalizePRM(size_t totnucs) {
+		if(seedsTried > 0) {
+			float invSeedsTried = (float) 1.0f/seedsTried;
+			prm.seedPctUnique = nUniqueSeeds * invSeedsTried;
+			prm.seedPctRep    = nRepeatSeeds * invSeedsTried;
+			prm.seedHitAvg    = seedHitTot   * invSeedsTried;
+		} else {
+			prm.seedPctUnique = -1.0f;
+			prm.seedPctRep = -1.0f;
+			prm.seedHitAvg = -1.0f;
+		}
+		for(int i = 0; i < 2; i++) {
+			if(seedsTriedMS[i] > 0) {
+				float invSeedsTried = (float) 1.0f/seedsTriedMS[i];
+				prm.seedPctUniqueMS[i] = nUniqueSeedsMS[i] * invSeedsTried;
+				prm.seedPctRepMS[i]    = nRepeatSeedsMS[i] * invSeedsTried;
+				prm.seedHitAvgMS[i]    = seedHitTotMS[i]   * invSeedsTried;
+			} else {
+				prm.seedPctUniqueMS[i] = -1.0f;
+				prm.seedPctRepMS[i] = -1.0f;
+				prm.seedHitAvgMS[i] = -1.0f;
+			}
+		}
+		for(int i = 2; i < 4; i++) {
+				prm.seedPctUniqueMS[i] = -1.0f;
+				prm.seedPctRepMS[i] = -1.0f;
+				prm.seedHitAvgMS[i] = -1.0f;
+		}
+		if (totnucs > 0) {
+			float invtotnucs = (float) 1.0f/totnucs;
+			prm.seedsPerNuc = seedsTried * invtotnucs;
+			for(int i = 0; i < 2; i++) {
+				prm.seedsPerNucMS[i] = seedsTriedMS[i] * invtotnucs;
+			}
+			for(int i = 2; i < 4; i++) {
+				prm.seedsPerNucMS[i] = 0;
+			}
+		} else {
+			prm.seedsPerNuc = -1;
+			for(int i = 0; i < 4; i++) {
+				prm.seedsPerNucMS[i] = -1;
+			}
+		}
+	}
+
+public:
+	// per-read metrics
+	PerReadMetrics prm;
+
+	// Keep track of whether mate was filtered out due Ns last time
+	bool nfilt;
+	// Keep track of whether mate was filtered out due to not having
+	// enough characters to rise about the score threshold.
+	bool scfilt;
+	// Keep track of whether mate was filtered out due to not having
+	// more characters than the number of mismatches permitted in a seed.
+	bool lenfilt;
+	// Keep track of whether mate was were filtered out by upstream qc
+	bool qcfilt;
+
+	// counters
+	size_t seedsTried;
+	size_t seedsTriedMS[2];
+	size_t nUniqueSeeds;
+	size_t nRepeatSeeds;
+	size_t seedHitTot;
+	size_t nUniqueSeedsMS[2];
+	size_t nRepeatSeedsMS[2];
+	size_t seedHitTotMS[2];
+
+};
+
 /**
  * Called once per thread.  Sets up per-thread pointers to the shared global
  * data structures, creates per-thread structures, then enters the alignment
@@ -1994,10 +2154,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		// Instantiate a mapping quality calculator
 		std::vector< unique_ptr<Mapq> > bmapq(num_parallel_tasks);
-		std::vector<AlnSinkWrapOne*> msinkwrap(num_parallel_tasks);
+		std::vector<AlnSinkWrapOne*> g_msinkwrap(num_parallel_tasks);
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			bmapq[mate].reset(new_mapq(mapqv, scoreMin, sc));
-			msinkwrap[mate] = new AlnSinkWrapOne(
+			g_msinkwrap[mate] = new AlnSinkWrapOne(
 							msink,        // global sink
 							rp,           // reporting parameters
 							*bmapq[mate], // MAPQ calculator
@@ -2017,8 +2177,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		std::vector<RandomSource> rnd(num_parallel_tasks);
 
 		std::vector< EList<Seed> > seeds(num_parallel_tasks);
-
-		std::vector<PerReadMetrics> prm(num_parallel_tasks);
 
 		// Calculate streak length
 		const size_t mxKHMul = (khits > 1) ? (khits-1) : 0;
@@ -2052,16 +2210,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		std::vector<size_t> minedfw(num_parallel_tasks);
 		std::vector<size_t> minedrc(num_parallel_tasks);
 		std::vector<size_t> nelt(num_parallel_tasks);
-
-		std::vector<size_t> seedsTried(num_parallel_tasks);
-		std::vector<size_t> seedsTriedMS(num_parallel_tasks*2);
-		std::vector<size_t> nUniqueSeeds(num_parallel_tasks);
-		std::vector<size_t> nRepeatSeeds(num_parallel_tasks);
-		std::vector<size_t> seedHitTot(num_parallel_tasks);
-		std::vector<size_t> nUniqueSeedsMS(num_parallel_tasks*2);
-		std::vector<size_t> nRepeatSeedsMS(num_parallel_tasks*2);
-		std::vector<size_t> seedHitTotMS(num_parallel_tasks*2);
-
 
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
@@ -2101,59 +2249,62 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 //pragma omp parallel for default(shared)
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
-			   TReadId rdid = rds[mate]->rdid;
+				AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
+				TReadId rdid = rds[mate]->rdid;
 
 				// Align this read/pair
 				//
 				// Check if there is metrics reporting for us to do.
 				//
-				prm[mate].reset(); // per-read metrics
-				prm[mate].doFmString = false;
+				msinkwrap.prm.reset(); // per-read metrics
+				msinkwrap.prm.doFmString = false;
 
 					ca[mate].nextRead(); // clear the cache
 					assert(!ca[mate].aligning());
 					const size_t rdlen = rds[mate]->length();
-					msinkwrap[mate]->nextRead(
+					msinkwrap.nextRead(
 						rds[mate],
 						NULL,
 						rdid,
 						sc.qualitiesMatter());
-					assert(msinkwrap[mate]->inited());
+					assert(msinkwrap.inited());
 					minsc[mate] = scoreMin.f<TAlScore>(rdlen);
 					if(minsc[mate] > 0) {
 						if(!gQuiet) printEEScoreMsg(*ps[mate], paired, true);
 						minsc[mate] = 0;
 					}
-					// N filter; does the read have too many Ns?
-					msinkwrap[mate]->nfilt = sc.nFilter(rds[mate]->patFw);
+					{
+						// N filter; does the read have too many Ns?
+						bool nfilt = sc.nFilter(rds[mate]->patFw);
 
-					// Score filter; does the read enough character to rise above
-					// the score threshold?
-					msinkwrap[mate]->scfilt = sc.scoreFilter(minsc[mate], rdlen);
-					msinkwrap[mate]->lenfilt = true;
-					if(rdlen <= (size_t)multiseedMms || rdlen < 2) {
-						if(!gQuiet) printMmsSkipMsg(*ps[mate], paired, true, multiseedMms);
-						msinkwrap[mate]->lenfilt = false;
+						// Score filter; does the read enough character to rise above
+						// the score threshold?
+						bool scfilt = sc.scoreFilter(minsc[mate], rdlen);
+						bool lenfilt = true;
+						if(rdlen <= (size_t)multiseedMms || rdlen < 2) {
+							if(!gQuiet) printMmsSkipMsg(*ps[mate], paired, true, multiseedMms);
+							lenfilt = false;
+						}
+						if(rdlen < 2) {
+							if(!gQuiet) printLenSkipMsg(*ps[mate], paired, true);
+							lenfilt = false;
+						}
+						bool qcfilt = true;
+						if(qcFilter) {
+							qcfilt = (rds[mate]->filter != '0');
+						}
+						filt[mate] = msinkwrap.setAndComputeFilter(nfilt, scfilt, lenfilt, qcfilt);
 					}
-					if(rdlen < 2) {
-						if(!gQuiet) printLenSkipMsg(*ps[mate], paired, true);
-						msinkwrap[mate]->lenfilt = false;
-					}
-					msinkwrap[mate]->qcfilt = true;
-					if(qcFilter) {
-						msinkwrap[mate]->qcfilt = (rds[mate]->filter != '0');
-					}
-					filt[mate] = msinkwrap[mate]->isFilt();
-					prm[mate].nFilt += (filt[mate] ? 0 : 1);
+					msinkwrap.prm.nFilt += (filt[mate] ? 0 : 1);
 					// For each mate...
-					assert(msinkwrap[mate]->empty());
+					assert(msinkwrap.empty());
 					sd[mate].nextRead(false, rdlen, 0); // SwDriver
 					minedfw[mate] = 0;
 					minedrc[mate] = 0;
 					exhaustive[mate] = false;
 					rnd[mate].init(rds[mate]->seed);
 
-					prm[mate].maxDPFails = streak;
+					msinkwrap.prm.maxDPFails = streak;
 					assert_gt(streak, 0);
 					// Increment counters according to what got filtered
                                         {
@@ -2175,6 +2326,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 #pragma omp parallel for default(shared)
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
+			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
 					const size_t rdlen = rds[mate]->length();
 					// Calculate nceil
 					const int nceil = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
@@ -2185,7 +2337,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
                                                         //const size_t matei = 0;
 							//size_t mate = matemap[matei];
                                                         //const size_t mate = 0;
-							if(!filt[mate] || done[mate] || msinkwrap[mate]->state().doneWithMate(true)) {
+							if(!filt[mate] || done[mate] || msinkwrap.state().doneWithMate(true)) {
 								// nothing to do
 							} else {
 							  nelt[mate] = al[mate].exactSweep(
@@ -2208,15 +2360,15 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								shs[mate].clearExactE2eHits();
 								continue;
 							}
-							if(msinkwrap[mate]->state().doneWithMate(true)) {
+							if(msinkwrap.state().doneWithMate(true)) {
 								shs[mate].clearExactE2eHits();
 								done[mate] = true;
 								continue;
 							}
 							assert(filt[mate]);
 							//assert(matei == 0 || paired);
-							assert(!msinkwrap[mate]->maxed());
-							assert(msinkwrap[mate]->repOk());
+							assert(!msinkwrap.maxed());
+							assert(msinkwrap.repOk());
 							int ret = 0;
                                                         {
 								// Unpaired dynamic programming driver
@@ -2248,8 +2400,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									tighten,        // -M score tightening mode
 									ca[mate],       // seed alignment cache
 									rnd[mate],      // pseudo-random source
-									prm[mate],      // per-read metrics
-									msinkwrap[mate],// for organizing hits
+									msinkwrap.prm,  // per-read metrics
+									&msinkwrap,     // for organizing hits
 									true,           // report hits once found
 									exhaustive[mate]);
 							}
@@ -2261,7 +2413,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								// Not done yet
 							} else if(ret == EXTEND_POLICY_FULFILLED) {
 								// Policy is satisfied for this mate at least
-								if(msinkwrap[mate]->state().doneWithMate(true)) {
+								if(msinkwrap.state().doneWithMate(true)) {
 									done[mate] = true;
 								}
 							} else if(ret == EXTEND_PERFECT_SCORE) {
@@ -2297,8 +2449,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								nelt[mate] = 0;
 						} else {
 							nelt[mate] = 0;
-							assert(!msinkwrap[mate]->maxed());
-							assert(msinkwrap[mate]->repOk());
+							assert(!msinkwrap.maxed());
+							assert(msinkwrap.repOk());
 							//rnd.init(ROTL(rds[mate]->seed, 10));
 							assert(shs[mate].empty());
 							assert(shs[mate].repOk(&ca[mate].current()));
@@ -2326,7 +2478,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							if(nelt[mate] == 0 || nelt[mate] > eePeEeltLimit) {
 								continue;
 							}
-							if(msinkwrap[mate]->state().doneWithMate(true)) {
+							if(msinkwrap.state().doneWithMate(true)) {
 								done[mate] = true;
 								continue;
 							}
@@ -2361,8 +2513,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									tighten,        // -M score tightening mode
 									ca[mate],       // seed alignment cache
 									rnd[mate],      // pseudo-random source
-									prm[mate],      // per-read metrics
-									msinkwrap[mate],// for organizing hits
+									msinkwrap.prm,  // per-read metrics
+									&msinkwrap,     // for organizing hits
 									true,           // report hits once found
 									exhaustive[mate]);
 							}
@@ -2374,7 +2526,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								// Not done yet
 							} else if(ret == EXTEND_POLICY_FULFILLED) {
 								// Policy is satisfied for this mate at least
-								if(msinkwrap[mate]->state().doneWithMate(true)) {
+								if(msinkwrap.state().doneWithMate(true)) {
 									done[mate] = true;
 								}
 							} else if(ret == EXTEND_PERFECT_SCORE) {
@@ -2404,17 +2556,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					const size_t nrounds = min<size_t>(nSeedRounds, interval);
 					int seedlens = { multiseedLen};
 					Constraint gc = Constraint::penaltyFuncBased(scoreMin);
-					seedsTried[mate] = 0;
-					nUniqueSeeds[mate] = 0;
-					nRepeatSeeds[mate] = 0;
-					seedHitTot[mate] = 0;
-					for (size_t imate=0; imate<1; imate++) {
-						size_t mate2 = 2*mate + imate;
-						seedsTriedMS[mate2] = 0;
-						nUniqueSeedsMS[mate2] = 0;
-						nRepeatSeedsMS[mate2] = 0;
-						seedHitTotMS[mate2] = 0;
-					}
 					for(size_t roundi = 0; roundi < nSeedRounds; roundi++) {
 						ca[mate].nextRead(); // Clear cache in preparation for new search
 						shs[mate].clearSeeds();
@@ -2424,7 +2565,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
                                                 	//const size_t mate = 0;
-							if(done[mate] || msinkwrap[mate]->state().doneWithMate(true)) {
+							if(done[mate] || msinkwrap.state().doneWithMate(true)) {
 								// Done with this mate
 								done[mate] = true;
 								continue;
@@ -2441,8 +2582,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							}
 							size_t offset = (interval * roundi) / nrounds;
 							assert(roundi == 0 || offset > 0);
-							assert(!msinkwrap[mate]->maxed());
-							assert(msinkwrap[mate]->repOk());
+							assert(!msinkwrap.maxed());
+							assert(msinkwrap.repOk());
 							//rnd.init(ROTL(rds[mate]->seed, 10));
 							assert(shs[mate].repOk(&ca[mate].current()));
 							// Set up seeds
@@ -2478,9 +2619,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								done[mate] = true;
 								break;
 							}
-							seedsTried[mate] += (inst.first + inst.second);
-							seedsTriedMS[mate * 2 + 0] = instFw.first + instFw.second;
-							seedsTriedMS[mate * 2 + 1] = instRc.first + instRc.second;
+							msinkwrap.seedsTried += (inst.first + inst.second);
+							msinkwrap.seedsTriedMS[0] = instFw.first + instFw.second;
+							msinkwrap.seedsTriedMS[1] = instRc.first + instRc.second;
 							// Align seeds
 							al[mate].searchAllSeeds(
 								seeds[mate],      // search seeds
@@ -2490,7 +2631,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								sc,               // scoring scheme
 								ca[mate],         // alignment cache
 								shs[mate],        // store seed hits here
-								prm[mate]);       // per-read metrics
+								msinkwrap.prm);   // per-read metrics
 							assert(shs[mate].repOk(&ca[mate].current()));
 							if(shs[mate].empty()) {
 								// No seed alignments!  Done with this mate.
@@ -2500,25 +2641,12 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						}
 						// shs contain what we need to know to update our seed
 						// summaries for this seeding
-						for(size_t matei = 0; matei < 1; matei++) {
-							// size_t mate = matei
-							if(!shs[mate].empty()) {
-								nUniqueSeeds[mate] += shs[mate].numUniqueSeeds();
-								nUniqueSeedsMS[mate * 2 + 0] += shs[mate].numUniqueSeedsStrand(true);
-								nUniqueSeedsMS[mate * 2 + 1] += shs[mate].numUniqueSeedsStrand(false);
-								nRepeatSeeds[mate] += shs[mate].numRepeatSeeds();
-								nRepeatSeedsMS[mate * 2 + 0] += shs[mate].numRepeatSeedsStrand(true);
-								nRepeatSeedsMS[mate * 2 + 1] += shs[mate].numRepeatSeedsStrand(false);
-								seedHitTot[mate] += shs[mate].numElts();
-								seedHitTotMS[mate * 2 + 0] += shs[mate].numEltsFw();
-								seedHitTotMS[mate * 2 + 1] += shs[mate].numEltsRc();
-							}
-						}
+						msinkwrap.updateSHSCounters(shs[mate]);
 						{
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
                                                 	// const size_t mate = 0;
-							if(done[mate] || msinkwrap[mate]->state().doneWithMate(true)) {
+							if(done[mate] || msinkwrap.state().doneWithMate(true)) {
 								// Done with this mate
 								done[mate] = true;
 							} else if(shs[mate].empty()) {
@@ -2529,7 +2657,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									continue; // on to the next mate
 								}
 								// Sort seed hits into ranks
-								shs[mate].rankSeedHits(rnd[mate], msinkwrap[mate]->allHits());
+								shs[mate].rankSeedHits(rnd[mate], msinkwrap.allHits());
 								int ret = 0;
                                                                 {
 									// Unpaired dynamic programming driver
@@ -2561,8 +2689,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 										tighten,        // -M score tightening mode
 										ca[mate],       // seed alignment cache
 										rnd[mate],      // pseudo-random source
-										prm[mate],      // per-read metrics
-										msinkwrap[mate],// for organizing hits
+										msinkwrap.prm,  // per-read metrics
+										&msinkwrap,     // for organizing hits
 										true,           // report hits once found
 										exhaustive[mate]);
 								}
@@ -2571,7 +2699,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									// Not done yet
 								} else if(ret == EXTEND_POLICY_FULFILLED) {
 									// Policy is satisfied for this mate at least
-									if(msinkwrap[mate]->state().doneWithMate(true)) {
+									if(msinkwrap.state().doneWithMate(true)) {
 										done[mate] = true;
 									}
 								} else if(ret == EXTEND_PERFECT_SCORE) {
@@ -2607,67 +2735,27 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 //pragma omp parallel for default(shared)
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
-					const size_t rdlen = rds[mate]->length();
-					if(seedsTried[mate] > 0) {
-						prm[mate].seedPctUnique = (float)nUniqueSeeds[mate] / seedsTried[mate];
-						prm[mate].seedPctRep = (float)nRepeatSeeds[mate] / seedsTried[mate];
-						prm[mate].seedHitAvg = (float)seedHitTot[mate] / seedsTried[mate];
-					} else {
-						prm[mate].seedPctUnique = -1.0f;
-						prm[mate].seedPctRep = -1.0f;
-						prm[mate].seedHitAvg = -1.0f;
+		   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate];
+		
+				const size_t rdlen = rds[mate]->length();
+				size_t totnucs = 0;
+				if(filt[mate]) {
+					size_t len = rdlen;
+					if(!gNofw && !gNorc) {
+						len *= 2;
 					}
-					for(int i = 0; i < 2; i++) {
-						if(seedsTriedMS[2*mate + i] > 0) {
-							prm[mate].seedPctUniqueMS[i] = (float)nUniqueSeedsMS[2*mate +i] / seedsTriedMS[2*mate +i];
-							prm[mate].seedPctRepMS[i] = (float)nRepeatSeedsMS[2*mate +i] / seedsTriedMS[2*mate +i];
-							prm[mate].seedHitAvgMS[i] = (float)seedHitTotMS[2*mate +i] / seedsTriedMS[2*mate +i];
-						} else {
-							prm[mate].seedPctUniqueMS[i] = -1.0f;
-							prm[mate].seedPctRepMS[i] = -1.0f;
-							prm[mate].seedHitAvgMS[i] = -1.0f;
-						}
-					}
-					for(int i = 2; i < 4; i++) {
-							prm[mate].seedPctUniqueMS[i] = -1.0f;
-							prm[mate].seedPctRepMS[i] = -1.0f;
-							prm[mate].seedHitAvgMS[i] = -1.0f;
-					}
-					size_t totnucs = 0;
-					if(filt[mate]) {
-						size_t len = rdlen;
-						if(!gNofw && !gNorc) {
-							len *= 2;
-						}
-						totnucs += len;
-					}
-					prm[mate].seedsPerNuc = totnucs > 0 ? ((float)seedsTried[mate] / totnucs) : -1;
-					for(int i = 0; i < 2; i++) {
-						prm[mate].seedsPerNucMS[i] = totnucs > 0 ? ((float)seedsTriedMS[2*mate + i] / totnucs) : -1;
-					}
-					for(int i = 2; i < 4; i++) {
-						prm[mate].seedsPerNucMS[i] = totnucs > 0 ? 0 : -1;
-					}
-					{
-						assert_leq(prm[mate].nExIters, mxIter);
-						assert_leq(prm[mate].nExDps,   mxDp);
-						assert_leq(prm[mate].nMateDps, mxDp);
-						assert_leq(prm[mate].nExUgs,   mxUg);
-						assert_leq(prm[mate].nMateUgs, mxUg);
-						assert_leq(prm[mate].nDpFail,  streak);
-						assert_leq(prm[mate].nUgFail,  streak);
-						assert_leq(prm[mate].nEeFail,  streak);
-					}
+					totnucs += len;
+				}
+				msinkwrap.finalizePRM(totnucs);
 
 				// Commit and report paired-end/unpaired alignments
 				//uint32_t sd = rds[0]->seed ^ rds[1]->seed;
 				//rnd.init(ROTL(sd, 20));
-				msinkwrap[mate]->finishReadOne(
+				msinkwrap.finishReadOne(
 					&shs[mate],           // seed results for mate 1
 					exhaustive[mate],     // exhausted seed hits for mate 1?
 					rnd[mate],            // pseudo-random generator
 					rpm[mate],            // reporting metrics
-					prm[mate],            // per-read metrics
 					sc,                   // scoring scheme
 					true,                 // suppress seed summaries?
 					false,                // suppress alignments?
@@ -2685,8 +2773,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		}
 
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			delete msinkwrap[mate];
-			msinkwrap[mate] = NULL;
+			delete g_msinkwrap[mate];
+			g_msinkwrap[mate] = NULL;
 		}
 		delete[] exhaustive;
 		delete[] filt;
