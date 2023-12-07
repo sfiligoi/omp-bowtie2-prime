@@ -31,6 +31,7 @@
 #include <thread>
 #include <time.h>
 #include <utility>
+#include <execution>
 
 #ifndef _WIN32
 #include <signal.h>
@@ -63,6 +64,10 @@
 #include "outq.h"
 #include "aligner_seed2.h"
 #include "bt2_search.h"
+
+// Include the cpp files to allow inlining
+#include "aligner_seed.cpp"
+#include "aligner_seed2.cpp"
 
 using namespace std;
 
@@ -2136,8 +2141,14 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 	const Scoring&          sc       = *multiseed_sc;
 	const BitPairReference& ref      = *multiseed_refs;
 	AlnSink&                msink    = *multiseed_msink;
+	const Ebwt*             pebwtFw  = multiseed_ebwtFw;
+	const Scoring*          psc      = multiseed_sc;
 
 	bool paired = false;
+
+	// local copy needed for GPU code
+	bool nofw = gNofw;
+	bool norc = gNorc;
 
 	{
 		// Sinks: these are so that we can print tables encoding counts for
@@ -2154,9 +2165,12 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			gReportDiscordant, // report discordang paired-end alignments?
 			gReportMixed);     // report unpaired alignments for paired reads?
 
+		// Note: Cannot use std:vector due to GPU compute not having access to the CPU stack
+
 		// Instantiate a mapping quality calculator
 		std::vector< unique_ptr<Mapq> > bmapq(num_parallel_tasks);
-		std::vector<AlnSinkWrapOne*> g_msinkwrap(num_parallel_tasks);
+		typedef AlnSinkWrapOne* AlnSinkWrapOnePtr;
+		AlnSinkWrapOne* *g_msinkwrap = new AlnSinkWrapOnePtr[num_parallel_tasks];
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			bmapq[mate].reset(new_mapq(mapqv, scoreMin, sc));
 			g_msinkwrap[mate] = new AlnSinkWrapOne(
@@ -2167,17 +2181,17 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		}
 
 		// Interfaces for alignment and seed caches
-		std::vector<AlignmentCacheIfaceBT2> ca(num_parallel_tasks);
+		AlignmentCacheIfaceBT2* ca = new AlignmentCacheIfaceBT2[num_parallel_tasks];
 
-		std::vector<SeedAligner> al(num_parallel_tasks);
+		SeedAligner* al = new SeedAligner[num_parallel_tasks];
 
-		std::vector<SwDriverBT2> sd(num_parallel_tasks);
+		SwDriverBT2* sd = new SwDriverBT2[num_parallel_tasks];
 
-		std::vector<SwAligner> sw(num_parallel_tasks);
-		std::vector<SeedResults> shs(num_parallel_tasks);
-		std::vector<RandomSource> rnd(num_parallel_tasks);
+		SwAligner* sw = new SwAligner[num_parallel_tasks];
+		SeedResults *shs = new SeedResults[num_parallel_tasks];
+		RandomSource* rnd = new RandomSource[num_parallel_tasks];
 
-		std::vector< EList<Seed> > seeds(num_parallel_tasks);
+		EList<Seed>* seeds = new EList<Seed>[num_parallel_tasks];
 
 		// Calculate streak length
 		const size_t mxKHMul = (khits > 1) ? (khits-1) : 0;
@@ -2188,8 +2202,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		// Used by thread with threadid == 1 to measure time elapsed
 		time_t iTime = time(0);
-
-		// Note: Cannot use vector<bool>, since it is not thread-safe
 
 		// Keep track of whether last search was exhaustive for mates 1 and 2
 		bool *exhaustive = new bool[num_parallel_tasks];
@@ -2207,16 +2219,18 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		}
 
 		// read object
-		std::vector<Read*> rds(num_parallel_tasks);
+		typedef Read* ReadPtr;
+		Read* *rds = new ReadPtr[num_parallel_tasks];
 		// Calculate the minimum valid score threshold for the read
-		std::vector<TAlScore> minsc(num_parallel_tasks);
+		TAlScore* minsc = new TAlScore[num_parallel_tasks];
 
-		std::vector<size_t> nelt(num_parallel_tasks);
-		std::vector<int> nceil(num_parallel_tasks);
+		size_t* nelt = new size_t[num_parallel_tasks];
+		int* nceil = new int[num_parallel_tasks];
 
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
 
+		// matemap vector is local to CPU
 		std::vector<size_t> matemap(num_parallel_tasks);
 		size_t current_num_parallel_tasks = num_parallel_tasks;
 
@@ -2342,6 +2356,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   }
 
 		   // ASSERT: done[:] == false
+		   matemap.resize(num_parallel_tasks);
 		   current_num_parallel_tasks = 0;
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) {
@@ -2349,38 +2364,49 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 				current_num_parallel_tasks++;
 			}
 		   }
+		   matemap.resize(current_num_parallel_tasks);
 
 		   // Expected fraction of mates: 100%
 		   // we can do all of the "mates" in parallel
+#if 0
 #pragma omp parallel for default(shared)
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
 			const size_t mate=matemap[fidx];
+#else
+		   std::for_each(std::execution::par_unseq, matemap.begin(), matemap.end(),
+			[g_msinkwrap,nelt,al,pebwtFw,rds,psc,shs,ybits,nofw,norc](size_t mate) mutable {
+#endif
 			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate];
 					// Find end-to-end exact alignments for each read
 					size_t minedfw = 0;
 					size_t minedrc = 0;
 					nelt[mate] = al[mate].exactSweep(
-								ebwtFw,        // index
+								*pebwtFw,        // index
 								*rds[mate],    // read
-								sc,            // scoring scheme
-								gNofw,         // nofw?
-								gNorc,         // norc?
+								*psc,            // scoring scheme
+								nofw,         // nofw?
+								norc,         // norc?
 								2,             // max # edits we care about
 								minedfw,       // minimum # edits for fw mate
 								minedrc,       // minimum # edits for rc mate
 								true,          // report 0mm hits
 								shs[mate]);     // put end-to-end results here
-					bool yfw = minedfw <= 1 && !gNofw;
-					bool yrc = minedrc <= 1 && !gNorc;
+					bool yfw = minedfw <= 1 && !nofw;
+					bool yrc = minedrc <= 1 && !norc;
 					// encode the two together, as they always use them together
 					ybits[mate] = (yfw ? 1 : 0) | (yrc ? 2 : 0);
 					if(nelt[mate] == 0) {
 						shs[mate].clearExactE2eHits();
 					}
 		   } // for mate
+#if 0
+#else
+		   );
+#endif
 	
 		   // ASSERT: done[:] == false
 		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
+		   matemap.resize(num_parallel_tasks);
 		   current_num_parallel_tasks = 0;
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if ((!done_reading[mate]) && (nelt[mate] != 0)) {
@@ -2837,11 +2863,27 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			delete g_msinkwrap[mate];
 			g_msinkwrap[mate] = NULL;
 		}
+		delete [] g_msinkwrap;
+
 		delete[] exhaustive;
 		delete[] filt;
 		delete[] ybits;
 		delete[] done;
 		delete[] done_reading;
+
+		delete[] ybits;
+		delete[] rds;
+		delete[] minsc;
+		delete[] nelt; 
+		delete[] nceil;
+
+		delete[] ca;
+		delete[] al;
+		delete[] sd;
+		delete[] sw;
+		delete[] shs;
+		delete[] rnd;
+		delete[] seeds;
 	}
 
 	return;
@@ -4384,7 +4426,9 @@ static void driver(
 		cerr << "About to initialize fw Ebwt: "; logTime(cerr, true);
 	}
 	adjIdxBase = adjustEbwtBase(argv0, bt2indexBase, gVerbose);
-	Ebwt ebwt(
+
+	// cannot use stack objects on GPUs
+	std::unique_ptr<Ebwt> pebwt( new Ebwt(
 		adjIdxBase,
 		0,        // index is colorspace
 		-1,       // fw index
@@ -4401,7 +4445,8 @@ static void driver(
 		gVerbose, // whether to be talkative
 		startVerbose, // talkative during initialization
 		false /*passMemExc*/,
-		sanityCheck);
+		sanityCheck));
+	Ebwt& ebwt = *(pebwt.get());
 
 	if(sanityCheck && !os.empty()) {
 		// Sanity check number of patterns and pattern lengths in Ebwt
@@ -4438,7 +4483,8 @@ static void driver(
 			cerr << "Warning: Match bonus always = 0 in --end-to-end mode; ignoring user setting" << endl;
 			bonusMatch = 0;
 		}
-		Scoring sc(
+		// cannot use stack objects on GPUs
+		std::unique_ptr<Scoring> psc( new Scoring(
 			bonusMatch,     // constant reward for match
 			penMmcType,     // how to penalize mismatches
 			penMmcMax,      // max mm pelanty
@@ -4452,7 +4498,8 @@ static void driver(
 			penRfGapConst,  // constant coeff for ref gap cost
 			penRdGapLinear, // linear coeff for read gap cost
 			penRfGapLinear, // linear coeff for ref gap cost
-			gGapBarrier);   // # rows at top/bot only entered diagonally
+			gGapBarrier));  // # rows at top/bot only entered diagonally
+		Scoring& sc = *(psc.get());
 		EList<size_t> reflens;
 		for(size_t i = 0; i < ebwt.nPat(); i++) {
 			reflens.push_back(ebwt.plen()[i]);
@@ -4542,7 +4589,8 @@ static void driver(
 			}
 
 			// We need the mirror index if mismatches are allowed
-			Ebwt ebwtBw = Ebwt(
+			// cannot use stack objects on GPUs
+			std::unique_ptr<Ebwt> pebwtBw( new Ebwt(
 				adjIdxBase + ".rev",
 				0,       // index is colorspace
 				1,       // TODO: maybe not
@@ -4559,7 +4607,8 @@ static void driver(
 				gVerbose,    // whether to be talkative
 				startVerbose, // talkative during initialization
 				false /*passMemExc*/,
-				sanityCheck);
+				sanityCheck));
+			Ebwt& ebwtBw = *(pebwtBw.get());
 
 			multiseedSearch(
 				sc,      // scoring scheme

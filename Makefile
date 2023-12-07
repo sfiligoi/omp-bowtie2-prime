@@ -30,7 +30,7 @@ HEADERS := $(wildcard *.h)
 BOWTIE_MM := 1
 BOWTIE_SHARED_MEM :=
 
-CXXFLAGS += -std=c++11
+CXXFLAGS += -std=c++17 -gpu=ccall -stdpar=gpu -Minfo=accel
 
 NGS_VER ?= 2.10.2
 VDB_VER ?= 2.10.2
@@ -161,13 +161,11 @@ endif
 
 SHARED_CPPS :=  ccnt_lut.cpp ref_read.cpp alphabet.cpp shmem.cpp \
   edit.cpp bt2_locks.cpp bt2_idx.cpp bt2_io.cpp bt2_util.cpp \
-  reference.cpp ds.cpp multikey_qsort.cpp limit.cpp \
+  reference.cpp ds.cpp multikey_qsort.cpp \
   random_source.cpp
 
 SEARCH_CPPS :=  qual.cpp pat.cpp sam.cpp \
   read_qseq.cpp aligner_seed_policy.cpp \
-  aligner_seed.cpp \
-  aligner_seed2.cpp \
   aligner_sw.cpp \
   aligner_sw_driver.cpp aligner_cache.cpp \
   aligner_result.cpp ref_coord.cpp mask.cpp \
