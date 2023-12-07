@@ -2218,6 +2218,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
 
+		std::vector<size_t> matemap(num_parallel_tasks);
+		size_t current_num_parallel_tasks = num_parallel_tasks;
+
 		while (true) { // will exit with a break
 		   {
 			bool found_unread = false;
@@ -2340,10 +2343,18 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   }
 
 		   // ASSERT: done[:] == false
+		   current_num_parallel_tasks = 0;
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if (!done_reading[mate]) {
+				matemap[ current_num_parallel_tasks ] = mate;
+				current_num_parallel_tasks++;
+			}
+		   }
+
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
+		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+			const size_t mate=matemap[fidx];
 			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate];
 					// Find end-to-end exact alignments for each read
 					size_t minedfw = 0;
@@ -2364,15 +2375,22 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					if(nelt[mate] == 0) {
 						shs[mate].clearExactE2eHits();
 					}
-			} // if (!done_reading[mate])
 		   } // for mate
 	
 		   // ASSERT: done[:] == false
 		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
+		   current_num_parallel_tasks = 0;
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if ((!done_reading[mate]) && (nelt[mate] != 0)) {
+				matemap[ current_num_parallel_tasks ] = mate;
+				current_num_parallel_tasks++;
+			}
+		   }
+
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if ((!done_reading[mate]) && (nelt[mate] != 0)) { // only do it for valid ones, to handle end tails
+		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+			const size_t mate=matemap[fidx];
 			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
 					const size_t rdlen = rds[mate]->length();
 
@@ -2456,13 +2474,20 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 					// reset nelt[:]=0 for next iteration
 					nelt[mate] = 0;
-			} // if (!done_reading[mate])
 		   } // for mate
 	
+		   current_num_parallel_tasks = 0;
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if ( (!done_reading[mate]) && (!done[mate]) && (yfw[mate] || yrc[mate]) )  {
+				matemap[ current_num_parallel_tasks ] = mate;
+				current_num_parallel_tasks++;
+			}
+		   }
+
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if ((!done_reading[mate]) && (!done[mate]) && (yfw[mate] || yrc[mate]) ) {
+		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+			const size_t mate=matemap[fidx];
 					// 1-mismatch
 					// Clear out the exact hits
 					al[mate].oneMmSearch(
@@ -2477,14 +2502,21 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									true,           // do 1mm
 									shs[mate]);     // seed hits (hits installed here)
 					nelt[mate] = shs[mate].num1mmE2eHits();
-			} // if (!done_reading[mate])
 		   } // for mate
 	
 		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
+		   current_num_parallel_tasks = 0;
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if ((!done_reading[mate])  && (!done[mate]) && (nelt[mate] != 0)) {
+				matemap[ current_num_parallel_tasks ] = mate;
+				current_num_parallel_tasks++;
+			}
+		   }
+
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if ((!done_reading[mate])  && (!done[mate]) && (nelt[mate] != 0)) { // only do it for valid ones, to handle end tails
+		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+			const size_t mate=matemap[fidx];
 			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
 					const size_t rdlen = rds[mate]->length();
 
@@ -2554,13 +2586,20 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									done[mate] = true;
 								}
 							}
-			} // if (!done_reading[mate])
 		   } // for mate
 	
+		   current_num_parallel_tasks = 0;
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if ((!done_reading[mate])  && (!done[mate]) ) {
+				matemap[ current_num_parallel_tasks ] = mate;
+				current_num_parallel_tasks++;
+			}
+		   }
+
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if ((!done_reading[mate])  && (!done[mate])) { // only do it for valid ones, to handle end tails
+		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+			const size_t mate=matemap[fidx];
 			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
 					const size_t rdlen = rds[mate]->length();
 
@@ -2743,11 +2782,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							}
 						}
 					} // end loop over reseeding rounds
-			} // if (!done_reading[mate])
 		   } // for mate
 
 		   // we could do all of the "mates" in parallel, but the overhead is likely higher than the speedup
-//pragma omp parallel for default(shared)
+#pragma omp parallel for default(shared)
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
 		   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate];
