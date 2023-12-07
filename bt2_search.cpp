@@ -2198,8 +2198,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// Whether we're done with mate
 		bool *done = new bool[num_parallel_tasks];
 
-		bool *yfw = new bool[num_parallel_tasks];
-		bool *yrc = new bool[num_parallel_tasks];
+		uint8_t *ybits = new uint8_t[num_parallel_tasks];
 
 		// Whether we're done with g_psrah mate
 		bool *done_reading = new bool[num_parallel_tasks];
@@ -2351,6 +2350,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			}
 		   }
 
+		   // Expected fraction of mates: 100%
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
@@ -2370,8 +2370,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								minedrc,       // minimum # edits for rc mate
 								true,          // report 0mm hits
 								shs[mate]);     // put end-to-end results here
-					yfw[mate] = minedfw <= 1 && !gNofw;
-					yrc[mate] = minedrc <= 1 && !gNorc;
+					bool yfw = minedfw <= 1 && !gNofw;
+					bool yrc = minedrc <= 1 && !gNorc;
+					// encode the two together, as they always use them together
+					ybits[mate] = (yfw ? 1 : 0) | (yrc ? 2 : 0);
 					if(nelt[mate] == 0) {
 						shs[mate].clearExactE2eHits();
 					}
@@ -2387,6 +2389,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			}
 		   }
 
+		   // Expected fraction of mates: 33%
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
@@ -2478,16 +2481,20 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 	
 		   current_num_parallel_tasks = 0;
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if ( (!done_reading[mate]) && (!done[mate]) && (yfw[mate] || yrc[mate]) )  {
+			if ( (!done_reading[mate]) && (!done[mate]) && (ybits[mate]!=0) )  {
 				matemap[ current_num_parallel_tasks ] = mate;
 				current_num_parallel_tasks++;
 			}
 		   }
 
+		   // Expected fraction of mates: 50%
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
 			const size_t mate=matemap[fidx];
+					// ybits[mate]!=0 equivalent to yfw || yrc
+					bool not_yfw = (ybits[mate] & 1) ==0;
+					bool not_yrc = (ybits[mate] & 2) ==0;
 					// 1-mismatch
 					// Clear out the exact hits
 					al[mate].oneMmSearch(
@@ -2496,8 +2503,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									*rds[mate],     // read
 									sc,             // scoring scheme
 									minsc[mate],    // minimum score
-									!yfw[mate],     // don't align forward read
-									!yrc[mate],     // don't align revcomp read
+									not_yfw,        // don't align forward read
+									not_yrc,        // don't align revcomp read
 									false,          // do exact match
 									true,           // do 1mm
 									shs[mate]);     // seed hits (hits installed here)
@@ -2513,6 +2520,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			}
 		   }
 
+		   // Expected fraction of mates: 20%
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
@@ -2596,6 +2604,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			}
 		   }
 
+		   // Expected fraction of mates: 95%+
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
@@ -2830,8 +2839,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		}
 		delete[] exhaustive;
 		delete[] filt;
-		delete[] yfw;
-		delete[] yrc;
+		delete[] ybits;
 		delete[] done;
 		delete[] done_reading;
 	}
