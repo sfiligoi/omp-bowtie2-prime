@@ -2197,6 +2197,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		bool *filt = new bool[num_parallel_tasks];
 		// Whether we're done with mate
 		bool *done = new bool[num_parallel_tasks];
+
+		bool *yfw = new bool[num_parallel_tasks];
+		bool *yrc = new bool[num_parallel_tasks];
+
 		// Whether we're done with g_psrah mate
 		bool *done_reading = new bool[num_parallel_tasks];
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
@@ -2208,9 +2212,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// Calculate the minimum valid score threshold for the read
 		std::vector<TAlScore> minsc(num_parallel_tasks);
 
-		std::vector<size_t> minedfw(num_parallel_tasks);
-		std::vector<size_t> minedrc(num_parallel_tasks);
 		std::vector<size_t> nelt(num_parallel_tasks);
+		std::vector<int> nceil(num_parallel_tasks);
 
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
@@ -2294,8 +2297,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					// For each mate...
 					assert(msinkwrap.empty());
 					sd[mate].nextRead(false, rdlen, 0); // SwDriver
-					minedfw[mate] = 0;
-					minedrc[mate] = 0;
 					exhaustive[mate] = false;
 					rnd[mate].init(rds[mate]->seed);
 
@@ -2310,6 +2311,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						shs[mate].nextRead(*rds[mate]);
 						assert(shs[mate].empty());
 
+						nceil[mate] = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
 						nelt[mate] = 0;
 						found_unread = true;
 						break; // we found a good read, can get out
@@ -2337,55 +2339,48 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			if (!found_unread) break; // nothing else to do
 		   }
 
+		   // ASSERT: done[:] == false
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
-			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
-					const size_t rdlen = rds[mate]->length();
-					// Calculate nceil
-					const int nceil = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
+			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate];
 					// Find end-to-end exact alignments for each read
-					{
-                                                {
-                                                        //const size_t matei = 0;
-							//size_t mate = matemap[matei];
-                                                        //const size_t mate = 0;
-							if(done[mate] || msinkwrap.state().doneWithMate(true)) {
-								// nothing to do
-							} else {
-							  nelt[mate] = al[mate].exactSweep(
+					size_t minedfw = 0;
+					size_t minedrc = 0;
+					nelt[mate] = al[mate].exactSweep(
 								ebwtFw,        // index
 								*rds[mate],    // read
 								sc,            // scoring scheme
 								gNofw,         // nofw?
 								gNorc,         // norc?
 								2,             // max # edits we care about
-								minedfw[mate], // minimum # edits for fw mate
-								minedrc[mate], // minimum # edits for rc mate
+								minedfw,       // minimum # edits for fw mate
+								minedrc,       // minimum # edits for rc mate
 								true,          // report 0mm hits
 								shs[mate]);     // put end-to-end results here
-							}
-						}
-						for(size_t matei = 0; matei < 1; matei++) {
-							//size_t mate = matemap[matei];
-                                                        //const size_t mate = matei;
-							if(nelt[mate] == 0) {
-								shs[mate].clearExactE2eHits();
-								continue;
-							}
-							if(msinkwrap.state().doneWithMate(true)) {
-								shs[mate].clearExactE2eHits();
-								done[mate] = true;
-								continue;
-							}
-							//assert(matei == 0 || paired);
+					yfw[mate] = minedfw <= 1 && !gNofw;
+					yrc[mate] = minedrc <= 1 && !gNorc;
+					if(nelt[mate] == 0) {
+						shs[mate].clearExactE2eHits();
+					}
+			} // if (!done_reading[mate])
+		   } // for mate
+	
+		   // ASSERT: done[:] == false
+		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
+		   // we can do all of the "mates" in parallel
+#pragma omp parallel for default(shared)
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if ((!done_reading[mate]) && (nelt[mate] != 0)) { // only do it for valid ones, to handle end tails
+			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
+					const size_t rdlen = rds[mate]->length();
+
+					// Find end-to-end exact alignments for each read, part 2
 							assert(!msinkwrap.maxed());
 							assert(msinkwrap.repOk());
-							int ret = 0;
-                                                        {
-								// Unpaired dynamic programming driver
-								ret = sd[mate].extendSeeds(
+							// Unpaired dynamic programming driver
+							int	ret = sd[mate].extendSeeds(
 									*rds[mate],     // read
 									true,           // mate #1?
 									shs[mate],      // seed hits
@@ -2398,7 +2393,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									0,              // length of a seed
 									0,              // interval between seeds
 									minsc[mate],    // minimum score for valid
-									nceil,          // N ceil for anchor
+									nceil[mate],    // N ceil for anchor
 									maxhalf,        // max width on one DP side
 									mxIter,         // max extend loop iters
 									mxUg,           // max # ungapped extends
@@ -2417,7 +2412,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									&msinkwrap,     // for organizing hits
 									true,           // report hits once found
 									exhaustive[mate]);
-							}
 							assert_gt(ret, 0);
 							// Clear out the exact hits so that we don't try to
 							// extend them again later!
@@ -2445,61 +2439,58 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							}
 							if(!done[mate]) {
 								TAlScore perfectScore = sc.perfectScore(rdlen);
-								if(!done[mate] && minsc[mate] == perfectScore) {
+								if(minsc[mate] == perfectScore) {
 									done[mate] = true;
 								}
 							}
-						}
-					}
-
-					// 1-mismatch
-					{
-                                                //const size_t matei = 0;
-						//size_t mate = matemap[matei];
-                                                // const size_t mate = 0;
-						if(done[mate]) {
-								// Done with this mate
+ 
+							if (done[mate]) {
+								// Done with this mate, cleanup
 								shs[mate].clear1mmE2eHits();
-								nelt[mate] = 0;
-						} else {
-							nelt[mate] = 0;
-							assert(!msinkwrap.maxed());
-							assert(msinkwrap.repOk());
-							//rnd.init(ROTL(rds[mate]->seed, 10));
-							assert(shs[mate].empty());
-							assert(shs[mate].repOk(&ca[mate].current()));
-							bool yfw = minedfw[mate] <= 1 && !gNofw;
-							bool yrc = minedrc[mate] <= 1 && !gNorc;
-							if(yfw || yrc) {
-								// Clear out the exact hits
-								al[mate].oneMmSearch(
+							} else {
+								// We are still done, but different cleanup path (legacy)
+								if(msinkwrap.state().doneWithMate(true)) {
+									done[mate] = true;
+								}
+							}
+
+					// reset nelt[:]=0 for next iteration
+					nelt[mate] = 0;
+			} // if (!done_reading[mate])
+		   } // for mate
+	
+		   // we can do all of the "mates" in parallel
+#pragma omp parallel for default(shared)
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if ((!done_reading[mate]) && (!done[mate]) && (yfw[mate] || yrc[mate]) ) {
+					// 1-mismatch
+					// Clear out the exact hits
+					al[mate].oneMmSearch(
 									&ebwtFw,        // BWT index
 									ebwtBw,         // BWT' index
 									*rds[mate],     // read
 									sc,             // scoring scheme
 									minsc[mate],    // minimum score
-									!yfw,           // don't align forward read
-									!yrc,           // don't align revcomp read
+									!yfw[mate],     // don't align forward read
+									!yrc[mate],     // don't align revcomp read
 									false,          // do exact match
 									true,           // do 1mm
 									shs[mate]);     // seed hits (hits installed here)
-								nelt[mate] = shs[mate].num1mmE2eHits();
-							}
-						}
-						for(size_t matei = 0; matei < 1; matei++) {
-							// size_t mate = matemap[matei];
-							// const size_t mate = matei;
-							if(nelt[mate] == 0) {
-								continue;
-							}
-							if(msinkwrap.state().doneWithMate(true)) {
-								done[mate] = true;
-								continue;
-							}
-							int ret = 0;
-                                                        {
-								// Unpaired dynamic programming driver
-								ret = sd[mate].extendSeeds(
+					nelt[mate] = shs[mate].num1mmE2eHits();
+			} // if (!done_reading[mate])
+		   } // for mate
+	
+		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
+		   // we can do all of the "mates" in parallel
+#pragma omp parallel for default(shared)
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if ((!done_reading[mate])  && (!done[mate]) && (nelt[mate] != 0)) { // only do it for valid ones, to handle end tails
+			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
+					const size_t rdlen = rds[mate]->length();
+
+					// 1-mismatch, part 2
+							// Unpaired dynamic programming driver
+							int	ret = sd[mate].extendSeeds(
 									*rds[mate],     // read
 									true,           // mate #1?
 									shs[mate],      // seed hits
@@ -2512,7 +2503,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									0,              // length of a seed
 									0,              // interval between seeds
 									minsc[mate],    // minimum score for valid
-									nceil,          // N ceil for anchor
+									nceil[mate],    // N ceil for anchor
 									maxhalf,        // max width on one DP side
 									mxIter,         // max extend loop iters
 									mxUg,           // max # ungapped extends
@@ -2531,7 +2522,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									&msinkwrap,     // for organizing hits
 									true,           // report hits once found
 									exhaustive[mate]);
-							}
+
 							assert_gt(ret, 0);
 							// Clear out the 1mm hits so that we don't try to
 							// extend them again later!
@@ -2559,12 +2550,20 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							}
 							if(!done[mate]) {
 								TAlScore perfectScore = sc.perfectScore(rdlen);
-								if(!done[mate] && minsc[mate] == perfectScore) {
+								if(minsc[mate] == perfectScore) {
 									done[mate] = true;
 								}
 							}
-						}
-					}
+			} // if (!done_reading[mate])
+		   } // for mate
+	
+		   // we can do all of the "mates" in parallel
+#pragma omp parallel for default(shared)
+		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			if ((!done_reading[mate])  && (!done[mate])) { // only do it for valid ones, to handle end tails
+			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
+					const size_t rdlen = rds[mate]->length();
+
 					// Calculate interval length for both mates
 					const int interval = max((int)msIval.f<int>((double)rdlen), 1);
 					// Calculate # seed rounds for each mate
@@ -2689,7 +2688,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 										seedlens,       // length of a seed
 										interval,       // interval between seeds
 										minsc[mate],    // minimum score for valid
-										nceil,          // N ceil for anchor
+										nceil[mate],    // N ceil for anchor
 										maxhalf,        // max width on one DP side
 										mxIter,         // max extend loop iters
 										mxUg,           // max # ungapped extends
@@ -2793,7 +2792,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		}
 		delete[] exhaustive;
 		delete[] filt;
+		delete[] yfw;
+		delete[] yrc;
 		delete[] done;
+		delete[] done_reading;
 	}
 
 	return;
