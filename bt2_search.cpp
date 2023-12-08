@@ -2368,13 +2368,18 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		   // Expected fraction of mates: 100%
 		   // we can do all of the "mates" in parallel
-#if 0
-#pragma omp parallel for default(shared)
-		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-			const size_t mate=matemap[fidx];
-#else
+#if defined(USE_ACC_STDPAR)
 		   std::for_each(std::execution::par_unseq, matemap.begin(), matemap.end(),
 			[g_msinkwrap,nelt,al,pebwtFw,rds,psc,shs,ybits,nofw,norc](size_t mate) mutable {
+#else
+
+#if defined(USE_ACC_CPU)
+#pragma omp parallel for default(shared)
+#else
+#pragma acc parallel loop gang vector vector_length(32)
+#endif
+		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+			const size_t mate=matemap[fidx];
 #endif
 			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate];
 					// Find end-to-end exact alignments for each read
@@ -2399,8 +2404,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						shs[mate].clearExactE2eHits();
 					}
 		   } // for mate
-#if 0
-#else
+#if defined(USE_ACC_STDPAR)
 		   );
 #endif
 	

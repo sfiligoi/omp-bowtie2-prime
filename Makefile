@@ -30,7 +30,7 @@ HEADERS := $(wildcard *.h)
 BOWTIE_MM := 1
 BOWTIE_SHARED_MEM :=
 
-CXXFLAGS += -std=c++17 -gpu=ccall -stdpar=gpu -Minfo=accel
+CXXFLAGS += -std=c++17 -acc -gpu=cc86 -stdpar=gpu -Minfo=accel
 
 NGS_VER ?= 2.10.2
 VDB_VER ?= 2.10.2
