@@ -774,7 +774,7 @@ int SwDriver::extendSeeds(
 	const size_t rdlen = rd.length();
 	TAlScore perfectScore = sc.perfectScore(rdlen);
 
-	DynProgFramer dpframe(!gReportOverhangs);
+	DynProgFramer dpframe(!reportOverhangs);
 	swa.reset();
 
 	// Initialize a set of GroupWalks, one for each seed.  Also, intialize the
@@ -1123,7 +1123,7 @@ int SwDriver::extendSeeds(
 						raw_matches_));
 					Interval refival(tidx, 0, fw, tlen);
 					assert_gt(res->alres.refExtent(), 0);
-					if(gReportOverhangs &&
+					if(reportOverhangs &&
 					   !refival.containsIgnoreOrient(res->alres.refival()))
 					{
 						res->alres.clipOutside(true, 0, tlen);
@@ -1131,7 +1131,7 @@ int SwDriver::extendSeeds(
 							continue;
 						}
 					}
-					assert(gReportOverhangs ||
+					assert(reportOverhangs ||
 					       refival.containsIgnoreOrient(res->alres.refival()));
 					// Did the alignment fall entirely outside the reference?
 					if(!refival.overlapsIgnoreOrient(res->alres.refival())) {
@@ -1405,7 +1405,7 @@ int SwDriver::extendSeedsPaired(
 		assert_leq(minsc, perfectScore);
 	}
 
-	DynProgFramer dpframe(!gReportOverhangs);
+	DynProgFramer dpframe(!reportOverhangs);
 	swa.reset();
 	oswa.reset();
 
@@ -1668,7 +1668,7 @@ int SwDriver::extendSeedsPaired(
 						ref,
 						tlen,
 						sc,
-						gReportOverhangs,
+						reportOverhangs,
 						minsc, // minimum
 						resUngap_);
 					Interval refival(refcoord, 1);
@@ -1813,7 +1813,7 @@ int SwDriver::extendSeedsPaired(
 						raw_matches_));
 					Interval refival(tidx, 0, fw, tlen);
 					assert_gt(res->alres.refExtent(), 0);
-					if(gReportOverhangs &&
+					if(reportOverhangs &&
 					   !refival.containsIgnoreOrient(res->alres.refival()))
 					{
 						res->alres.clipOutside(true, 0, tlen);
@@ -1821,7 +1821,7 @@ int SwDriver::extendSeedsPaired(
 							continue;
 						}
 					}
-					assert(gReportOverhangs ||
+					assert(reportOverhangs ||
 					       refival.containsIgnoreOrient(res->alres.refival()));
 					// Did the alignment fall entirely outside the reference?
 					if(!refival.overlapsIgnoreOrient(res->alres.refival())) {
@@ -1903,7 +1903,7 @@ int SwDriver::extendSeedsPaired(
 							//		ref,
 							//		otlen,
 							//		sc,
-							//		gReportOverhangs,
+							//		reportOverhangs,
 							//		ominsc_cur,
 							//		0,
 							//		oresUngap_);
@@ -2039,14 +2039,14 @@ int SwDriver::extendSeedsPaired(
 									seedival,   // interval between seeds
 									ominsc);    // minimum score for valid alignment
 								assert_gt(oresGap_.alres.refExtent(), 0);
-								if(gReportOverhangs &&
+								if(reportOverhangs &&
 								   !refival.containsIgnoreOrient(oresGap_.alres.refival()))
 								{
 									oresGap_.alres.clipOutside(true, 0, tlen);
 									foundMate = oresGap_.alres.refExtent() > 0;
 								}
 								if(foundMate && 
-								   ((!gReportOverhangs &&
+								   ((!reportOverhangs &&
 									 !refival.containsIgnoreOrient(oresGap_.alres.refival())) ||
 									 !refival.overlapsIgnoreOrient(oresGap_.alres.refival())))
 								{

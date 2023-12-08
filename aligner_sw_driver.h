@@ -307,7 +307,8 @@ public:
 		redMate2_(DP_CAT),
 		pool_(bytes, CACHE_PAGE_SZ, DP_CAT),
 		salistEe_(DP_CAT),
-		gwstate_(GW_CAT) { }
+		gwstate_(GW_CAT),
+		reportOverhangs(gReportOverhangs) { }
 
 	SwDriver(const SwDriver& other) = delete;
 	SwDriver& operator=(const SwDriver& other) = delete;
@@ -521,7 +522,8 @@ protected:
 	Pool           pool_;      // memory pages for salistExact_
 	TSAList        salistEe_;  // PList for offsets for end-to-end hits
 	GroupWalkState gwstate_;   // some per-thread state shared by all GroupWalks
-	
+	const bool reportOverhangs;
+
 	// For AlnRes::matchesRef:
 	ASSERT_ONLY(SStringExpandable<char>     raw_refbuf_);
 	ASSERT_ONLY(SStringExpandable<uint32_t> raw_destU32_);
