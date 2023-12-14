@@ -55,16 +55,16 @@
 #include <limits>
 #include "aligner_sw.h"
 
-static const size_t NWORDS_PER_REG  = NBYTES_PER_REG/2;
-static const size_t NBITS_PER_WORD  = 16;
-static const size_t NBYTES_PER_WORD = 2;
+static constexpr size_t EEI16_NWORDS_PER_REG  = NBYTES_PER_REG/2;
+static constexpr size_t EEI16_NBITS_PER_WORD  = 16;
+static constexpr size_t EEI16_NBYTES_PER_WORD = 2;
 
 // In 16-bit end-to-end mode, we have the option of using signed saturated
 // arithmetic.  Because we have signed arithmetic, there's no need to add/subtract
 // bias when building an applying the query profile.  The lowest value we can
 // use is 0x8000, and the greatest is 0x7fff.
 
-typedef int16_t TCScore;
+typedef int16_t EEI16_TCScore;
 
 /**
  * Build query profile look up tables for the read.  The query profile look
@@ -81,7 +81,7 @@ void SwAligner::buildQueryProfileEnd2EndSseI16(bool fw) {
 	const BTDnaString* rd = fw ? rdfw_ : rdrc_;
 	const BTString* qu = fw ? qufw_ : qurc_;
 	const size_t len = rd->length();
-	const size_t seglen = (len + (NWORDS_PER_REG-1)) / NWORDS_PER_REG;
+	const size_t seglen = (len + (EEI16_NWORDS_PER_REG-1)) / EEI16_NWORDS_PER_REG;
 	// How many SSERegI's are needed
 	size_t nsses =
 		64 +                    // slack bytes, for alignment?
@@ -105,7 +105,7 @@ void SwAligner::buildQueryProfileEnd2EndSseI16(bool fw) {
 			int16_t *gbarWords =
 				reinterpret_cast<int16_t*>(d.profbuf_.ptr() + (refc * seglen * 2) + (i * 2) + 1);
 			// For each sub-word (byte) ...
-			for(size_t k = 0; k < NWORDS_PER_REG; k++) {
+			for(size_t k = 0; k < EEI16_NWORDS_PER_REG; k++) {
 				int sc = 0;
 				*gbarWords = 0;
 				if(j < len) {
@@ -157,8 +157,8 @@ static bool cellOkEnd2EndI16(
 	int readq,
 	const Scoring& sc)     // scoring scheme
 {
-	TCScore floorsc = 0x8000;
-	TCScore ceilsc = MAX_I64;
+	EEI16_TCScore floorsc = 0x8000;
+	EEI16_TCScore ceilsc = MAX_I64;
 	TAlScore offsetsc = -0x7fff;
 	TAlScore sc_h_cur = (TAlScore)d.mat_.helt(row, col);
 	TAlScore sc_e_cur = (TAlScore)d.mat_.eelt(row, col);
@@ -313,7 +313,7 @@ TAlScore SwAligner::alignGatherEE16(int& flag, bool debug) {
 
 	assert_eq(0, d.maxBonus_);
 	size_t iter =
-		(dpRows() + (NWORDS_PER_REG-1)) / NWORDS_PER_REG; // iter = segLen
+		(dpRows() + (EEI16_NWORDS_PER_REG-1)) / EEI16_NWORDS_PER_REG; // iter = segLen
 	
 	// Now set up the score vectors.  We just need two columns worth, which
 	// we'll call "left" and "right".
@@ -420,7 +420,7 @@ TAlScore SwAligner::alignGatherEE16(int& flag, bool debug) {
 	
 	// Maximum score in final row
 	bool found = false;
-	TCScore lrmax = MIN_I16;
+	EEI16_TCScore lrmax = MIN_I16;
 	
 	for(size_t i = 0; i < iter; i++) {
 		sse_store_siall(pvERight, vlo); pvERight += ROWSTRIDE_2COL;
@@ -464,13 +464,13 @@ TAlScore SwAligner::alignGatherEE16(int& flag, bool debug) {
 		
 		// Set all cells to low value
 		vf = sse_cmpeq_epi16(vf, vf);
-		vf = sse_slli_epi16(vf, NBITS_PER_WORD-1);
+		vf = sse_slli_epi16(vf, EEI16_NBITS_PER_WORD-1);
 		vf = sse_or_siall(vf, vlolsw);
 		
 		// Load H vector from the final row of the previous column
 		vh = sse_load_siall(pvHLeft + colstride - ROWSTRIDE_2COL);
 		// Shift 2 bytes down so that topmost (least sig) cell gets 0
-		vh = sse_slli_siall(vh, NBYTES_PER_WORD);
+		vh = sse_slli_siall(vh, EEI16_NBYTES_PER_WORD);
 		// Fill topmost (least sig) cell with high value
 		vh = sse_or_siall(vh, vhilsw);
 		
@@ -537,7 +537,7 @@ TAlScore SwAligner::alignGatherEE16(int& flag, bool debug) {
 		
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
-		vf = sse_slli_siall(vf, NBYTES_PER_WORD);
+		vf = sse_slli_siall(vf, EEI16_NBYTES_PER_WORD);
 		vf = sse_or_siall(vf, vlolsw);
 		
 		vf = sse_adds_epi16(vf, *pvScore); // veto some ref gap extensions
@@ -570,7 +570,7 @@ TAlScore SwAligner::alignGatherEE16(int& flag, bool debug) {
 				vh = sse_load_siall(pvHRight);     // load next vh ASAP
 				pvScore = d.profbuf_.ptr() + off + 1;
 				j = 0;
-				vf = sse_slli_siall(vf, NBYTES_PER_WORD);
+				vf = sse_slli_siall(vf, EEI16_NBYTES_PER_WORD);
 				vf = sse_or_siall(vf, vlolsw);
 			} else {
 				vtmp = sse_load_siall(pvFRight);   // load next vf ASAP
@@ -591,7 +591,7 @@ TAlScore SwAligner::alignGatherEE16(int& flag, bool debug) {
 		// Check in the last row for the maximum so far
 		SSERegI *vtmp = vbuf_r + 2 /* H */ + (d.lastIter_ * ROWSTRIDE_2COL);
 		// Note: we may not want to extract from the final row
-		TCScore lr = ((TCScore*)(vtmp))[d.lastWord_];
+		EEI16_TCScore lr = ((EEI16_TCScore*)(vtmp))[d.lastWord_];
 		found = true;
 		if(lr > lrmax) {
 			lrmax = lr;
@@ -732,7 +732,7 @@ TAlScore SwAligner::alignGatherEE16(int& flag, bool debug) {
 	if(!debug) {
 		size_t ninner = (rff_ - rfi_) * iter;
 		met.col   += (rff_ - rfi_);             // DP columns
-		met.cell  += (ninner * NWORDS_PER_REG); // DP cells
+		met.cell  += (ninner * EEI16_NWORDS_PER_REG); // DP cells
 		met.inner += ninner;                    // DP inner loop iters
 		met.fixup += nfixup;                    // DP fixup loop iters
 	}
@@ -799,9 +799,9 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 
 	assert_eq(0, d.maxBonus_);
 	const size_t iter =
-		(dpRows() + (NWORDS_PER_REG-1)) / NWORDS_PER_REG; // iter = segLen
+		(dpRows() + (EEI16_NWORDS_PER_REG-1)) / EEI16_NWORDS_PER_REG; // iter = segLen
 
-        const size_t lastWordIdx = NWORDS_PER_REG*(d.lastIter_*ROWSTRIDE)+d.lastWord_;
+        const size_t lastWordIdx = EEI16_NWORDS_PER_REG*(d.lastIter_*ROWSTRIDE)+d.lastWord_;
 
 	// Many thanks to Michael Farrar for releasing his striped Smith-Waterman
 	// implementation:
@@ -874,7 +874,7 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 	// calculated by the Farrar algorithm.
 	const SSERegI *pvScore; // points into the query profile
 
-	d.mat_.init(dpRows(), rff_ - rfi_, NWORDS_PER_REG);
+	d.mat_.init(dpRows(), rff_ - rfi_, EEI16_NWORDS_PER_REG);
 	const size_t colstride = d.mat_.colstride();
 	assert_eq(ROWSTRIDE, colstride / iter);
 	
@@ -884,7 +884,7 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 	
 	// Maximum score in final row
 	bool found = false;
-	TCScore lrmax = MIN_I16;
+	EEI16_TCScore lrmax = MIN_I16;
 	
 	for(size_t i = 0; i < iter; i++) {
 		sse_store_siall(pvETmp, vlo);
@@ -933,13 +933,13 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 		
 		// Set all cells to low value
 		vf = sse_cmpeq_epi16(vf, vf);
-		vf = sse_slli_epi16(vf, NBITS_PER_WORD-1);
+		vf = sse_slli_epi16(vf, EEI16_NBITS_PER_WORD-1);
 		vf = sse_or_siall(vf, vlolsw);
 		
 		// Load H vector from the final row of the previous column
 		vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
 		// Shift 2 bytes down so that topmost (least sig) cell gets 0
-		vh = sse_slli_siall(vh, NBYTES_PER_WORD);
+		vh = sse_slli_siall(vh, EEI16_NBYTES_PER_WORD);
 		// Fill topmost (least sig) cell with high value
 		vh = sse_or_siall(vh, vhilsw);
 		
@@ -1021,7 +1021,7 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 		
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
-		vf = sse_slli_siall(vf, NBYTES_PER_WORD);
+		vf = sse_slli_siall(vf, EEI16_NBYTES_PER_WORD);
 		vf = sse_or_siall(vf, vlolsw);
 		
 		vf = sse_adds_epi16(vf, vs1); // veto some ref gap extensions
@@ -1077,7 +1077,7 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 #else
 				pvEStore -= colstride;
 #endif
-				vf = sse_slli_siall(vf, NBYTES_PER_WORD);
+				vf = sse_slli_siall(vf, EEI16_NBYTES_PER_WORD);
 				vf = sse_or_siall(vf, vlolsw);
 			}
 			vs1 = sse_load_siall(pvScore);
@@ -1118,7 +1118,7 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 #endif
 		
 		// Note: we may not want to extract from the final row
-		TCScore lr = ((TCScore*)(pvHLoad))[lastWordIdx];
+		EEI16_TCScore lr = ((EEI16_TCScore*)(pvHLoad))[lastWordIdx];
 		found = true;
 		if(lr > lrmax) {
 			lrmax = lr;
@@ -1136,7 +1136,7 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 	if(!debug) {
 		size_t ninner = (rff_ - rfi_) * iter;
 		met.col   += (rff_ - rfi_);             // DP columns
-		met.cell  += (ninner * NWORDS_PER_REG); // DP cells
+		met.cell  += (ninner * EEI16_NWORDS_PER_REG); // DP cells
 		met.inner += ninner;                    // DP inner loop iters
 		met.fixup += nfixup;                    // DP fixup loop iters
 	}
@@ -1214,7 +1214,7 @@ bool SwAligner::gatherCellsNucleotidesEnd2EndSseI16(TAlScore best) {
 	ASSERT_ONLY(bool sawbest = false);
 	SSERegI *pvH = d.mat_.hvec(d.lastIter_, 0);
 	for(size_t j = 0; j < ncol; j++) {
-		TAlScore sc = (TAlScore)(((TCScore*)pvH)[d.lastWord_] - 0x7fff);
+		TAlScore sc = (TAlScore)(((EEI16_TCScore*)pvH)[d.lastWord_] - 0x7fff);
 		assert_leq(sc, best);
 		ASSERT_ONLY(sawbest = (sawbest || sc == best));
 		if(sc >= minsc_) {
@@ -1373,7 +1373,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				// Move to beginning of column/row
 				if(ct == SSEMatrix::E) { // AKA rdgap
 					assert_gt(col, 0);
-					TAlScore sc_cur = ((TCScore*)(cur_vec + SSEMatrix::E))[rowelt] + offsetsc;
+					TAlScore sc_cur = ((EEI16_TCScore*)(cur_vec + SSEMatrix::E))[rowelt] + offsetsc;
 					assert(gapsAllowed);
 					// Currently in the E matrix; incoming transition must come from the
 					// left.  It's either a gap open from the H matrix or a gap extend from
@@ -1381,12 +1381,12 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 					// TODO: save and restore origMask as well as mask
 					int origMask = 0, mask = 0;
 					// Get H score of cell to the left
-					TAlScore sc_h_left = ((TCScore*)(left_vec + SSEMatrix::H))[left_rowelt] + offsetsc;
+					TAlScore sc_h_left = ((EEI16_TCScore*)(left_vec + SSEMatrix::H))[left_rowelt] + offsetsc;
 					if(sc_h_left > floorsc && sc_h_left - sc_->readGapOpen() == sc_cur) {
 						mask |= (1 << 0);
 					}
 					// Get E score of cell to the left
-					TAlScore sc_e_left = ((TCScore*)(left_vec + SSEMatrix::E))[left_rowelt] + offsetsc;
+					TAlScore sc_e_left = ((EEI16_TCScore*)(left_vec + SSEMatrix::E))[left_rowelt] + offsetsc;
 					if(sc_e_left > floorsc && sc_e_left - sc_->readGapExtend() == sc_cur) {
 						mask |= (1 << 1);
 					}
@@ -1432,9 +1432,9 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				} else if(ct == SSEMatrix::F) { // AKA rfgap
 					assert_gt(row, 0);
 					assert(gapsAllowed);
-					TAlScore sc_h_up = ((TCScore*)(up_vec  + SSEMatrix::H))[up_rowelt] + offsetsc;
-					TAlScore sc_f_up = ((TCScore*)(up_vec  + SSEMatrix::F))[up_rowelt] + offsetsc;
-					TAlScore sc_cur  = ((TCScore*)(cur_vec + SSEMatrix::F))[rowelt] + offsetsc;
+					TAlScore sc_h_up = ((EEI16_TCScore*)(up_vec  + SSEMatrix::H))[up_rowelt] + offsetsc;
+					TAlScore sc_f_up = ((EEI16_TCScore*)(up_vec  + SSEMatrix::F))[up_rowelt] + offsetsc;
+					TAlScore sc_cur  = ((EEI16_TCScore*)(cur_vec + SSEMatrix::F))[rowelt] + offsetsc;
 					// Currently in the F matrix; incoming transition must come from above.
 					// It's either a gap open from the H matrix or a gap extend from the F
 					// matrix.
@@ -1489,12 +1489,12 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 					assert(!empty || !canMoveThru);
 				} else {
 					assert_eq(SSEMatrix::H, ct);
-					TAlScore sc_cur      = ((TCScore*)(cur_vec + SSEMatrix::H))[rowelt]    + offsetsc;
-					TAlScore sc_f_up     = ((TCScore*)(up_vec  + SSEMatrix::F))[up_rowelt] + offsetsc;
-					TAlScore sc_h_up     = ((TCScore*)(up_vec  + SSEMatrix::H))[up_rowelt] + offsetsc;
-					TAlScore sc_h_left   = col > 0 ? (((TCScore*)(left_vec   + SSEMatrix::H))[left_rowelt]   + offsetsc) : floorsc;
-					TAlScore sc_e_left   = col > 0 ? (((TCScore*)(left_vec   + SSEMatrix::E))[left_rowelt]   + offsetsc) : floorsc;
-					TAlScore sc_h_upleft = col > 0 ? (((TCScore*)(upleft_vec + SSEMatrix::H))[upleft_rowelt] + offsetsc) : floorsc;
+					TAlScore sc_cur      = ((EEI16_TCScore*)(cur_vec + SSEMatrix::H))[rowelt]    + offsetsc;
+					TAlScore sc_f_up     = ((EEI16_TCScore*)(up_vec  + SSEMatrix::F))[up_rowelt] + offsetsc;
+					TAlScore sc_h_up     = ((EEI16_TCScore*)(up_vec  + SSEMatrix::H))[up_rowelt] + offsetsc;
+					TAlScore sc_h_left   = col > 0 ? (((EEI16_TCScore*)(left_vec   + SSEMatrix::H))[left_rowelt]   + offsetsc) : floorsc;
+					TAlScore sc_e_left   = col > 0 ? (((EEI16_TCScore*)(left_vec   + SSEMatrix::E))[left_rowelt]   + offsetsc) : floorsc;
+					TAlScore sc_h_upleft = col > 0 ? (((EEI16_TCScore*)(upleft_vec + SSEMatrix::H))[upleft_rowelt] + offsetsc) : floorsc;
 					TAlScore sc_diag     = sc_->score(readc, refm, readq - 33);
 					// TODO: save and restore origMask as well as mask
 					int origMask = 0, mask = 0;
