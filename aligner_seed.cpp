@@ -1907,6 +1907,7 @@ SeedAligner::searchSeedBi(const size_t nparams, SeedAligner::SeedAlignerSearchPa
 					// as olds gets out of scope,
 					// restores cons, p.overall, p.tloc, p.bloc
 				}
+#if 0
 				if(cons.canGap() && p.overall.canGap()) {
 					throw 1; // TODO
 //					int delEx = 0;
@@ -1918,6 +1919,7 @@ SeedAligner::searchSeedBi(const size_t nparams, SeedAligner::SeedAlignerSearchPa
 //						// Try insert
 //					}
 				}
+#endif
 			} // if(!bail)
 		}
 		if(c == 4) { // couldn't handle the N
