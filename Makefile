@@ -30,7 +30,10 @@ HEADERS := $(wildcard *.h)
 BOWTIE_MM := 1
 BOWTIE_SHARED_MEM :=
 
-CXXFLAGS += -std=c++17 -acc -gpu=cc86 -stdpar=gpu -Minfo=accel
+CXXFLAGS += -std=c++17 
+#CXXFLAGS += -std=c++17 -stdpar=multicore -DUSE_ACC_STDPAR
+#CXXFLAGS += -std=c++17 -acc -gpu=cc86,unified -stdpar=gpu -Minfo=accel -DUSE_ACC_STDPAR
+#CXXFLAGS += -std=c++17 -acc -gpu=cc86,unified,managed -stdpar=gpu -Minfo=accel,inline
 
 NGS_VER ?= 2.10.2
 VDB_VER ?= 2.10.2
@@ -159,27 +162,9 @@ ifneq (1,$(NO_QUEUELOCK))
   CXXFLAGS += -DWITH_QUEUELOCK=1
 endif
 
-SHARED_CPPS :=  ccnt_lut.cpp ref_read.cpp alphabet.cpp shmem.cpp \
-  edit.cpp bt2_locks.cpp bt2_idx.cpp bt2_io.cpp bt2_util.cpp \
-  reference.cpp ds.cpp multikey_qsort.cpp \
-  random_source.cpp
+SHARED_CPPS :=  
 
-SEARCH_CPPS :=  qual.cpp pat.cpp sam.cpp \
-  read_qseq.cpp aligner_seed_policy.cpp \
-  aligner_sw.cpp \
-  aligner_sw_driver.cpp aligner_cache.cpp \
-  aligner_result.cpp ref_coord.cpp mask.cpp \
-  pe.cpp aln_sink.cpp dp_framer.cpp \
-  scoring.cpp presets.cpp unique.cpp \
-  simple_func.cpp \
-  random_util.cpp \
-  aligner_bt.cpp sse_util.cpp \
-  aligner_swsse.cpp outq.cpp \
-  aligner_swsse_loc_i16.cpp \
-  aligner_swsse_ee_i16.cpp \
-  aligner_swsse_loc_u8.cpp \
-  aligner_swsse_ee_u8.cpp \
-  aligner_driver.cpp
+SEARCH_CPPS :=  
 
 ifeq (1, $(WITH_ZSTD))
   LDLIBS += -lzstd
@@ -187,15 +172,12 @@ ifeq (1, $(WITH_ZSTD))
   SHARED_CPPS += zstd_decompress.cpp
 endif
 
-SEARCH_CPPS_MAIN := $(SEARCH_CPPS) bowtie_main.cpp
+SEARCH_CPPS_MAIN := $(SEARCH_CPPS) 
 
-DP_CPPS := qual.cpp aligner_sw.cpp aligner_result.cpp ref_coord.cpp mask.cpp \
-  simple_func.cpp sse_util.cpp aligner_bt.cpp aligner_swsse.cpp \
-  aligner_swsse_loc_i16.cpp aligner_swsse_ee_i16.cpp \
-  aligner_swsse_loc_u8.cpp aligner_swsse_ee_u8.cpp scoring.cpp
+DP_CPPS := 
 
-BUILD_CPPS := diff_sample.cpp
-BUILD_CPPS_MAIN := $(BUILD_CPPS) bowtie_build_main.cpp
+BUILD_CPPS := 
+BUILD_CPPS_MAIN := $(BUILD_CPPS) 
 
 SEARCH_FRAGMENTS := $(wildcard search_*_phase*.c)
 VERSION := $(shell cat BOWTIE2_VERSION)
@@ -210,7 +192,7 @@ else ifeq (0,$(shell $(CXX) -E -fsanitize=undefined btypes.h > /dev/null 2>&1; e
 endif
 
 DEBUG_FLAGS    := -O0 -g3 $(SSE_FLAG)
-RELEASE_FLAGS  := -g -fast $(SSE_FLAG)
+RELEASE_FLAGS  := -g -fast -gopt $(SSE_FLAG)
 NOASSERT_FLAGS := -DNDEBUG
 FILE_FLAGS     := -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE
 DEBUG_DEFS     = -DCOMPILER_OPTIONS="\"$(DEBUG_FLAGS) $(CXXFLAGS)\""
@@ -358,7 +340,7 @@ bowtie2-build-l-debug: bt2_build.cpp $(SHARED_CPPS) $(HEADERS)
 # bowtie2-align targets
 #
 
-bowtie2-align-s-sanitized bowtie2-align-s: bt2_search.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
+bowtie2-align-s-sanitized bowtie2-align-s: bowtie2-align.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
 	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXXFLAGS) \
 		$(DEFS) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall \
 		$(CPPFLAGS) \
@@ -366,7 +348,7 @@ bowtie2-align-s-sanitized bowtie2-align-s: bt2_search.cpp $(SEARCH_CPPS) $(SHARE
 		$(SHARED_CPPS) $(SEARCH_CPPS_MAIN) \
 		$(LDFLAGS) $(LDLIBS)
 
-bowtie2-align-l-sanitized bowtie2-align-l: bt2_search.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
+bowtie2-align-l-sanitized bowtie2-align-l: bowtie2-align.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
 	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXXFLAGS) \
 		$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX $(NOASSERT_FLAGS) -Wall \
 		$(CPPFLAGS) \
@@ -374,7 +356,7 @@ bowtie2-align-l-sanitized bowtie2-align-l: bt2_search.cpp $(SEARCH_CPPS) $(SHARE
 		$(SHARED_CPPS) $(SEARCH_CPPS_MAIN) \
 		$(LDFLAGS) $(LDLIBS)
 
-bowtie2-align-s-debug: bt2_search.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
+bowtie2-align-s-debug: bowtie2-align.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
 	$(CXX) $(DEBUG_FLAGS) \
 		$(DEBUG_DEFS) $(CXXFLAGS) \
 		$(DEFS) -DBOWTIE2 -Wall \
@@ -383,7 +365,7 @@ bowtie2-align-s-debug: bt2_search.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $
 		$(SHARED_CPPS) $(SEARCH_CPPS_MAIN) \
 		$(LDFLAGS) $(LDLIBS)
 
-bowtie2-align-l-debug: bt2_search.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
+bowtie2-align-l-debug: bowtie2-align.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
 	$(CXX) $(DEBUG_FLAGS) \
 		$(DEBUG_DEFS) $(CXXFLAGS) \
 		$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX -Wall \

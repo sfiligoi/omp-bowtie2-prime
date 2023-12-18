@@ -65,10 +65,6 @@
 #include "aligner_seed2.h"
 #include "bt2_search.h"
 
-// Include the cpp files to allow inlining
-#include "aligner_seed.cpp"
-#include "aligner_seed2.cpp"
-
 using namespace std;
 
 static int FNAME_SIZE;
