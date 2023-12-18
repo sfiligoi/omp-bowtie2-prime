@@ -2875,7 +2875,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		delete[] done;
 		delete[] done_reading;
 
-		delete[] ybits;
 		delete[] rds;
 		delete[] minsc;
 		delete[] nelt; 
