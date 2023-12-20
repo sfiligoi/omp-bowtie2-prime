@@ -359,7 +359,7 @@ public:
 	 * Initially allocate given number of elements; should be > 0.
 	 */
 	explicit EList(size_t isz, int cat = 0) :
-		cat_(cat), allocCat_(-1), list_(NULL), sz_(isz), cur_(0)
+		cat_(cat), allocCat_(-1), list_(NULL), sz_(std::max(isz,size_t(S))), cur_(0)
 	{
 		assert_geq(cat, 0);
 	}
@@ -368,7 +368,7 @@ public:
 	 * Copy from another EList using operator=.
 	 */
 	EList(const EList<T, S>& o) :
-		cat_(0), allocCat_(-1), list_(NULL), sz_(0), cur_(0)
+		cat_(0), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
 	{
 		*this = o;
 	}
@@ -377,7 +377,7 @@ public:
 	 * Copy from another EList using operator=.
 	 */
 	explicit EList(const EList<T, S>& o, int cat) :
-		cat_(cat), allocCat_(-1), list_(NULL), sz_(0), cur_(0)
+		cat_(cat), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
 	{
 		*this = o;
 		assert_geq(cat, 0);
@@ -400,9 +400,14 @@ public:
 		}
 		if(list_ == NULL) {
 			// cat_ should already be set
+			if (sz_ < o.cur_) {
+				size_t newsz = compExact(o.cur_ + 1);
+                                sz_ = newsz;
+			}
 			lazyInit();
+		} else if(sz_ < o.cur_) {
+			expandNoCopy(o.cur_ + 1);
 		}
-		if(sz_ < o.cur_) expandNoCopy(o.cur_ + 1);
 		assert_geq(sz_, o.cur_);
 		cur_ = o.cur_;
 		for(size_t i = 0; i < cur_; i++) {
@@ -1094,7 +1099,7 @@ public:
 	 * Copy from another ELList using operator=.
 	 */
 	ELList(const ELList<T, S1, S2>& o) :
-		cat_(0), list_(NULL), sz_(0), cur_(0)
+		cat_(0), list_(NULL), sz_(S), cur_(0)
 	{
 		*this = o;
 	}
@@ -1103,7 +1108,7 @@ public:
 	 * Copy from another ELList using operator=.
 	 */
 	explicit ELList(const ELList<T, S1, S2>& o, int cat) :
-		cat_(cat), list_(NULL), sz_(0), cur_(0)
+		cat_(cat), list_(NULL), sz_(S), cur_(0)
 	{
 		*this = o;
 		assert_geq(cat, 0);
@@ -1122,14 +1127,20 @@ public:
 	 */
 	ELList<T, S1, S2>& operator=(const ELList<T, S1, S2>& o) {
 		assert_eq(cat_, o.cat());
-		if(list_ == NULL) {
-			lazyInit();
-		}
 		if(o.cur_ == 0) {
 			cur_ = 0;
 			return *this;
 		}
-		if(sz_ < o.cur_) expandNoCopy(o.cur_ + 1);
+		if(list_ == NULL) {
+			// cat_ should already be set
+			if (sz_ < o.cur_) {
+				size_t newsz = compExact(o.cur_ + 1);
+                                sz_ = newsz;
+			}
+			lazyInit();
+		} else if(sz_ < o.cur_) {
+			expandNoCopy(o.cur_ + 1);
+		}
 		assert_geq(sz_, o.cur_);
 		cur_ = o.cur_;
 		for(size_t i = 0; i < cur_; i++) {
@@ -1442,7 +1453,7 @@ public:
 	 * Copy from another ELLList using operator=.
 	 */
 	ELLList(const ELLList<T, S1, S2, S3>& o) :
-		cat_(0), list_(NULL), sz_(0), cur_(0)
+		cat_(0), list_(NULL), sz_(S), cur_(0)
 	{
 		*this = o;
 	}
@@ -1451,7 +1462,7 @@ public:
 	 * Copy from another ELLList using operator=.
 	 */
 	explicit ELLList(const ELLList<T, S1, S2, S3>& o, int cat) :
-		cat_(cat), list_(NULL), sz_(0), cur_(0)
+		cat_(cat), list_(NULL), sz_(S), cur_(0)
 	{
 		*this = o;
 		assert_geq(cat, 0);
@@ -1470,12 +1481,20 @@ public:
 	 */
 	ELLList<T, S1, S2, S3>& operator=(const ELLList<T, S1, S2, S3>& o) {
 		assert_eq(cat_, o.cat());
-		if(list_ == NULL) lazyInit();
 		if(o.cur_ == 0) {
 			cur_ = 0;
 			return *this;
 		}
-		if(sz_ < o.cur_) expandNoCopy(o.cur_ + 1);
+		if(list_ == NULL) {
+			// cat_ should already be set
+			if (sz_ < o.cur_) {
+				size_t newsz = compExact(o.cur_ + 1);
+                                sz_ = newsz;
+			}
+			lazyInit();
+		} else if(sz_ < o.cur_) {
+			expandNoCopy(o.cur_ + 1);
+		}
 		assert_geq(sz_, o.cur_);
 		cur_ = o.cur_;
 		for(size_t i = 0; i < cur_; i++) {
@@ -2134,7 +2153,7 @@ public:
 	 * Copy from another ELList using operator=.
 	 */
 	ELSet(const ELSet<T, S>& o) :
-		cat_(0), list_(NULL), sz_(0), cur_(0)
+		cat_(0), list_(NULL), sz_(S), cur_(0)
 	{
 		*this = o;
 	}
@@ -2143,7 +2162,7 @@ public:
 	 * Copy from another ELList using operator=.
 	 */
 	explicit ELSet(const ELSet<T, S>& o, int cat) :
-		cat_(cat), list_(NULL), sz_(0), cur_(0)
+		cat_(cat), list_(NULL), sz_(S), cur_(0)
 	{
 		*this = o;
 		assert_geq(cat, 0);
@@ -2162,14 +2181,20 @@ public:
 	 */
 	ELSet<T, S>& operator=(const ELSet<T, S>& o) {
 		assert_eq(cat_, o.cat());
-		if(list_ == NULL) {
-			lazyInit();
-		}
 		if(o.cur_ == 0) {
 			cur_ = 0;
 			return *this;
 		}
-		if(sz_ < o.cur_) expandNoCopy(o.cur_ + 1);
+		if(list_ == NULL) {
+			// cat_ should already be set
+			if (sz_ < o.cur_) {
+				size_t newsz = compExact(o.cur_ + 1);
+                                sz_ = newsz;
+			}
+			lazyInit();
+		} else if(sz_ < o.cur_) {
+			expandNoCopy(o.cur_ + 1);
+		}
 		assert_geq(sz_, o.cur_);
 		cur_ = o.cur_;
 		for(size_t i = 0; i < cur_; i++) {
