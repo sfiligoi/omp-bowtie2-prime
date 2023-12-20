@@ -463,8 +463,15 @@ public:
 	 * 'thresh' more elements without having to expand.
 	 */
 	inline void ensure(size_t thresh) {
-		if(list_ == NULL) lazyInit();
-		expandCopy(cur_ + thresh);
+		if(list_ == NULL) {
+			if(thresh > sz_) {
+				size_t newsz = compExact(thresh);
+				sz_ = newsz;
+			}
+			if(sz_>0) lazyInit();
+		} else {
+			expandCopy(cur_ + thresh);
+		}
 	}
 
 	/**
@@ -473,8 +480,29 @@ public:
 	 * equal 'newsz'.
 	 */
 	inline void reserveExact(size_t newsz) {
-		if(list_ == NULL) lazyInitExact(newsz);
-		expandCopyExact(newsz);
+		if(list_ == NULL) {
+			if(newsz > 0) lazyInitExact(newsz);
+		} else {
+			expandCopyExact(newsz);
+		}
+	}
+
+	/**
+	 * Ensure that there is sufficient capacity to include 'thresh' elements.
+	 * If there isn't enough capacity right now, expand capacity to 
+	 * at leastl 'thresh'. Does not force initialization.
+	 */
+	inline void reserve(size_t thresh) {
+		if(list_ == NULL) {
+			if(thresh > sz_) {
+				size_t newsz = compExact(thresh);
+				sz_ = newsz;
+			} // nothing to do else
+		} else if (cur_==0) {
+			expandNoCopy(thresh);
+		} else {
+			expandCopy(thresh);
+		}
 	}
 
 	/**
