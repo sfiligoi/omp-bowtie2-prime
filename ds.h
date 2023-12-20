@@ -951,10 +951,9 @@ private:
 	 * increases quadratically with number of expansions.  Copy old contents
 	 * into new buffer using operator=.
 	 */
-	void expandCopy(size_t thresh) {
+	inline void expandCopy(size_t thresh) {
 		if(thresh <= sz_) return;
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) newsz *= 2;
+		const size_t newsz = compExact(thresh);
 		expandCopyExact(newsz);
 	}
 
@@ -984,11 +983,9 @@ private:
 	 * Size increases quadratically with number of expansions.  Don't copy old
 	 * contents into the new buffer.
 	 */
-	void expandNoCopy(size_t thresh) {
-		assert(list_ != NULL);
+	inline void expandNoCopy(size_t thresh) {
 		if(thresh <= sz_) return;
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) newsz *= 2;
+		const size_t newsz = compExact(thresh);
 		expandNoCopyExact(newsz);
 	}
 
@@ -997,7 +994,6 @@ private:
 	 * copy old contents into the new buffer.
 	 */
 	void expandNoCopyExact(size_t newsz) {
-		assert(list_ != NULL);
 		assert_gt(newsz, 0);
 		free();
 		T* tmp = alloc(newsz);
@@ -1005,6 +1001,12 @@ private:
 		list_ = tmp;
 		sz_ = newsz;
 		assert_gt(sz_, 0);
+	}
+
+	inline size_t compExact(size_t thresh) {
+		size_t newsz = std::max((sz_ * 4),size_t(S));
+		while(newsz < thresh) newsz *= 4;
+		return newsz;
 	}
 
 	int cat_;      // memory category, for accounting purposes
@@ -1322,8 +1324,7 @@ protected:
 	void expandCopy(size_t thresh) {
 		assert(list_ != NULL);
 		if(thresh <= sz_) return;
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) newsz *= 2;
+		const size_t newsz = compExact(thresh);
 		EList<T, S1>* tmp = alloc(newsz);
 		if(list_ != NULL) {
 			for(size_t i = 0; i < cur_; i++) {
@@ -1345,12 +1346,17 @@ protected:
 		assert(list_ != NULL);
 		if(thresh <= sz_) return;
 		free();
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) newsz *= 2;
+		const size_t newsz = compExact(thresh);
 		EList<T, S1>* tmp = alloc(newsz);
 		list_ = tmp;
 		sz_ = newsz;
 		assert_gt(sz_, 0);
+	}
+
+	inline size_t compExact(size_t thresh) {
+		size_t newsz = std::max((sz_ * 4),size_t(S2));
+		while(newsz < thresh) newsz *= 4;
+		return newsz;
 	}
 
 	int cat_;    // memory category, for accounting purposes
@@ -1662,8 +1668,7 @@ protected:
 	void expandCopy(size_t thresh) {
 		assert(list_ != NULL);
 		if(thresh <= sz_) return;
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) newsz *= 2;
+		const size_t newsz = compExact(thresh);
 		ELList<T, S1, S2>* tmp = alloc(newsz);
 		if(list_ != NULL) {
 			for(size_t i = 0; i < cur_; i++) {
@@ -1685,12 +1690,17 @@ protected:
 		assert(list_ != NULL);
 		if(thresh <= sz_) return;
 		free();
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) newsz *= 2;
+		const size_t newsz = compExact(thresh);
 		ELList<T, S1, S2>* tmp = alloc(newsz);
 		list_ = tmp;
 		sz_ = newsz;
 		assert_gt(sz_, 0);
+	}
+
+	inline size_t compExact(size_t thresh) {
+		size_t newsz = std::max((sz_ * 4),size_t(S3));
+		while(newsz < thresh) newsz *= 4;
+		return newsz;
 	}
 
 	int cat_;    // memory category, for accounting purposes
@@ -1706,7 +1716,7 @@ protected:
  * Note that the copy constructor and operator= routines perform
  * shallow copies (w/ memcpy).
  */
-template <typename T>
+template <typename T, int S = 32>
 class ESet {
 public:
 
@@ -1716,7 +1726,7 @@ public:
 	ESet(int cat = 0) :
 		cat_(cat),
 		list_(NULL),
-		sz_(0),
+		sz_(S),
 		cur_(0)
 	{
 #ifndef USE_MEM_TALLY
@@ -2043,10 +2053,7 @@ private:
 	 */
 	void expandCopy(size_t thresh) {
 		if(thresh <= sz_) return;
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) {
-			newsz *= 2;
-		}
+		const size_t newsz = compExact(thresh);
 		T* tmp = alloc(newsz);
 		for(size_t i = 0; i < cur_; i++) {
 			tmp[i] = list_[i];
@@ -2054,6 +2061,12 @@ private:
 		free();
 		list_ = tmp;
 		sz_ = newsz;
+	}
+
+	inline size_t compExact(size_t thresh) {
+		size_t newsz = std::max((sz_ * 4),size_t(S));
+		while(newsz < thresh) newsz *= 4;
+		return newsz;
 	}
 
 	int cat_;    // memory category, for accounting purposes
@@ -2356,8 +2369,7 @@ protected:
 	void expandCopy(size_t thresh) {
 		assert(list_ != NULL);
 		if(thresh <= sz_) return;
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) newsz *= 2;
+		const size_t newsz = compExact(thresh);
 		ESet<T>* tmp = alloc(newsz);
 		if(list_ != NULL) {
 			for(size_t i = 0; i < cur_; i++) {
@@ -2379,12 +2391,17 @@ protected:
 		assert(list_ != NULL);
 		if(thresh <= sz_) return;
 		free();
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) newsz *= 2;
+		const size_t newsz = compExact(thresh);
 		ESet<T>* tmp = alloc(newsz);
 		list_ = tmp;
 		sz_ = newsz;
 		assert_gt(sz_, 0);
+	}
+
+	inline size_t compExact(size_t thresh) {
+		size_t newsz = std::max((sz_ * 4),size_t(S));
+		while(newsz < thresh) newsz *= 4;
+		return newsz;
 	}
 
 	int cat_;    // memory category, for accounting purposes
@@ -2400,7 +2417,7 @@ protected:
  * Note that the copy constructor and operator= routines perform
  * shallow copies (w/ memcpy).
  */
-template <typename K, typename V>
+template <typename K, typename V, int S = 128>
 class EMap {
 
 public:
@@ -2411,7 +2428,7 @@ public:
 	EMap(int cat = 0) :
 		cat_(cat),
 		list_(NULL),
-		sz_(128),
+		sz_(S),
 		cur_(0)
 	{
 #ifndef USE_MEM_TALLY
@@ -2716,8 +2733,7 @@ private:
 	 */
 	void expandCopy(size_t thresh) {
 		if(thresh <= sz_) return;
-		size_t newsz = sz_ * 2;
-		while(newsz < thresh) newsz *= 2;
+		const size_t newsz = compExact(thresh);
 		std::pair<K, V>* tmp = alloc(newsz);
 		for(size_t i = 0; i < cur_; i++) {
 			tmp[i] = list_[i];
@@ -2725,6 +2741,12 @@ private:
 		free();
 		list_ = tmp;
 		sz_ = newsz;
+	}
+
+	inline size_t compExact(size_t thresh) {
+		size_t newsz = std::max((sz_ * 4),size_t(S));
+		while(newsz < thresh) newsz *= 4;
+		return newsz;
 	}
 
 	int cat_;    // memory category, for accounting purposes
