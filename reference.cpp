@@ -117,7 +117,17 @@ BitPairReference::BitPairReference(
 		cerr << "Error: number of reference records is 0 in " << s3.c_str() << endl;
 		throw 1;
 	}
-	
+
+	// ensure we have enought space	
+	recs_.reserve(size_t(sz)+1);
+	cumUnambig_.reserve(size_t(sz)+1);
+	cumRefOff_.reserve(size_t(sz)+1);
+
+	// assume we these are drastically smaller
+	refLens_.reserve(size_t(sz)/16+1);
+	refOffs_.reserve(size_t(sz)/16+1);
+	refRecOffs_.reserve(size_t(sz)/16+1);
+
 	// Read records
 	nrefs_ = 0;
 	

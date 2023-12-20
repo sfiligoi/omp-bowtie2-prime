@@ -4499,11 +4499,11 @@ static void driver(
 			penRfGapLinear, // linear coeff for ref gap cost
 			gGapBarrier));  // # rows at top/bot only entered diagonally
 		Scoring& sc = *(psc.get());
-		EList<size_t> reflens;
+		EList<size_t> reflens(size_t(32*1024),0);
 		for(size_t i = 0; i < ebwt.nPat(); i++) {
 			reflens.push_back(ebwt.plen()[i]);
 		}
-		EList<string> refnames;
+		EList<string> refnames(size_t(32*1024),0);
 		readEbwtRefnames(adjIdxBase, refnames);
 		SamConfig samc(
 			refnames,               // reference sequence names
