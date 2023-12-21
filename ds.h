@@ -32,6 +32,85 @@
 #include "btypes.h"
 
 /**
+ * Custom allocator of polled memory 
+ * aligned to double, since that's the most restrictive type we expect
+ *
+ * Note: There is also a global memory version
+ **/
+class BTAllocator {
+public:
+	static constexpr size_t POOL_BUF_SIZE = 256*1024;
+	// anything larger than this will just use standard memory management
+	static constexpr size_t MAX_POOLED_EL = POOL_BUF_SIZE/8;
+
+	// if true, use global memory for everything, thus it is thread-safe
+	// if false (default), use pooled memory, but this is not thread-safe (and will lead to memory leaks)
+	BTAllocator(const bool is_safe=false)
+	: pool_buf_(NULL), pool_dsize_(0), pool_dcur_(0) {
+		if (!is_safe) get_new_block();
+	}
+
+	// take ownership of the given buffer, implies unsafe version
+	// Note: The buffer will not be deleted, as we don't know how it was allocated (likely leading to memory leaks)
+	BTAllocator(double *buf, const size_t size)
+	: pool_buf_(buf), pool_dsize_(size), pool_dcur_(0) {}
+
+	BTAllocator(const BTAllocator& o) = delete;
+	BTAllocator& operator=(const BTAllocator& o) = delete;
+
+	~BTAllocator() {}  // never deallocate the pool, accept memory leak
+
+	// align as if it was a double, since that's the most restrictive type we expect
+	void* allocate(const size_t nels, const size_t elsize) {
+		size_t nbytes = nels*elsize;
+		size_t ndoubles = (nbytes+sizeof(double)-1)/sizeof(double); // round up
+		double *buf = NULL;
+
+		if ((pool_buf_== NULL) || 	// global version
+		    (ndoubles>MAX_POOLED_EL)) { // too big, just use regular new
+			buf = new double[ndoubles];
+			//std::cerr << "Raw new " << ndoubles << std::endl;
+		} else {
+			//std::cerr << "Pooled new " << ndoubles << std::endl;
+			size_t pool_dafter = pool_dcur_ + ndoubles;
+			if (pool_dafter>pool_dsize_) {
+				// not enough space left, just get another block
+				get_new_block();
+			}
+			buf = pool_buf_ + pool_dcur_;
+			pool_dcur_ += ndoubles;
+		}
+
+		return (void*) buf;
+	}
+
+	void deallocate(void* ptr, const size_t nels, const size_t elsize) const {
+		if (pool_buf_==NULL) {
+			// all allocs were from global memory, so we can delete, too
+			double *buf = (double *)ptr;
+			delete[] buf;
+		} else {
+			// NOOP, we accept memory will be leaked
+			//std::cerr << "Leak " << nels*elsize/sizeof(double) << std::endl;
+		}
+	}
+protected:
+
+	void get_new_block() {
+		// forget about the old one, accept memory leak
+		//std::cerr << "Raw pool new " << POOL_BUF_SIZE << std::endl;
+		pool_buf_ = new double[POOL_BUF_SIZE];
+		pool_dsize_ = POOL_BUF_SIZE;
+		pool_dcur_ = 0;
+	}
+
+	double *pool_buf_;	// if !=NULL, the current pool buffer
+	size_t pool_dsize_;	// size of the pool buffer
+	size_t pool_dcur_;	// offset in the pool buffer
+};
+
+
+/**
  * Tally how much memory is allocated to certain
  */
 class MemoryTally {
@@ -334,12 +413,11 @@ template <typename T, int S = 128>
 class EList {
 
 public:
-
 	/**
 	 * Allocate initial default of S elements.
 	 */
 	explicit EList() :
-		cat_(0), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
+		cat_(0), allocCat_(-1), list_(NULL), alloc_(NULL), sz_(S), cur_(0), propagate_alloc_(true)
 	{
 #ifndef USE_MEM_TALLY
 		(void)cat_;
@@ -350,7 +428,7 @@ public:
 	 * Allocate initial default of S elements.
 	 */
 	explicit EList(int cat) :
-		cat_(cat), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
+		cat_(cat), allocCat_(-1), list_(NULL), alloc_(NULL), sz_(S), cur_(0), propagate_alloc_(true)
 	{
 		assert_geq(cat, 0);
 	}
@@ -359,7 +437,7 @@ public:
 	 * Initially allocate given number of elements; should be > 0.
 	 */
 	explicit EList(size_t isz, int cat = 0) :
-		cat_(cat), allocCat_(-1), list_(NULL), sz_(std::max(isz,size_t(S))), cur_(0)
+		cat_(cat), allocCat_(-1), list_(NULL), alloc_(NULL), sz_(std::max(isz,size_t(S))), cur_(0), propagate_alloc_(true)
 	{
 		assert_geq(cat, 0);
 	}
@@ -368,19 +446,9 @@ public:
 	 * Copy from another EList using operator=.
 	 */
 	EList(const EList<T, S>& o) :
-		cat_(0), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
+		cat_(o.cat_), allocCat_(-1), list_(NULL), alloc_(NULL), sz_(S), cur_(0), propagate_alloc_(true)
 	{
 		*this = o;
-	}
-
-	/**
-	 * Copy from another EList using operator=.
-	 */
-	explicit EList(const EList<T, S>& o, int cat) :
-		cat_(cat), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
-	{
-		*this = o;
-		assert_geq(cat, 0);
 	}
 
 	/**
@@ -393,6 +461,8 @@ public:
 	 */
 	EList<T, S>& operator=(const EList<T, S>& o) {
 		assert_eq(cat_, o.cat());
+		alloc_ = o.alloc_;
+		propagate_alloc_ = o.propagate_alloc_;
 		if(o.cur_ == 0) {
 			// Nothing to copy
 			cur_ = 0;
@@ -422,10 +492,11 @@ public:
 	 * avoid o's destructor from deleting list_ out from under us.
 	 */
 	void xfer(EList<T, S>& o) {
-		// What does it mean to transfer to a different-category list?
-		assert_eq(cat_, o.cat());
 		// Can only transfer into an empty object
 		free();
+		cat_ = o.cat_;
+		alloc_ = o.alloc_;
+		propagate_alloc_ = o.propagate_alloc_;
 		allocCat_ = cat_;
 		list_ = o.list_;
 		sz_ = o.sz_;
@@ -434,6 +505,20 @@ public:
 		o.sz_ = o.cur_ = 0;
 		o.allocCat_ = -1;
 	}
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		// asserteq(list_,NULL);  // using a different allocate and deallocate can lead to problems
+		alloc_ = alloc;
+		propagate_alloc_ = propagate_alloc;
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		// asserteq(list_,NULL);  // using a different allocate and deallocate can lead to problems
+		alloc_ = arg.first;
+		propagate_alloc_ = arg.second;
+	}
+
+	std::pair<BTAllocator *, bool> get_alloc() const {return make_pair(alloc_,propagate_alloc_);}
 
 	/**
 	 * Return number of elements.
@@ -466,11 +551,12 @@ public:
 	/**
 	 * Ensure that there is sufficient capacity to expand to include
 	 * 'thresh' more elements without having to expand.
+	 * Also ensure that all the elements have been initialized.
 	 */
 	inline void ensure(size_t thresh) {
 		if(list_ == NULL) {
 			if(thresh > sz_) {
-				size_t newsz = compExact(thresh);
+				size_t newsz = compExact(thresh); // cur_==0
 				sz_ = newsz;
 			}
 			if(sz_>0) lazyInit();
@@ -948,12 +1034,36 @@ private:
 		list_ = alloc(sz);
 	}
 
+	// credit: https://stackoverflow.com/questions/8911897/detecting-a-function-in-c-at-compile-time
+	template <typename T2>
+	static auto propagate_alloc_to_list(T2 *ptr, size_t sz, BTAllocator *alloc) -> decltype(ptr->set_alloc(alloc), void()) {
+		std::cerr << "Propagate" << std::endl;
+		for (size_t i=0; i<sz; i++) {
+			ptr[i].set_alloc(alloc); // propagate_alloc_==true
+		}
+	}
+
+	static void propagate_alloc_to_list(...) {
+		// this type does not support propagation, noop
+		std::cerr << "No propagate" << std::endl;
+	}
+
+	// 
 	/**
 	 * Allocate a T array of length sz_ and store in list_.  Also,
 	 * tally into the global memory tally.
 	 */
 	T *alloc(size_t sz) {
-		T* tmp = new T[sz];
+		if (sz==0) {std::cerr << "Internal error: alloc 0 " << this << std::endl; throw 1;}
+		T* tmp = NULL;
+		if (alloc_!=NULL) {
+			// use the custom allocator
+			tmp=new(alloc_->allocate(sz,sizeof(T))) T[sz];
+			if (propagate_alloc_) propagate_alloc_to_list(tmp, sz, alloc_);
+		} else {
+			// no custom allocator, use the default new
+			tmp = new T[sz];
+		}
 		assert(tmp != NULL);
 #ifdef USE_MEM_TALLY
 		gMemTally.add(cat_, sz);
@@ -970,7 +1080,14 @@ private:
 		if(list_ != NULL) {
 			assert_neq(-1, allocCat_);
 			assert_eq(allocCat_, cat_);
-			delete[] list_;
+			if (alloc_!=NULL) {
+				// used the custom allocator, use the 2-step procedure
+				std::destroy_at(list_);
+				alloc_->deallocate(list_, sz_, sizeof(T));
+			} else {
+				// no custom allocator, assume new[] was used
+				delete[] list_;
+			}
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -1045,8 +1162,10 @@ private:
 	int cat_;      // memory category, for accounting purposes
 	int allocCat_; // category at time of allocation
 	T *list_;      // list pointer, returned from new[]
+	mutable BTAllocator *alloc_; // if !=NULL, use it to allocate the list_
 	size_t sz_;    // capacity
 	size_t cur_;   // occupancy (AKA size)
+	bool   propagate_alloc_; // should I propagate the allocator to the constructed objects?
 };
 
 /**
