@@ -982,7 +982,8 @@ public:
 		AlnSink& g,                // AlnSink being wrapped
 		const ReportingParams& rp, // Parameters governing reporting
 		Mapq& mapq,                // Mapq calculator
-		size_t threadId) :         // Thread ID
+		size_t threadId,           // Thread ID
+		BTPerThreadAllocators& allocs) :
 		g_(g),
 		rp_(rp),
 		threadid_(threadId),
@@ -1009,6 +1010,16 @@ public:
 		st_(rp)        // reporting state - what's left to do?
 	{
 		assert(rp_.repOk());
+		BTAllocator* alloc = &(allocs[threadId]);
+		rs1_.set_alloc(alloc,true);
+		rs2_.set_alloc(alloc,true);
+		rs1u_.set_alloc(alloc,true);
+		rs2u_.set_alloc(alloc,true);
+		select1_.set_alloc(alloc,true);
+		select2_.set_alloc(alloc,true);
+		selectBuf_.set_alloc(alloc,true);
+        	//obuf_.set_alloc(alloc);
+        	//staln_.set_alloc(alloc);
 	}
 
 	/**

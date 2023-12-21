@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 #include <stdint.h>
 #include <string.h>
 #include <limits>
@@ -34,6 +35,9 @@
 /**
  * Custom allocator of polled memory 
  * aligned to double, since that's the most restrictive type we expect
+ *
+ * This allocator will leak memory, but this is by design
+ * as we expect very little memory churn in the process.
  *
  * Note: There is also a global memory version
  **/
@@ -55,6 +59,11 @@ public:
 	BTAllocator(double *buf, const size_t size)
 	: pool_buf_(buf), pool_dsize_(size), pool_dcur_(0) {}
 
+	// allow move operators
+	BTAllocator(BTAllocator&& o) = default;
+	BTAllocator& operator=(BTAllocator&& o) noexcept = delete;
+
+	// but forbid copy operators
 	BTAllocator(const BTAllocator& o) = delete;
 	BTAllocator& operator=(const BTAllocator& o) = delete;
 
@@ -107,6 +116,40 @@ protected:
 	double *pool_buf_;	// if !=NULL, the current pool buffer
 	size_t pool_dsize_;	// size of the pool buffer
 	size_t pool_dcur_;	// offset in the pool buffer
+};
+
+/**
+ * Aggregator of custom allocators
+ **/
+class BTPerThreadAllocators {
+public:
+	BTPerThreadAllocators(const size_t n_threads)
+	: allocs_() {
+		// get the initial buffer for all the per-thread allocators 
+		// in a single large new, then distribute among them
+		constexpr size_t one_ndoubles = BTAllocator::POOL_BUF_SIZE;
+		size_t ndoubles = n_threads*one_ndoubles;
+		double *initial_buf = new double[ndoubles];
+
+		allocs_.reserve(n_threads);
+		for (size_t i=0; i<n_threads; i++) {
+			allocs_.emplace_back(initial_buf, one_ndoubles);
+			initial_buf+=one_ndoubles;
+		}
+		// Foget about initial_buf from now on
+		// This will be a one-off memory leak that will be cleaned up
+		// on process termination
+	}
+
+	~BTPerThreadAllocators() {}
+
+	BTAllocator &operator[](size_t thread_id) {return allocs_[thread_id];}
+
+	size_t size() {return allocs_.size();}
+
+protected:
+
+	std::vector<BTAllocator> allocs_;
 };
 
 
@@ -1037,7 +1080,6 @@ private:
 	// credit: https://stackoverflow.com/questions/8911897/detecting-a-function-in-c-at-compile-time
 	template <typename T2>
 	static auto propagate_alloc_to_list(T2 *ptr, size_t sz, BTAllocator *alloc) -> decltype(ptr->set_alloc(alloc), void()) {
-		std::cerr << "Propagate" << std::endl;
 		for (size_t i=0; i<sz; i++) {
 			ptr[i].set_alloc(alloc); // propagate_alloc_==true
 		}
@@ -1045,7 +1087,6 @@ private:
 
 	static void propagate_alloc_to_list(...) {
 		// this type does not support propagation, noop
-		std::cerr << "No propagate" << std::endl;
 	}
 
 	// 

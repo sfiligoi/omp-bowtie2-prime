@@ -1960,8 +1960,9 @@ public:
 		AlnSink& g,                // AlnSink being wrapped
 		const ReportingParams& rp, // Parameters governing reporting
 		Mapq& mapq,                // Mapq calculator
-		size_t threadId) :         // Thread ID
-	AlnSinkWrap(g, rp, mapq, threadId) ,
+		size_t threadId,           // Thread ID
+		BTPerThreadAllocators& allocs) :
+	AlnSinkWrap(g, rp, mapq, threadId, allocs) ,
 	prm() ,
 	rpm() {}
 
@@ -2146,6 +2147,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 	bool nofw = gNofw;
 	bool norc = gNorc;
 
+	BTAllocator worker_alloc(false);
+	BTPerThreadAllocators mate_allocs(num_parallel_tasks);
+
 	{
 		// Sinks: these are so that we can print tables encoding counts for
 		// events of interest on a per-read, per-seed, per-join, or per-SW
@@ -2164,17 +2168,22 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// Note: Cannot use std:vector due to GPU compute not having access to the CPU stack
 
 		// Instantiate a mapping quality calculator
-		std::vector< unique_ptr<Mapq> > bmapq(num_parallel_tasks);
-		typedef AlnSinkWrapOne* AlnSinkWrapOnePtr;
-		AlnSinkWrapOne* *g_msinkwrap = new AlnSinkWrapOnePtr[num_parallel_tasks];
+		std::vector< unique_ptr<Mapq> > bmapq;
+		std::vector<AlnSinkWrapOne> v_msinkwrap;
+
+		bmapq.reserve(num_parallel_tasks);
+		v_msinkwrap.reserve(num_parallel_tasks);
+		
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			bmapq[mate].reset(new_mapq(mapqv, scoreMin, sc));
-			g_msinkwrap[mate] = new AlnSinkWrapOne(
+			bmapq.emplace_back(new_mapq(mapqv, scoreMin, sc));
+			v_msinkwrap.emplace_back(
 							msink,        // global sink
 							rp,           // reporting parameters
 							*bmapq[mate], // MAPQ calculator
-							mate);       // thread id
+							mate,         // thread id
+							mate_allocs); // memory pools
 		}
+		AlnSinkWrapOne *g_msinkwrap = v_msinkwrap.data();
 
 		// Interfaces for alignment and seed caches
 		AlignmentCacheIfaceBT2* ca = new AlignmentCacheIfaceBT2[num_parallel_tasks];
@@ -2259,7 +2268,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					ps[mate] = g_psrah[mate].get()->ptr();
 					rds[mate] = &ps[mate]->read_a();
 
-					AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
+					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 					TReadId rdid = rds[mate]->rdid;
 
 					// Align this read/pair
@@ -2377,7 +2386,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
 			const size_t mate=matemap[fidx];
 #endif
-			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate];
 					// Find end-to-end exact alignments for each read
 					size_t minedfw = 0;
 					size_t minedrc = 0;
@@ -2420,7 +2428,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 #pragma omp parallel for default(shared)
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
 			const size_t mate=matemap[fidx];
-			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
+			   		AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 					const size_t rdlen = rds[mate]->length();
 
 					// Find end-to-end exact alignments for each read, part 2
@@ -2551,7 +2559,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 #pragma omp parallel for default(shared)
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
 			const size_t mate=matemap[fidx];
-			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
+			   		AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 					const size_t rdlen = rds[mate]->length();
 
 					// 1-mismatch, part 2
@@ -2635,7 +2643,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 #pragma omp parallel for default(shared)
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
 			const size_t mate=matemap[fidx];
-			   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate]; 
+			   		AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 					const size_t rdlen = rds[mate]->length();
 
 					// Calculate interval length for both mates
@@ -2823,7 +2831,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 #pragma omp parallel for default(shared)
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
-		   		AlnSinkWrapOne& msinkwrap = *g_msinkwrap[mate];
+		   		AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate];
 		
 				const size_t rdlen = rds[mate]->length();
 				size_t totnucs = 0;
@@ -2856,14 +2864,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// Merge in the metrics
 		// Must be done sequentially
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			msink.mergeMetricsUnsafe(g_msinkwrap[mate]->rpm);
+			msink.mergeMetricsUnsafe(g_msinkwrap[mate].rpm);
 		}
 
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			delete g_msinkwrap[mate];
-			g_msinkwrap[mate] = NULL;
-		}
-		delete [] g_msinkwrap;
+		v_msinkwrap.clear();
 
 		delete[] exhaustive;
 		delete[] filt;
