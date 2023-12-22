@@ -1018,7 +1018,7 @@ public:
 		select1_.set_alloc(alloc,true);
 		select2_.set_alloc(alloc,true);
 		selectBuf_.set_alloc(alloc,true);
-        	//obuf_.set_alloc(alloc);
+        	obuf_.set_alloc(alloc);
         	//staln_.set_alloc(alloc);
 	}
 

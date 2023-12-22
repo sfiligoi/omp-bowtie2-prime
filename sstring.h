@@ -25,6 +25,7 @@
 #include "assert_helpers.h"
 #include "alphabet.h"
 #include "random_source.h"
+#include "ds.h"
 
 /**
  * Four kinds of strings defined here:
@@ -1619,31 +1620,36 @@ public:
 	explicit SStringExpandable() :
 		cs_(NULL),
 		printcs_(NULL),
+		alloc_(NULL),
+		zero_(0), zeroT_(0),
 		len_(0),
-		sz_(0)
+		sz_(I)
 	{
-		if(I > 0) {
-			expandNoCopy(I);
-		}
+#ifndef USE_MEM_TALLY
+                (void)len_;
+#endif  
 	}
 
 	explicit SStringExpandable(size_t sz) :
 		cs_(NULL),
 		printcs_(NULL),
+		alloc_(NULL),
+		zero_(0), zeroT_(0),
 		len_(0),
-		sz_(0)
+		sz_(I)
 	{
-		expandNoCopy(sz);
+		if (sz>I) {
+			expandNoCopy(sz);
+		}
 	}
 
-	/**
-	 * Create an SStringExpandable from another SStringExpandable.
-	 */
-	SStringExpandable(const SStringExpandable<T, S>& o) :
+	SStringExpandable(const SStringExpandable<T, S, M, I>& o) :
 		cs_(NULL),
 		printcs_(NULL),
+		alloc_(o.alloc_),
+		zero_(0), zeroT_(0),
 		len_(0),
-		sz_(0)
+		sz_(I)
 	{
 		*this = o;
 	}
@@ -1655,8 +1661,10 @@ public:
 	explicit SStringExpandable(const std::basic_string<T>& str) :
 		cs_(NULL),
 		printcs_(NULL),
+		alloc_(NULL),
+		zero_(0), zeroT_(0),
 		len_(0),
-		sz_(0)
+		sz_(I)
 	{
 		install(str.c_str(), str.length());
 	}
@@ -1667,8 +1675,10 @@ public:
 	explicit SStringExpandable(const T* b, size_t sz) :
 		cs_(NULL),
 		printcs_(NULL),
+		alloc_(NULL),
+		zero_(0), zeroT_(0),
 		len_(0),
-		sz_(0)
+		sz_(I)
 	{
 		install(b, sz);
 	}
@@ -1679,8 +1689,10 @@ public:
 	explicit SStringExpandable(const T* b) :
 		cs_(NULL),
 		printcs_(NULL),
+		alloc_(NULL),
+		zero_(0), zeroT_(0),
 		len_(0),
-		sz_(0)
+		sz_(I)
 	{
 		install(b, strlen(b));
 	}
@@ -1689,17 +1701,21 @@ public:
 	 * Destroy the expandable string object.
 	 */
 	virtual ~SStringExpandable() {
-		if(cs_ != NULL) {
-			delete[] cs_;
-			cs_ = NULL;
-		}
-		if(printcs_ != NULL) {
-			delete[] printcs_;
-			printcs_ = NULL;
-		}
-		sz_ = len_ = 0;
+		free();
 	}
 
+        void set_alloc(BTAllocator *alloc, bool propagate=true) { // Note: We have no way to propagate, but keep for consistency with EList
+                // asserteq(cs_,NULL);  // using a different allocate and deallocate can lead to problems
+                alloc_ = alloc;
+	}
+
+        void set_alloc(std::pair<BTAllocator *, bool> arg) {
+                // asserteq(cs_,NULL);  // using a different allocate and deallocate can lead to problems
+                alloc_ = arg.first;
+	}
+
+        std::pair<BTAllocator *, bool> get_alloc() const {return make_pair(alloc_,true);}
+                //
 	/**
 	 * Return ith character from the left of either the forward or the
 	 * reverse-complement version of the read.
@@ -1713,7 +1729,8 @@ public:
 		if(len == 0) len = len_;
 		assert_lt(i, len);
 		assert_leq(len, len_ - depth);
-		return fw ? cs_[depth+i] : cs_[depth+len-i-1];
+		auto buf_ = buf();
+		return fw ? buf_[depth+i] : buf_[depth+len-i-1];
 	}
 
 	/**
@@ -1728,8 +1745,9 @@ public:
 	{
 		if(len == 0) len = len_;
 		assert_leq(len, len_ - depth);
+		auto buf_ = buf();
 		for(size_t i = 0; i < len; i++) {
-			ret.append(fw ? cs_[depth+i] : cs_[depth+len-i-1]);
+			ret.append(fw ? buf_[depth+i] : buf_[depth+len-i-1]);
 		}
 	}
 
@@ -1737,7 +1755,7 @@ public:
 	 * Assignment to other SStringExpandable.
 	 */
 	SStringExpandable<T,S,M,I>& operator=(const SStringExpandable<T,S,M,I>& o) {
-		install(o.cs_, o.len_);
+		install(o.buf(), o.len_);
 		return *this;
 	}
 
@@ -1758,10 +1776,11 @@ public:
 		len_++;
 		// Move everyone down by 1
 		// len_ is the *new* length
+		auto buf_ = wbuf();
 		for(size_t i = len_; i > idx+1; i--) {
-			cs_[i-1] = cs_[i-2];
+			buf_[i-1] = buf_[i-2];
 		}
-		cs_[idx] = c;
+		buf_[idx] = c;
 	}
 
 	/**
@@ -1769,7 +1788,8 @@ public:
 	 */
 	void set(int c, size_t idx) {
 		assert_lt(idx, len_);
-		cs_[idx] = c;
+		auto buf_ = wbuf();
+		buf_[idx] = c;
 	}
 
 	/**
@@ -1777,7 +1797,8 @@ public:
 	 */
 	void append(const T& c) {
 		if(sz_ < len_ + 1) expandCopy((len_ + 1 + S) * M);
-		cs_[len_++] = c;
+		auto buf_ = wbuf();
+		buf_[len_++] = c;
 	}
 
 	/**
@@ -1786,8 +1807,9 @@ public:
 	void remove(size_t idx) {
 		assert_lt(idx, len_);
 		assert_gt(len_, 0);
+		auto buf_ = wbuf();
 		for(size_t i = idx; i < len_-1; i++) {
-			cs_[i] = cs_[i+1];
+			buf_[i] = buf_[i+1];
 		}
 		len_--;
 	}
@@ -1797,7 +1819,8 @@ public:
 	 */
 	const T& operator[](size_t i) const {
 		assert_lt(i, len_);
-		return cs_[i];
+		auto buf_ = buf();
+		return buf_[i];
 	}
 
 	/**
@@ -1805,7 +1828,8 @@ public:
 	 */
 	T& operator[](size_t i) {
 		assert_lt(i, len_);
-		return cs_[i];
+		auto buf_ = wbuf();
+		return buf_[i];
 	}
 
 	/**
@@ -1813,7 +1837,8 @@ public:
 	 */
 	const T& get(size_t i) const {
 		assert_lt(i, len_);
-		return cs_[i];
+		auto buf_ = buf();
+		return buf_[i];
 	}
 
 	/**
@@ -1821,7 +1846,8 @@ public:
 	 */
 	virtual void install(const T* b, size_t sz) {
 		if(sz_ < sz) expandNoCopy((sz + S) * M);
-		memcpy(cs_, b, sz * sizeof(T));
+		auto buf_ = wbuf();
+		memcpy(buf_, b, sz * sizeof(T));
 		len_ = sz;
 	}
 
@@ -1837,8 +1863,9 @@ public:
 	 */
 	void installReverse(const char* b, size_t sz) {
 		if(sz_ < sz) expandNoCopy((sz + S) * M);
+		auto buf_ = wbuf();
 		for(size_t i = 0; i < sz; i++) {
-			cs_[i] = b[sz-i-1];
+			buf_[i] = b[sz-i-1];
 		}
 		len_ = sz;
 	}
@@ -1849,8 +1876,10 @@ public:
 	 */
 	void installReverse(const SStringExpandable<T, S>& b) {
 		if(sz_ < b.len_) expandNoCopy((b.len_ + S) * M);
+		auto buf_ = wbuf();
+		auto b_buf_ = b.buf();
 		for(size_t i = 0; i < b.len_; i++) {
-			cs_[i] = b.cs_[b.len_ - i - 1];
+			buf_[i] = b_buf_[b.len_ - i - 1];
 		}
 		len_ = b.len_;
 	}
@@ -1939,8 +1968,9 @@ public:
 	void resize(size_t len, const T& el) {
 		if(sz_ < len) expandCopy((len + S) * M);
 		if(len > len_) {
+			auto buf_ = wbuf();
 			for(size_t i = len_; i < len; i++) {
-				cs_[i] = el;
+				buf_[i] = el;
 			}
 		}
 		len_ = len;
@@ -1951,8 +1981,9 @@ public:
 	 */
 	void fill(size_t len, const T& el) {
 		assert_leq(len, len_);
+		auto buf_ = wbuf();
 		for(size_t i = 0; i < len; i++) {
-			cs_[i] = el;
+			buf_[i] = el;
 		}
 	}
 
@@ -1971,8 +2002,9 @@ public:
 		if(len == len_) {
 			len_ = 0; return;
 		}
+		auto buf_ = wbuf();
 		for(size_t i = 0; i < len_-len; i++) {
-			cs_[i] = cs_[i+len];
+			buf_[i] = buf_[i+len];
 		}
 		len_ -= len;
 	}
@@ -1995,7 +2027,8 @@ public:
 	 */
 	void append(const T* b, size_t sz) {
 		if(sz_ < len_ + sz) expandCopy((len_ + sz + S) * M);
-		memcpy(cs_ + len_, b, sz * sizeof(T));
+		auto buf_ = wbuf();
+		memcpy(buf_ + len_, b, sz * sizeof(T));
 		len_ += sz;
 	}
 
@@ -2028,16 +2061,18 @@ public:
 	const char* toZBufXForm(const char *xform) const {
 		ASSERT_ONLY(size_t xformElts = strlen(xform));
 		if(empty()) {
-			const_cast<char&>(zero_) = 0;
 			return &zero_;
 		}
-		char* printcs = const_cast<char*>(printcs_);
 		// Lazily allocate space for print buffer
-		for(size_t i = 0; i < len_; i++) {
-			assert_lt(cs_[i], (int)xformElts);
-			printcs[i] = xform[(int)cs_[i]];
+		if (printcs_==NULL) {
+			printcs_ = new_one(printcs_);
 		}
-		printcs[len_] = 0;
+		auto buf_ = buf();
+		for(size_t i = 0; i < len_; i++) {
+			assert_lt(buf_[i], (int)xformElts);
+			printcs_[i] = xform[(int)buf_[i]];
+		}
+		printcs_[len_] = 0;
 		return printcs_;
 	}
 
@@ -2047,12 +2082,12 @@ public:
 	 */
 	virtual const T* toZBuf() const {
 		if(empty()) {
-			const_cast<T&>(zeroT_) = 0;
 			return &zeroT_;
 		}
 		assert_leq(len_, sz_);
-		const_cast<T*>(cs_)[len_] = 0;
-		return cs_;
+		auto buf_ = buf();
+		const_cast<T*>(buf_)[len_] = 0;
+		return buf_;
 	}
 
 	/**
@@ -2067,33 +2102,78 @@ public:
 	/**
 	 * Return a const version of the raw buffer.
 	 */
-	const T* buf() const { return cs_; }
+	const T* buf() const { return (sz_<=size_t(I)) ? static_cs_ : cs_; }
 
 	/**
 	 * Return a writeable version of the raw buffer.
 	 */
-	T* wbuf() { return cs_; }
+	T* wbuf() { return (sz_<=size_t(I)) ? static_cs_ : cs_; }
 
 protected:
+	template<typename C>
+	void free_one(C* ptr) {
+		if (alloc_!=NULL) {
+			// used the custom allocator, use the 2-step procedure
+			std::destroy_at(ptr);
+			alloc_->deallocate(ptr, sz_+1, sizeof(C));
+		} else {
+			// no custom allocator, assume new[] was used
+			delete[] ptr;
+		}
+	}
+
+	void free() {
+		if(cs_ != NULL) {
+			free_one(cs_);
+			cs_ = NULL;
+		}
+		if(printcs_ != NULL) {
+			free_one(printcs_);
+			printcs_ = NULL;
+		}
+		len_ = 0;
+		sz_ = I;
+	}
+
+	/**
+	 * Allocate a T array of length sz_ and store in list_.  Also,
+	 * tally into the global memory tally.
+	 */
+	template<typename C>
+	C *new_one(C* tmp) const {
+		assert(tmp == NULL);
+		const size_t sz = sz_+1;
+		if (alloc_!=NULL) {
+			// use the custom allocator
+			tmp=new(alloc_->allocate(sz,sizeof(C))) C[sz];
+		} else {
+			// no custom allocator, use the default new
+			tmp = new C[sz];
+		}
+		assert(tmp != NULL);
+		return tmp;
+	}
+
 	/**
 	 * Allocate new, bigger buffer and copy old contents into it.  If
 	 * requested size can be accommodated by current buffer, do nothing.
 	 */
 	void expandCopy(size_t sz) {
 		if(sz_ >= sz) return; // done!
-		T *tmp  = new T[sz + 1];
-		char *ptmp = new char[sz + 1];
-		if(cs_ != NULL) {
-			memcpy(tmp, cs_, sizeof(T)*len_);
-			delete[] cs_;
-		}
-		if(printcs_ != NULL) {
-			memcpy(ptmp, printcs_, sizeof(char)*len_);
-			delete[] printcs_;
-		}
-		cs_ = tmp;
-		printcs_ = ptmp;
+		if(size_t(I) >= sz) return; // just use the array
+		size_t org_sz = sz_;
+		auto org_buf = buf();
+
 		sz_ = sz;
+		T *tmp  = NULL;
+		tmp = new_one(tmp);
+		if (len_>0) {
+			memcpy(tmp, org_buf, sizeof(T)*len_);
+		}		
+		if(cs_ != NULL) free_one(cs_);
+		if(printcs_ != NULL) free_one(printcs_);
+		cs_ = tmp;
+		printcs_ = NULL; // will lazily init as needed
 	}
 
 	/**
@@ -2102,19 +2182,23 @@ protected:
 	 */
 	void expandNoCopy(size_t sz) {
 		if(sz_ >= sz) return; // done!
-		if(cs_      != NULL) delete[] cs_;
-		if(printcs_ != NULL) delete[] printcs_;
-		cs_ = new T[sz + 1];
-		printcs_ = new char[sz + 1];
+		if(size_t(I) >= sz) return; // just use the array
+
+		if(cs_ != NULL) free_one(cs_);
+		if(printcs_ != NULL) free_one(printcs_);
 		sz_ = sz;
+		cs_ = new_one(cs_);
+		printcs_ = NULL; // will lazily init as needed
 	}
 
 	T *cs_;      // +1 so that we have the option of dropping in a terminating "\0"
-	char *printcs_; // +1 so that we have the option of dropping in a terminating "\0"
+	mutable char *printcs_; // +1 so that we have the option of dropping in a terminating "\0"
+        mutable BTAllocator *alloc_; // if !=NULL, use it to allocate cs_ and printcs_
 	char zero_;  // 0 terminator for empty string
 	T zeroT_;    // 0 terminator for empty string
 	size_t len_; // # filled-in elements
 	size_t sz_;  // size capacity of cs_
+	T static_cs_[I+1]; // small initial array, before we move to heap
 };
 
 /**

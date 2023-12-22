@@ -103,6 +103,36 @@ public:
 			//std::cerr << "Leak " << nels*elsize/sizeof(double) << std::endl;
 		}
 	}
+
+
+	/**
+ 	 *
+ 	 * To be used by useres for BTAllocator to manage allocator propagation
+ 	 *
+ 	 **/ 
+
+	// credit: https://stackoverflow.com/questions/8911897/detecting-a-function-in-c-at-compile-time
+	template <typename T>
+	auto propagate_alloc_to_list(T *ptr, size_t sz) -> decltype(ptr->set_alloc(this), void()) {
+		for (size_t i=0; i<sz; i++) {
+			ptr[i].set_alloc(this); // propagate_alloc_==true
+		}
+	}
+
+	void propagate_alloc_to_list(...) {
+		// this type does not support propagation, noop
+	}
+
+	template <typename T>
+	auto propagate_alloc_to_obj(T &obj) -> decltype(obj.set_alloc(this), void()) {
+		obj.set_alloc(this); // propagate_alloc_==true
+	}
+
+	void propagate_alloc_to_obj(...) {
+		// this type does not support propagation, noop
+	}
+
+
 protected:
 
 	void get_new_block() {
@@ -1077,19 +1107,6 @@ private:
 		list_ = alloc(sz);
 	}
 
-	// credit: https://stackoverflow.com/questions/8911897/detecting-a-function-in-c-at-compile-time
-	template <typename T2>
-	static auto propagate_alloc_to_list(T2 *ptr, size_t sz, BTAllocator *alloc) -> decltype(ptr->set_alloc(alloc), void()) {
-		for (size_t i=0; i<sz; i++) {
-			ptr[i].set_alloc(alloc); // propagate_alloc_==true
-		}
-	}
-
-	static void propagate_alloc_to_list(...) {
-		// this type does not support propagation, noop
-	}
-
-	// 
 	/**
 	 * Allocate a T array of length sz_ and store in list_.  Also,
 	 * tally into the global memory tally.
@@ -1100,7 +1117,7 @@ private:
 		if (alloc_!=NULL) {
 			// use the custom allocator
 			tmp=new(alloc_->allocate(sz,sizeof(T))) T[sz];
-			if (propagate_alloc_) propagate_alloc_to_list(tmp, sz, alloc_);
+			if (propagate_alloc_) alloc_->propagate_alloc_to_list(tmp, sz);
 		} else {
 			// no custom allocator, use the default new
 			tmp = new T[sz];
