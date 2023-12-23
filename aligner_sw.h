@@ -228,41 +228,12 @@ public:
 		cperTri_(),
 		colstop_(0),
 		lastsolcol_(0),
-		cural_(0),
-		dpLog_(NULL),
-		firstRead_(true)
+		cural_(0)
 		ASSERT_ONLY(, cand_tmp_(DP_CAT))
 	{ }
 
-	explicit SwAligner(std::ostream *dpLog, bool firstRead = true) :
-		sseU8fw_(DP_CAT),
-		sseU8rc_(DP_CAT),
-		sseI16fw_(DP_CAT),
-		sseI16rc_(DP_CAT),
-		state_(STATE_UNINIT),
-		initedRead_(false),
-		readSse16_(false),
-		initedRef_(false),
-		rfwbuf_(DP_CAT),
-		btnstack_(DP_CAT),
-		btcells_(DP_CAT),
-		btdiag_(),
-		btncand_(DP_CAT),
-		btncanddone_(DP_CAT),
-		btncanddoneSucc_(0),
-		btncanddoneFail_(0),
-		cper_(),
-		cperMinlen_(),
-		cperPerPow2_(),
-		cperEf_(),
-		cperTri_(),
-		colstop_(0),
-		lastsolcol_(0),
-		cural_(0),
-		dpLog_(dpLog),
-		firstRead_(firstRead)
-		ASSERT_ONLY(, cand_tmp_(DP_CAT))
-	{ }
+	SwAligner(SwAligner&& other) = default;
+	SwAligner& operator=(SwAligner&& other) = default;
 
 	SwAligner(const SwAligner& other) = delete;
 	SwAligner& operator=(const SwAligner& other) = delete;
@@ -678,9 +649,6 @@ protected:
 	uint64_t nbtfiltst_; // # candidates filtered b/c starting cell was seen
 	uint64_t nbtfiltsc_; // # candidates filtered b/c score uninteresting
 	uint64_t nbtfiltdo_; // # candidates filtered b/c dominated by other cell
-	
-	std::ostream *dpLog_;
-	bool firstRead_;
 	
 	ASSERT_ONLY(SStringExpandable<uint32_t> tmp_destU32_);
 	ASSERT_ONLY(BTDnaString tmp_editstr_, tmp_refstr_);
