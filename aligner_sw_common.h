@@ -49,6 +49,14 @@ struct SwResult {
 		swbts(0)
 	{ }
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		alres.set_alloc(alloc,propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		alres.set_alloc(arg);
+	}
+
 	/**
 	 * Clear all contents.
 	 */

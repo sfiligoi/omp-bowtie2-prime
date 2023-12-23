@@ -48,6 +48,18 @@ public:
 		unsortedSz_(unsortedSz)
 	{ }
 	
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		sorted_.set_alloc(alloc,propagate_alloc);
+		sortedLhs_.set_alloc(alloc,propagate_alloc);
+		unsorted_.set_alloc(alloc,propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		sorted_.set_alloc(arg);
+		sortedLhs_.set_alloc(arg);
+		unsorted_.set_alloc(arg);
+	}
+
 	/**
 	 * Set the maximum size of the unsorted list.
 	 */
@@ -226,6 +238,13 @@ public:
 		}
 	}
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		bins_.set_alloc(alloc,propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		bins_.set_alloc(arg);
+	}
 	/**
 	 * Add a new interval to the list.
 	 */

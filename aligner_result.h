@@ -816,6 +816,16 @@ public:
 		reset();
 	}
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		ned_.set_alloc(alloc,propagate_alloc);
+		aed_.set_alloc(alloc,propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		ned_.set_alloc(arg);
+		aed_.set_alloc(arg);
+	}
+
 	/**
 	 * Clear all contents.
 	 */
@@ -1689,6 +1699,14 @@ public:
 		for(size_t i = 0; i < npos; i++) {
 			cells_[i].clear();
 		}
+	}
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		cells_.set_alloc(alloc,propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		cells_.set_alloc(arg);
 	}
 
 	/**

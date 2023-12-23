@@ -1949,6 +1949,9 @@ public:
 	SwDriverBT2()
 	: SwDriver(exactCacheCurrentMB * 1024 * 1024) {}
 
+	SwDriverBT2(SwDriverBT2&& other) = default;
+	SwDriverBT2& operator=(SwDriverBT2&& other) noexcept = default;
+
 	SwDriverBT2(const SwDriverBT2& other) = delete;
 	SwDriverBT2& operator=(const SwDriverBT2& other) = delete;
 };
@@ -2189,8 +2192,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		AlignmentCacheIfaceBT2* ca = new AlignmentCacheIfaceBT2[num_parallel_tasks];
 
 		SeedAligner* al = new SeedAligner[num_parallel_tasks];
+		for (size_t mate=0; mate<num_parallel_tasks; mate++) al[mate].set_alloc(&(mate_allocs[mate]));
 
 		SwDriverBT2* sd = new SwDriverBT2[num_parallel_tasks];
+		for (size_t mate=0; mate<num_parallel_tasks; mate++) sd[mate].set_alloc(&(mate_allocs[mate]));
 
 		SwAligner* sw = new SwAligner[num_parallel_tasks];
 		SeedResults *shs = new SeedResults[num_parallel_tasks];

@@ -57,6 +57,16 @@ public:
 		list_(SWAPLIST_THRESH, cat), seen_(CONVERSION_THRESH, cat),
 		thresh_(0) {}
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		list_.set_alloc(alloc, propagate_alloc);
+		seen_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		list_.set_alloc(arg);
+		seen_.set_alloc(arg);
+	}
+	
 	/**
 	 * Initialize the set of pseudo-randoms to be given out without replacement.
 	 */

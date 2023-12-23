@@ -1585,6 +1585,20 @@ public:
 	 */
 	SeedAligner() : edits_(AL_CAT), offIdx2off_(AL_CAT) { }
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		edits_.set_alloc(alloc, propagate_alloc);
+		offIdx2off_.set_alloc(alloc, propagate_alloc);
+		tmprfdnastr_.set_alloc(alloc, propagate_alloc);
+		tmpdnastr_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		edits_.set_alloc(arg);
+		offIdx2off_.set_alloc(arg);
+		tmprfdnastr_.set_alloc(arg);
+		tmpdnastr_.set_alloc(arg);
+	}
+	
 	/**
 	 * Given a read and a few coordinates that describe a substring of the
 	 * read (or its reverse complement), fill in 'seq' and 'qual' objects

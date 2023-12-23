@@ -183,7 +183,25 @@ public:
 	RowSampler(int cat = 0) : elim_(cat), masses_(cat) { 
 		mass_ = 0.0f;
 	}
+
+	// allow move operators
+	RowSampler(RowSampler&& o) = default;
+	RowSampler& operator=(RowSampler&& o) noexcept= default;
+
+	// but not copy operators
+	RowSampler(const RowSampler& o) = delete;
+	RowSampler& operator=(const RowSampler& o) = delete;
 	
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		elim_.set_alloc(alloc, propagate_alloc);
+		masses_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		elim_.set_alloc(arg);
+		masses_.set_alloc(arg);
+	}
+
 	/**
 	 * Initialze sampler with respect to a range of elements in a list of
 	 * SATupleAndPos's.
@@ -310,9 +328,46 @@ public:
 		gwstate_(GW_CAT),
 		reportOverhangs(gReportOverhangs) { }
 
+	// Allow move operator
+	SwDriver(SwDriver&& other) = default;
+	SwDriver& operator=(SwDriver&& other) noexcept = default;
+
+	// but not copy
 	SwDriver(const SwDriver& other) = delete;
 	SwDriver& operator=(const SwDriver& other) = delete;
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		rand_.set_alloc(alloc,propagate_alloc);
+		rands_.set_alloc(alloc,propagate_alloc);
+		rands2_.set_alloc(alloc,propagate_alloc);
+		eehits_.set_alloc(alloc,propagate_alloc);
+		satpos_.set_alloc(alloc,propagate_alloc);
+		satpos2_.set_alloc(alloc,propagate_alloc);
+		satups_.set_alloc(alloc,propagate_alloc);
+		gws_.set_alloc(alloc,propagate_alloc);
+		mateStreaks_.set_alloc(alloc,propagate_alloc);
+		rowsamp_.set_alloc(alloc,propagate_alloc);
+		for (int i=0;i<2; i++) seedExRangeFw_[i].set_alloc(alloc,propagate_alloc);
+		for (int i=0;i<2; i++) seedExRangeRc_[i].set_alloc(alloc,propagate_alloc);	
+		seenDiags1_.set_alloc(alloc,propagate_alloc);
+		seenDiags2_.set_alloc(alloc,propagate_alloc);
+		redAnchor_.set_alloc(alloc,propagate_alloc);
+		redMate1_.set_alloc(alloc,propagate_alloc);
+		redMate2_.set_alloc(alloc,propagate_alloc);
+		resGap_.set_alloc(alloc,propagate_alloc);
+		oresGap_.set_alloc(alloc,propagate_alloc);
+		resUngap_.set_alloc(alloc,propagate_alloc);
+		oresUngap_.set_alloc(alloc,propagate_alloc);
+		resEe_.set_alloc(alloc,propagate_alloc);
+		oresEe_.set_alloc(alloc,propagate_alloc);
+		pool_.set_alloc(alloc,propagate_alloc);
+		salistEe_.set_alloc(alloc,propagate_alloc);
+		gwstate_.set_alloc(alloc,propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		set_alloc(arg.first, arg.second);
+	}
 	/**
 	 * Given a collection of SeedHits for a single read, extend seed alignments
 	 * into full alignments.  Where possible, try to avoid redundant offset

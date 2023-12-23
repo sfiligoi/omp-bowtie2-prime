@@ -3325,19 +3325,10 @@ public:
 		cat_(cat),
 		cur_(0),
 		pagesz_(pagesz),
-		pages_(cat)
+		super_page_num_(((bytes+pagesz-1)/pagesz + 1)),
+		pages_(cat),
+		alloc_(NULL)
 	{
-		size_t super_page_num = ((bytes+pagesz-1)/pagesz + 1);
-		for(size_t i = 0; i < super_page_num ; i++) {
-			pages_.push_back(NULL);
-#ifdef USE_MEM_TALLY
-			gMemTally.add(cat, pagesz);
-#else
-			(void)cat_;
-			(void)pagesz_;
-#endif
-			assert(pages_.back() != NULL);
-		}
 		assert(repOk());
 	}
 
@@ -3347,7 +3338,12 @@ public:
 	~Pool() {
 		for(size_t i = 0; i < pages_.size(); i++) {
 			if (pages_[i]!=NULL) {
-			  delete[] pages_[i];
+			  if (alloc_!=NULL) {
+				alloc_->deallocate(pages_[i], pagesz_, sizeof(uint8_t));
+			  } else {
+				// no custom allocator, assume new[] was used
+				delete[] pages_[i];
+			  }
 			  pages_[i] = NULL;
 			}
 #ifdef USE_MEM_TALLY
@@ -3358,13 +3354,37 @@ public:
 		}
 	}
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		alloc_ = alloc;
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		alloc_ = arg.first;
+	}
+
 	/**
 	 * Allocate one page, or return NULL if no pages are left.
 	 */
 	uint8_t * alloc() {
 		assert(repOk());
+		if (pages_.empty()) {
+			// lazy init
+			for(size_t i = 0; i < super_page_num_ ; i++) {
+				pages_.push_back(NULL);
+			}
+		}
 		if(cur_ == pages_.size()) return NULL;
-		if (pages_[cur_]==NULL) pages_[cur_] = new uint8_t[pagesz_];
+		if (pages_[cur_]==NULL) {
+			uint8_t* tmp = NULL;
+			if (alloc_!=NULL) {
+				// use the custom allocator
+				tmp= (uint8_t*)alloc_->allocate(pagesz_,sizeof(uint8_t));
+			} else {
+				// no custom allocator, use the default new
+				tmp = new uint8_t[pagesz_];
+			}
+			pages_[cur_] = tmp;
+		}
 		return pages_[cur_++];
 	}
 
@@ -3390,8 +3410,6 @@ public:
 	 */
 	bool repOk() const {
 		assert_leq(cur_, pages_.size());
-		assert(!pages_.empty());
-		assert_gt(pagesz_, 0);
 		return true;
 	}
 #endif
@@ -3400,7 +3418,9 @@ private:
 	int             cat_;    // memory category, for accounting purposes
 	size_t          cur_;    // next page to hand out
 	const size_t    pagesz_; // size of a single page
+	const size_t super_page_num_; // number of desired pages_
 	EList<uint8_t*> pages_;  // the pages themselves
+	mutable BTAllocator *alloc_; // if !=NULL, use it to allocate the list_
 };
 
 /**
@@ -3420,6 +3440,14 @@ public:
 		cur_(0),
 		curPage_(0),
 		pages_(cat) { }
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		pages_.set_alloc(alloc,propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		pages_.set_alloc(arg);
+	}
 
 	/**
 	 * Add 1 object to the list.

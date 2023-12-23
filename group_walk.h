@@ -137,10 +137,17 @@ public:
 struct GroupWalkState {
 
 	GroupWalkState(int cat) : map(cat) {
-		masks[0].setCat(cat);
-		masks[1].setCat(cat);
-		masks[2].setCat(cat);
-		masks[3].setCat(cat);
+		for (int i=0; i<4; i++) masks[i].setCat(cat);
+	}
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		for (int i=0; i<4; i++) masks[i].set_alloc(alloc,propagate_alloc);
+		map.set_alloc(alloc,propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		for (int i=0; i<4; i++) masks[i].set_alloc(arg);
+		map.set_alloc(arg);
 	}
 
 	EList<bool> masks[4];      // temporary list for masks; used in GWState
