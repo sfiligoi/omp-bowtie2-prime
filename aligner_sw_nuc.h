@@ -188,8 +188,17 @@ class NBest {
 
 public:
 
-	NBest<T>() { nelt_ = nbest_ = n_ = 0; }
+	NBest<T>() : nelt_(0), nbest_(0), elts_(), ncur_(), n_() {}
 	
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		elts_.set_alloc(alloc, propagate_alloc);
+		ncur_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		elts_.set_alloc(arg);
+		ncur_.set_alloc(arg);
+	}
 	bool inited() const { return nelt_ > 0; }
 	
 	void init(size_t nelt, size_t nbest) {

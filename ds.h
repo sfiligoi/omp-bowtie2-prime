@@ -3000,6 +3000,14 @@ public:
 
 	explicit EFactory(int cat = 0) : l_(cat) { }
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		l_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		l_.set_alloc(arg);
+	}
+
 	/**
 	 * Clear the list.
 	 */
