@@ -61,7 +61,7 @@ public:
 
 	// allow move operators
 	BTAllocator(BTAllocator&& o) = default;
-	BTAllocator& operator=(BTAllocator&& o) noexcept = delete;
+	BTAllocator& operator=(BTAllocator&& o) noexcept = default;
 
 	// but forbid copy operators
 	BTAllocator(const BTAllocator& o) = delete;

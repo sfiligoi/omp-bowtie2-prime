@@ -1007,7 +1007,8 @@ public:
 		rs2u_(),       // mate 2 unpaired alignments
 		select1_(),    // for selecting random subsets for mate 1
 		select2_(),    // for selecting random subsets for mate 2
-		st_(rp)        // reporting state - what's left to do?
+		st_(rp),       // reporting state - what's left to do?
+		staln_(&(allocs[threadId]))
 	{
 		assert(rp_.repOk());
 		BTAllocator* alloc = &(allocs[threadId]);
@@ -1021,6 +1022,14 @@ public:
         	obuf_.set_alloc(alloc);
         	//staln_.set_alloc(alloc);
 	}
+
+	// allow move operators
+	AlnSinkWrap(AlnSinkWrap&& o) = default;
+	AlnSinkWrap& operator=(AlnSinkWrap&& o) noexcept = default;
+
+	// but not copy operators
+	AlnSinkWrap(const AlnSinkWrap& o) = delete;
+	AlnSinkWrap& operator=(const AlnSinkWrap& o) = delete;
 
 	/**
 	 * Initialize the wrapper with a new read pair and return an

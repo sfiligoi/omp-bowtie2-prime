@@ -624,7 +624,7 @@ class StackedAln {
 
 public:
 
-	StackedAln() :
+	StackedAln(BTAllocator* alloc) :
 		stackRef_(RES_CAT),
 		stackRel_(RES_CAT),
 		stackRead_(RES_CAT),
@@ -634,8 +634,24 @@ public:
 		mdzChr_(RES_CAT),
 		mdzRun_(RES_CAT)
 	{
+		stackRef_.set_alloc(alloc,true);
+		stackRel_.set_alloc(alloc,true);
+		stackRead_.set_alloc(alloc,true);
+		cigOp_.set_alloc(alloc,true);
+		cigRun_.set_alloc(alloc,true);
+		mdzOp_.set_alloc(alloc,true);
+		mdzChr_.set_alloc(alloc,true);
+		mdzRun_.set_alloc(alloc,true);
 		reset();
 	}
+
+	// allow move operators
+	StackedAln(StackedAln&& o) = default;
+	StackedAln & operator=(StackedAln&& o) noexcept = default;
+
+	// but not copy operators
+	StackedAln(const StackedAln& o) = delete;
+	StackedAln & operator=(const StackedAln& o) = delete;
 
 	/**
 	 * Reset to an uninitialized state.

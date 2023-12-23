@@ -1643,6 +1643,8 @@ public:
 		}
 	}
 
+	SStringExpandable(SStringExpandable<T, S, M, I>&& o) = default;
+
 	SStringExpandable(const SStringExpandable<T, S, M, I>& o) :
 		cs_(NULL),
 		printcs_(NULL),
@@ -1750,6 +1752,8 @@ public:
 			ret.append(fw ? buf_[depth+i] : buf_[depth+len-i-1]);
 		}
 	}
+
+	SStringExpandable<T,S,M,I>& operator=(SStringExpandable<T,S,M,I>&& o) noexcept  = default;
 
 	/**
 	 * Assignment to other SStringExpandable.
