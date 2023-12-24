@@ -182,6 +182,68 @@ protected:
 	std::vector<BTAllocator> allocs_;
 };
 
+/**
+ * Helper class to deal with Allocators
+ **/
+
+template <typename T>
+class BTAllocatorHandler {
+public:
+	BTAllocatorHandler() :
+		alloc_(NULL), propagate_alloc_(true)
+	{}
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		// asserteq(list_,NULL);  // using a different allocate and deallocate can lead to problems
+		alloc_ = alloc;
+		propagate_alloc_ = propagate_alloc;
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		// asserteq(list_,NULL);  // using a different allocate and deallocate can lead to problems
+		alloc_ = arg.first;
+		propagate_alloc_ = arg.second;
+	}
+
+	std::pair<BTAllocator *, bool> get_alloc() const {return make_pair(alloc_,propagate_alloc_);}
+
+protected:
+	inline BTAllocatorHandler<T>& copy_alloc(const BTAllocatorHandler<T>& o) {
+		alloc_ = o.alloc_;
+		propagate_alloc_ = o.propagate_alloc_;
+		return *this;
+	}
+
+	inline T *allocate(size_t sz) {
+		if (sz==0) {std::cerr << "Internal error: alloc 0 " << this << std::endl; throw 1;}
+		T* tmp = NULL;
+		if (alloc_!=NULL) {
+			// use the custom allocator
+			tmp=new(alloc_->allocate(sz,sizeof(T))) T[sz];
+			if (propagate_alloc_) alloc_->propagate_alloc_to_list(tmp, sz);
+		} else {
+			// no custom allocator, use the default new
+			tmp = new T[sz];
+		}
+		assert(tmp != NULL);
+		return tmp;
+	}
+
+	inline void deallocate(T* ptr, size_t sz) {
+		if (alloc_!=NULL) {
+			// used the custom allocator, use the 2-step procedure
+			std::destroy_at(ptr);
+			alloc_->deallocate(ptr, sz, sizeof(T));
+		} else {
+			// no custom allocator, assume new[] was used
+			delete[] ptr;
+		}
+	}
+
+	mutable BTAllocator *alloc_; // if !=NULL, use it to allocate pointers
+	bool   propagate_alloc_; // should I propagate the allocator to the constructed objects?
+};
+
 
 /**
  * Tally how much memory is allocated to certain
@@ -483,14 +545,14 @@ private:
  * doesn't set anything in stone.
  */
 template <typename T, int S = 128>
-class EList {
+class EList : public BTAllocatorHandler<T> {
 
 public:
 	/**
 	 * Allocate initial default of S elements.
 	 */
 	explicit EList() :
-		cat_(0), allocCat_(-1), list_(NULL), alloc_(NULL), sz_(S), cur_(0), propagate_alloc_(true)
+		cat_(0), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
 	{
 #ifndef USE_MEM_TALLY
 		(void)cat_;
@@ -501,7 +563,7 @@ public:
 	 * Allocate initial default of S elements.
 	 */
 	explicit EList(int cat) :
-		cat_(cat), allocCat_(-1), list_(NULL), alloc_(NULL), sz_(S), cur_(0), propagate_alloc_(true)
+		cat_(cat), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
 	{
 		assert_geq(cat, 0);
 	}
@@ -510,7 +572,7 @@ public:
 	 * Initially allocate given number of elements; should be > 0.
 	 */
 	explicit EList(size_t isz, int cat = 0) :
-		cat_(cat), allocCat_(-1), list_(NULL), alloc_(NULL), sz_(std::max(isz,size_t(S))), cur_(0), propagate_alloc_(true)
+		cat_(cat), allocCat_(-1), list_(NULL), sz_(std::max(isz,size_t(S))), cur_(0)
 	{
 		assert_geq(cat, 0);
 	}
@@ -519,7 +581,7 @@ public:
 	 * Copy from another EList using operator=.
 	 */
 	EList(const EList<T, S>& o) :
-		cat_(o.cat_), allocCat_(-1), list_(NULL), alloc_(NULL), sz_(S), cur_(0), propagate_alloc_(true)
+		cat_(o.cat_), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
 	{
 		*this = o;
 	}
@@ -534,8 +596,7 @@ public:
 	 */
 	EList<T, S>& operator=(const EList<T, S>& o) {
 		assert_eq(cat_, o.cat());
-		alloc_ = o.alloc_;
-		propagate_alloc_ = o.propagate_alloc_;
+		copy_alloc(o);
 		if(o.cur_ == 0) {
 			// Nothing to copy
 			cur_ = 0;
@@ -568,8 +629,7 @@ public:
 		// Can only transfer into an empty object
 		free();
 		cat_ = o.cat_;
-		alloc_ = o.alloc_;
-		propagate_alloc_ = o.propagate_alloc_;
+		copy_alloc(o);
 		allocCat_ = cat_;
 		list_ = o.list_;
 		sz_ = o.sz_;
@@ -578,20 +638,6 @@ public:
 		o.sz_ = o.cur_ = 0;
 		o.allocCat_ = -1;
 	}
-
-	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		// asserteq(list_,NULL);  // using a different allocate and deallocate can lead to problems
-		alloc_ = alloc;
-		propagate_alloc_ = propagate_alloc;
-	}
-
-	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		// asserteq(list_,NULL);  // using a different allocate and deallocate can lead to problems
-		alloc_ = arg.first;
-		propagate_alloc_ = arg.second;
-	}
-
-	std::pair<BTAllocator *, bool> get_alloc() const {return make_pair(alloc_,propagate_alloc_);}
 
 	/**
 	 * Return number of elements.
@@ -1112,16 +1158,7 @@ private:
 	 * tally into the global memory tally.
 	 */
 	T *alloc(size_t sz) {
-		if (sz==0) {std::cerr << "Internal error: alloc 0 " << this << std::endl; throw 1;}
-		T* tmp = NULL;
-		if (alloc_!=NULL) {
-			// use the custom allocator
-			tmp=new(alloc_->allocate(sz,sizeof(T))) T[sz];
-			if (propagate_alloc_) alloc_->propagate_alloc_to_list(tmp, sz);
-		} else {
-			// no custom allocator, use the default new
-			tmp = new T[sz];
-		}
+		T* tmp = this->allocate(sz);
 		assert(tmp != NULL);
 #ifdef USE_MEM_TALLY
 		gMemTally.add(cat_, sz);
@@ -1138,14 +1175,7 @@ private:
 		if(list_ != NULL) {
 			assert_neq(-1, allocCat_);
 			assert_eq(allocCat_, cat_);
-			if (alloc_!=NULL) {
-				// used the custom allocator, use the 2-step procedure
-				std::destroy_at(list_);
-				alloc_->deallocate(list_, sz_, sizeof(T));
-			} else {
-				// no custom allocator, assume new[] was used
-				delete[] list_;
-			}
+			deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -1246,7 +1276,7 @@ private:
  *
  */
 template <typename T, int S1 = 128, int S2 = 128>
-class ELList {
+class ELList  : public BTAllocatorHandler< EList<T,S1> > {
 
 public:
 
@@ -1335,6 +1365,7 @@ public:
 	 */
 	void xfer(ELList<T, S1, S2>& o) {
 		assert_eq(cat_, o.cat());
+		copy_alloc(o);
 		list_ = o.list_; // list_ is an array of EList<T>s
 		sz_   = o.sz_;
 		cur_  = o.cur_;
@@ -1505,7 +1536,7 @@ protected:
 	 */
 	EList<T, S1> *alloc(size_t sz) {
 		assert_gt(sz, 0);
-		EList<T, S1> *tmp = new EList<T, S1>[sz];
+		EList<T, S1> *tmp = this->allocate(sz);
 #ifdef USE_MEM_TALLY
 		gMemTally.add(cat_, sz);
 #endif
@@ -1524,7 +1555,7 @@ protected:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			delete[] list_;
+			deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -1603,7 +1634,7 @@ protected:
  *
  */
 template <typename T, int S1 = 128, int S2 = 128, int S3 = 128>
-class ELLList {
+class ELLList  : public BTAllocatorHandler<ELList<T,S1,S2> > {
 
 public:
 
@@ -1689,6 +1720,7 @@ public:
 	 */
 	void xfer(ELLList<T, S1, S2, S3>& o) {
 		assert_eq(cat_, o.cat());
+		copy_alloc(o);
 		list_ = o.list_; // list_ is an array of EList<T>s
 		sz_   = o.sz_;
 		cur_  = o.cur_;
@@ -1857,7 +1889,7 @@ protected:
 	 */
 	ELList<T, S1, S2> *alloc(size_t sz) {
 		assert_gt(sz, 0);
-		ELList<T, S1, S2> *tmp = new ELList<T, S1, S2>[sz];
+		ELList<T, S1, S2> *tmp = this->allocate(sz);
 #ifdef USE_MEM_TALLY
 		gMemTally.add(cat_, sz);
 #endif
@@ -1876,7 +1908,7 @@ protected:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			delete[] list_;
+			deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -1941,7 +1973,7 @@ protected:
  * shallow copies (w/ memcpy).
  */
 template <typename T, int S = 32>
-class ESet {
+class ESet  : public BTAllocatorHandler<T> {
 public:
 
 	/**
@@ -1996,9 +2028,10 @@ public:
 	 */
 	ESet& operator=(const ESet<T>& o) {
 		assert_eq(cat_, o.cat());
+		copy_alloc(o);
+		free();
 		sz_ = o.sz_;
 		cur_ = o.cur_;
-		free();
 		if(sz_ > 0) {
 			list_ = alloc(sz_);
 			memcpy(list_, o.list_, cur_ * sizeof(T));
@@ -2129,6 +2162,7 @@ public:
 	void xfer(ESet<T>& o) {
 		// What does it mean to transfer to a different-category list?
 		assert_eq(cat_, o.cat());
+		copy_alloc(o);
 		// Can only transfer into an empty object
 		free();
 		list_ = o.list_;
@@ -2156,7 +2190,7 @@ private:
 	 */
 	T *alloc(size_t sz) {
 		assert_gt(sz, 0);
-		T *tmp = new T[sz];
+		T *tmp = this->allocate(sz);
 #ifdef USE_MEM_TALLY
 		gMemTally.add(cat_, sz);
 #endif
@@ -2169,7 +2203,7 @@ private:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			delete[] list_;
+			deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -2300,7 +2334,7 @@ private:
 };
 
 template <typename T, int S = 128>
-class ELSet {
+class ELSet  : public BTAllocatorHandler<ESet<T> > {
 
 public:
 
@@ -2389,6 +2423,7 @@ public:
 	 */
 	void xfer(ELSet<T, S>& o) {
 		assert_eq(cat_, o.cat());
+		copy_alloc(o);
 		list_ = o.list_; // list_ is an array of ESet<T>s
 		sz_   = o.sz_;
 		cur_  = o.cur_;
@@ -2564,7 +2599,7 @@ protected:
 	 */
 	ESet<T> *alloc(size_t sz) {
 		assert_gt(sz, 0);
-		ESet<T> *tmp = new ESet<T>[sz];
+		ESet<T> *tmp = this->allocate(sz);
 #ifdef USE_MEM_TALLY
 		gMemTally.add(cat_, sz);
 #endif
@@ -2583,7 +2618,7 @@ protected:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			delete[] list_;
+			deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -2648,7 +2683,7 @@ protected:
  * shallow copies (w/ memcpy).
  */
 template <typename K, typename V, int S = 128>
-class EMap {
+class EMap  : public BTAllocatorHandler< std::pair<K, V> > {
 
 public:
 
@@ -2696,9 +2731,10 @@ public:
 	 * Copy contents of given ESet into this ESet.
 	 */
 	EMap& operator=(const EMap<K, V>& o) {
+		copy_alloc(o);
+		free();
 		sz_ = o.sz_;
 		cur_ = o.cur_;
-		free();
 		list_ = alloc(sz_);
 		for (size_t i = 0; i < cur_; i++)
 			list_[i] = o.list_[i];
@@ -2843,7 +2879,7 @@ private:
 	 */
 	std::pair<K, V> *alloc(size_t sz) {
 		assert_gt(sz, 0);
-		std::pair<K, V> *tmp = new std::pair<K, V>[sz];
+		std::pair<K, V> *tmp = this->allocate(sz);
 #ifdef USE_MEM_TALLY
 		gMemTally.add(cat_, sz);
 #endif
@@ -2856,7 +2892,7 @@ private:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			delete[] list_;
+			deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
