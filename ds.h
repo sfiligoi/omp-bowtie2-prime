@@ -3133,6 +3133,14 @@ public:
 
 	explicit EBitList(int cat = 0) : l_(cat) { reset(); }
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		l_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		l_.set_alloc(arg);
+	}
+
 	/**
 	 * Reset to empty state.
 	 */
@@ -3208,6 +3216,14 @@ protected:
 template <typename T, int S = 128>
 class EHeap {
 public:
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		l_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		l_.set_alloc(arg);
+	}
 
 	/**
 	 * Add the element to the next available leaf position and percolate up.
@@ -3730,6 +3746,14 @@ public:
 		list_(&list)
 	{ }
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		list_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		list_.set_alloc(arg);
+	}
+
 	/**
 	 * Initialize from a piece of another PListSlice.
 	 */
@@ -3861,6 +3885,14 @@ public:
 		len_(len),
 		list_(&list)
 	{ }
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		list_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		list_.set_alloc(arg);
+	}
 
 	/**
 	 * Initialize from a piece of another PListSlice.
@@ -4097,6 +4129,14 @@ public:
 	 */
 	RedBlack(size_t pageSz, int cat = 0) :
 		perPage_(pageSz/sizeof(TNode)), pages_(cat) { clear(); }
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		pages_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		pages_.set_alloc(arg);
+	}
 
 	/**
 	 * Given a DNA string, find the red-black node corresponding to it,
