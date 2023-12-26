@@ -26,7 +26,7 @@
 #include <iostream>
 #include "sse_wrap.h"
 
-class EList_sse   {
+class EList_sse : public BTAllocatorHandler<SSERegI> {
 public:
 
 	/**
@@ -216,12 +216,7 @@ private:
 	 */
 	SSERegI *alloc(size_t sz) {
 		SSERegI* last_alloc_;
-		try {
-			last_alloc_ = new SSERegI[sz + 2];
-		} catch(std::bad_alloc& e) {
-			std::cerr << "Error: Out of memory allocating " << sz << " SSERegI's for DP matrix: '" << e.what() << "'" << std::endl;
-			throw e;
-		}
+		last_alloc_ = this->allocate(sz + 4);
                 this->last_alloc_ = last_alloc_;
 		SSERegI* tmp = last_alloc_;
 		size_t tmpint = (size_t)tmp;
@@ -246,7 +241,7 @@ private:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			delete[] last_alloc_;
+			deallocate(last_alloc_, sz_ + 4);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -352,6 +347,19 @@ public:
 
 	Checkpointer() { reset(); }
 	
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		commitMap_.set_alloc(alloc, propagate_alloc);
+		qdiag1s_.set_alloc(alloc, propagate_alloc);
+		qdiag2s_.set_alloc(alloc, propagate_alloc);
+		qrows_.set_alloc(alloc, propagate_alloc);
+		qcols_.set_alloc(alloc, propagate_alloc);
+		qcolsD_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		set_alloc(arg.first,arg.second);
+	}
+
 	/**
 	 * Set the checkpointer up for a new rectangle.
 	 */

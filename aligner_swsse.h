@@ -106,6 +106,16 @@ struct SSEMatrix {
 
 	SSEMatrix(int cat = 0) : nvecPerCell_(4), matbuf_(cat) { }
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		matbuf_.set_alloc(alloc, propagate_alloc);
+		masks_.set_alloc(alloc, propagate_alloc);
+		reset_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		set_alloc(arg.first,arg.second);
+	}
+
 	/**
 	 * Return a pointer to the matrix buffer.
 	 */
@@ -406,6 +416,17 @@ struct SSEMatrix {
  */
 struct SSEData {
 	SSEData(int cat = 0) : profbuf_(cat), mat_(cat) { }
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		profbuf_.set_alloc(alloc, propagate_alloc);
+		vecbuf_.set_alloc(alloc, propagate_alloc);
+		mat_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		set_alloc(arg.first,arg.second);
+	}
+
 	EList_sse      profbuf_;     // buffer for query profile & temp vecs
 	EList_sse      vecbuf_;      // buffer for 2 column vectors (not using mat_)
 	size_t         qprofStride_; // stride for query profile

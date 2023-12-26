@@ -238,6 +238,25 @@ public:
 	SwAligner(const SwAligner& other) = delete;
 	SwAligner& operator=(const SwAligner& other) = delete;
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		sseU8fw_.set_alloc(alloc, propagate_alloc);
+		sseU8rc_.set_alloc(alloc, propagate_alloc);
+		sseI16fw_.set_alloc(alloc, propagate_alloc);
+		sseI16rc_.set_alloc(alloc, propagate_alloc);
+		rfwbuf_.set_alloc(alloc, propagate_alloc);
+		btnstack_.set_alloc(alloc, propagate_alloc);
+		btcells_.set_alloc(alloc, propagate_alloc);
+		btdiag_.set_alloc(alloc, propagate_alloc);
+		btncand_.set_alloc(alloc, propagate_alloc);
+		btncanddone_.set_alloc(alloc, propagate_alloc);
+		bter_.set_alloc(alloc, propagate_alloc);
+		cper_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		set_alloc(arg.first,arg.second);
+	}
+
 	/**
 	 * Prepare the dynamic programming driver with a new read and a new scoring
 	 * scheme.

@@ -548,6 +548,26 @@ public:
 	explicit BtBranchTracer() :
 		prob_(), bs_(), seenPaths_(DP_CAT), sawcell_(DP_CAT), doTri_() { }
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		bs_.set_alloc(alloc, propagate_alloc);
+		seenPaths_.set_alloc(alloc, propagate_alloc);
+		sawcell_.set_alloc(alloc, propagate_alloc);
+		unsorted_.set_alloc(alloc, propagate_alloc);
+		sorted1_.set_alloc(alloc, propagate_alloc);
+		sorted2_.set_alloc(alloc, propagate_alloc);
+		solutions_.set_alloc(alloc, propagate_alloc);
+		sq_.set_alloc(alloc, propagate_alloc);
+		tri_.set_alloc(alloc, propagate_alloc);
+		ndep_.set_alloc(alloc, propagate_alloc);
+#ifndef NDEBUG
+		seen_.set_alloc(alloc, propagate_alloc);
+#endif
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		set_alloc(arg.first,arg.second);
+	}
+
 	/**
 	 * Add a branch to the queue.
 	 */
