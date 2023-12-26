@@ -43,9 +43,9 @@
  **/
 class BTAllocator {
 public:
-	static constexpr size_t POOL_BUF_SIZE = 256*1024;
+	static constexpr size_t POOL_BUF_SIZE = 384*1024;
 	// anything larger than this will just use standard memory management
-	static constexpr size_t MAX_POOLED_EL = POOL_BUF_SIZE/8;
+	static constexpr size_t MAX_POOLED_EL = POOL_BUF_SIZE/4;
 
 	// if true, use global memory for everything, thus it is thread-safe
 	// if false (default), use pooled memory, but this is not thread-safe (and will lead to memory leaks)
