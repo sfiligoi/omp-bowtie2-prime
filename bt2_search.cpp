@@ -2201,6 +2201,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) sw[mate].set_alloc(&(mate_allocs[mate]));
 
 		SeedResults *shs = new SeedResults[num_parallel_tasks];
+		for (size_t mate=0; mate<num_parallel_tasks; mate++) shs[mate].set_alloc(&(mate_allocs[mate]));
+
 		RandomSource* rnd = new RandomSource[num_parallel_tasks];
 
 		EList<Seed>* seeds = new EList<Seed>[num_parallel_tasks];

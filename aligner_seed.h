@@ -412,6 +412,16 @@ struct InstantiatedSeed {
 
 	InstantiatedSeed() : steps(AL_CAT), zones(AL_CAT) { }
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		steps.set_alloc(alloc, propagate_alloc);
+		zones.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		steps.set_alloc(arg);
+		zones.set_alloc(arg);
+	}
+
 	// Steps map.  There are as many steps as there are positions in
 	// the seed.  The map is a helpful abstraction because we sometimes
 	// visit seed positions in an irregular order (e.g. inside-out
@@ -633,6 +643,28 @@ public:
 	
 	SeedResults(const SeedResults& other) = delete;
 	SeedResults& operator=(const SeedResults& other) = delete;
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		seqFw_.set_alloc(alloc, propagate_alloc);
+		seqRc_.set_alloc(alloc, propagate_alloc);
+		qualFw_.set_alloc(alloc, propagate_alloc);
+		qualRc_.set_alloc(alloc, propagate_alloc);
+		hitsFw_.set_alloc(alloc, propagate_alloc);
+		hitsRc_.set_alloc(alloc, propagate_alloc);
+		isFw_.set_alloc(alloc, propagate_alloc);
+		isRc_.set_alloc(alloc, propagate_alloc);
+		sortedFw_.set_alloc(alloc, propagate_alloc);
+		sortedRc_.set_alloc(alloc, propagate_alloc);
+		offIdx2off_.set_alloc(alloc, propagate_alloc);
+		rankOffs_.set_alloc(alloc, propagate_alloc);
+		rankFws_.set_alloc(alloc, propagate_alloc);
+		mm1Hit_.set_alloc(alloc, propagate_alloc);
+		tmpMedian_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		set_alloc(arg.first, arg.second);
+	}
 
 	/**
 	 * Set the current read.
