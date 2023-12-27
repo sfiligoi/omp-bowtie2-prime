@@ -2191,7 +2191,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// problems, or generally characterize performance.
 
 		// Instantiate an object for holding reporting-related parameters.
-		const ReportingParams rp(
+		// Use new to make it GPU-accessible
+		ReportingParams* rp= new ReportingParams(
 			khits,             // -k
 			mhits,             // -m/-M
 			0,                 // penalty gap (not used now)
@@ -2212,16 +2213,30 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			bmapq.emplace_back(new_mapq(mapqv, scoreMin, sc));
 			v_msinkwrap.emplace_back(
 							msink,        // global sink
-							rp,           // reporting parameters
+							*rp,           // reporting parameters
 							*bmapq[mate], // MAPQ calculator
 							mate,         // thread id
 							mate_allocs); // memory pools
 		}
 		AlnSinkWrapOne *g_msinkwrap = v_msinkwrap.data();
 
-		// Note: Cannot use std:vector directly due to GPU compute not having access to the CPU stack
+		// Major per-thread objects
 		msWorkerObjs* g_msobjs = new msWorkerObjs[num_parallel_tasks];
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) g_msobjs[mate].set_alloc(&(mate_allocs[mate]));
+
+		// These arrays move between CPU and GPU often
+		// Keep them together
+
+		// Whether we're done with g_psrah mate
+		bool *done_reading = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
+		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			done_reading[mate] = false;
+		}
+		// Whether we're done with mate
+		bool *done = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
+
+		size_t* nelt = new(worker_alloc.allocate(num_parallel_tasks,sizeof(size_t))) size_t[num_parallel_tasks];
+		uint8_t *ybits = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint8_t))) uint8_t[num_parallel_tasks];
 
 		// Calculate streak length
 		const size_t mxKHMul = (khits > 1) ? (khits-1) : 0;
@@ -2237,16 +2252,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		bool *exhaustive = new bool[num_parallel_tasks];
 		// Keep track of whether mates 1/2 were filtered out last time through
 		bool *filt = new bool[num_parallel_tasks];
-		// Whether we're done with mate
-		bool *done = new bool[num_parallel_tasks];
 
-		uint8_t *ybits = new uint8_t[num_parallel_tasks];
-
-		// Whether we're done with g_psrah mate
-		bool *done_reading = new bool[num_parallel_tasks];
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			done_reading[mate] = false;
-		}
 
 		// read object
 		typedef Read* ReadPtr;
@@ -2254,7 +2260,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// Calculate the minimum valid score threshold for the read
 		TAlScore* minsc = new TAlScore[num_parallel_tasks];
 
-		size_t* nelt = new size_t[num_parallel_tasks];
 		int* nceil = new int[num_parallel_tasks];
 
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
@@ -2900,19 +2905,19 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		}
 
 		v_msinkwrap.clear();
+		delete rp;
 
 		delete[] exhaustive;
 		delete[] filt;
-		delete[] ybits;
-		delete[] done;
-		delete[] done_reading;
 
 		delete[] rds;
 		delete[] minsc;
-		delete[] nelt; 
 		delete[] nceil;
 
 		delete[] g_msobjs;
+
+		// do not delete objects managed by the allocator
+		// accept memory leak
 	}
 
 	return;
