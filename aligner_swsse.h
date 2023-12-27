@@ -31,7 +31,7 @@
 
 struct SSEMetrics {
 	
-	SSEMetrics():mutex_m() { reset(); }
+	SSEMetrics() { reset(); }
 
 	void clear() { reset(); }
 	void reset() {
@@ -74,7 +74,6 @@ struct SSEMetrics {
 	uint64_t btcell;   // DP backtrace cells traversed
 	uint64_t corerej;  // DP backtrace core rejections
 	uint64_t nrej;     // DP backtrace N rejections
-	MUTEX_T  mutex_m;
 };
 
 /**
