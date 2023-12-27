@@ -17,8 +17,6 @@
  * along with Bowtie 2.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <mutex>
-
 #include "aligner_cache.h"
 
 #ifndef NDEBUG
@@ -112,12 +110,7 @@ bool AlignmentCache::addOnTheFly(
 	TIndexOffU botb,    // bottom range elt in BWT' index
 	bool getLock)
 {
-	if(shared_ && getLock) {
-		ThreadSafe ts(mutex_m);
 		return addOnTheFlyImpl(qv, sak, topf, botf, topb, botb);
-	} else {
-		return addOnTheFlyImpl(qv, sak, topf, botf, topb, botb);
-	}
 }
 
 #ifdef ALIGNER_CACHE_MAIN

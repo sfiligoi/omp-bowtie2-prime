@@ -1935,7 +1935,7 @@ static inline bool have_next_read(std::unique_ptr<PatternSourceReadAhead> &g_psr
 class AlignmentCacheIfaceBT2 : public AlignmentCacheIface {
 public:
 	AlignmentCacheIfaceBT2()
-	: AlignmentCacheIface(new AlignmentCache(seedCacheCurrentMB * 1024 * 1024, false))
+	: AlignmentCacheIface(new AlignmentCache(seedCacheCurrentMB * 1024 * 1024))
 	{}
 
 	virtual ~AlignmentCacheIfaceBT2() {delete current_;}
@@ -2922,7 +2922,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 
 		//const BitPairReference& refs   = *multiseed_refs;
 
-		AlignmentCache scCurrent(seedCacheCurrentMB * 1024 * 1024, false);
+		AlignmentCache scCurrent(seedCacheCurrentMB * 1024 * 1024);
 
 		// Interfaces for alignment and seed caches
 		AlignmentCacheIface ca(&scCurrent);

@@ -469,15 +469,12 @@ class AlignmentCache {
 public:
 
 	AlignmentCache(
-		uint64_t bytes,
-		bool shared) :
+		uint64_t bytes) :
 		pool_(bytes, CACHE_PAGE_SZ, CA_CAT),
 		qmap_(CACHE_PAGE_SZ, CA_CAT),
 		qlist_(CA_CAT),
 		samap_(CACHE_PAGE_SZ, CA_CAT),
 		salist_(CA_CAT),
-		shared_(shared),
-		mutex_m(),
 		version_(0) { }
 
 	AlignmentCache(const AlignmentCache& other) = delete;
@@ -496,12 +493,7 @@ public:
 		size_t& nelt,
 		bool getLock = true)
 	{
-		if(shared_ && getLock) {
-			ThreadSafe ts(mutex_m);
 			queryQvalImpl(qv, satups, nrange, nelt);
-		} else {
-			queryQvalImpl(qv, satups, nrange, nelt);
-		}
 	}
 
 	/**
@@ -530,12 +522,7 @@ public:
 		bool *added,
 		bool getLock = true)
 	{
-		if(shared_ && getLock) {
-			ThreadSafe ts(mutex_m);
 			return addImpl(qk, added);
-		} else {
-			return addImpl(qk, added);
-		}
 	}
 
 	/**
@@ -557,7 +544,6 @@ public:
 	 * reads will have to be re-aligned.
 	 */
 	void clear() {
-		ThreadSafe ts(mutex_m);
 		pool_.clear();
 		qmap_.clear();
 		qlist_.clear();
@@ -592,18 +578,6 @@ public:
 	Pool& pool() { return pool_; }
 
 	/**
-	 * Return the lock object.
-	 */
-	MUTEX_T& lock() {
-		return mutex_m;
-	}
-
-	/**
-	 * Return true iff this cache is shared among threads.
-	 */
-	bool shared() const { return shared_; }
-
-	/**
 	 * Return the current "version" of the cache, i.e. the total number
 	 * of times it has turned over since its creation.
 	 */
@@ -617,8 +591,6 @@ protected:
 	RedBlack<SAKey, SAVal> samap_;  // map from reference substrings to SA ranges
 	TSAList                salist_; // list of SA ranges
 
-	bool     shared_;  // true -> this cache is global
-	MUTEX_T mutex_m;    // mutex used for syncronization in case the the cache is shared.
 	uint32_t version_; // cache version
 
 private:
