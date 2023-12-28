@@ -2160,6 +2160,13 @@ public:
 		, ebwtBw(multiseed_ebwtBw)
 		, nofw( gNofw )
 		, norc( gNorc )
+		, extend( doExtend )
+		, doEnable8( enable8 )
+		, tri( doTri )
+		, doTighten( tighten)
+		, maxHalf( maxhalf )
+		, cMinLen( cminlen )
+		, cPow2( cpow2 )
 		, mxKHMul( (khits > 1) ? (khits-1) : 0 )
 		, streak( maxDpStreak + mxKHMul * maxStreakIncr )
 		, mxDp(   maxDp       + mxKHMul * maxItersIncr  )
@@ -2174,6 +2181,14 @@ public:
 
 	const bool nofw;
 	const bool norc;
+
+	const bool extend;
+	const bool doEnable8;
+	const bool tri; 
+	const int  doTighten; 
+	const size_t maxHalf;
+	const size_t cMinLen; 
+	const size_t cPow2;
 
 	// Calculate streak length
 	const size_t mxKHMul;
@@ -2202,14 +2217,14 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
 	AlnSink&                msink    = *multiseed_msink;
 
-	bool paired = false;
+	constexpr bool paired = false;
+
+	BTAllocator worker_alloc(false);
+	BTPerThreadAllocators mate_allocs(num_parallel_tasks);
 
 	// allocate to heap to make it GPU accessible
 	const msWorkerConsts *msconsts = new msWorkerConsts;
  
-	BTAllocator worker_alloc(false);
-	BTPerThreadAllocators mate_allocs(num_parallel_tasks);
-
 	{
 		// Sinks: these are so that we can print tables encoding counts for
 		// events of interest on a per-read, per-seed, per-join, or per-SW
@@ -2481,7 +2496,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			const size_t mate=matemap[fidx];
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-					const size_t rdlen = rds[mate]->length();
 
 					// Find end-to-end exact alignments for each read, part 2
 							assert(!msinkwrap.maxed());
@@ -2501,18 +2515,18 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									0,              // interval between seeds
 									minsc[mate],    // minimum score for valid
 									nceil[mate],    // N ceil for anchor
-									maxhalf,        // max width on one DP side
+									msconsts->maxHalf,        // max width on one DP side
 									msconsts->mxIter,         // max extend loop iters
 									msconsts->mxUg,           // max # ungapped extends
 									msconsts->mxDp,           // max # DPs
 									msconsts->streak,         // stop after streak of this many end-to-end fails
 									msconsts->streak,         // stop after streak of this many ungap fails
-									doExtend,       // extend seed hits
-									enable8,        // use 8-bit SSE where possible
-									cminlen,        // checkpoint if read is longer
-									cpow2,          // checkpointer interval, log2
-									doTri,          // triangular mini-fills
-									tighten,        // -M score tightening mode
+									msconsts->extend,       // extend seed hits
+									msconsts->doEnable8,        // use 8-bit SSE where possible
+									msconsts->cMinLen,        // checkpoint if read is longer
+									msconsts->cPow2,          // checkpointer interval, log2
+									msconsts->tri,          // triangular mini-fills
+									msconsts->doTighten,        // -M score tightening mode
 									msobj.ca,       // seed alignment cache
 									msobj.rnd,      // pseudo-random source
 									msinkwrap.prm,  // per-read metrics
@@ -2545,6 +2559,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								done[mate] = true;
 							}
 							if(!done[mate]) {
+								const size_t rdlen = rds[mate]->length();
 								TAlScore perfectScore = msconsts->sc.perfectScore(rdlen);
 								if(minsc[mate] == perfectScore) {
 									done[mate] = true;
@@ -2632,18 +2647,18 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									0,              // interval between seeds
 									minsc[mate],    // minimum score for valid
 									nceil[mate],    // N ceil for anchor
-									maxhalf,        // max width on one DP side
+									msconsts->maxHalf,        // max width on one DP side
 									msconsts->mxIter,         // max extend loop iters
 									msconsts->mxUg,           // max # ungapped extends
 									msconsts->mxDp,           // max # DPs
 									msconsts->streak,         // stop after streak of this many end-to-end fails
 									msconsts->streak,         // stop after streak of this many ungap fails
-									doExtend,       // extend seed hits
-									enable8,        // use 8-bit SSE where possible
-									cminlen,        // checkpoint if read is longer
-									cpow2,          // checkpointer interval, log2
-									doTri,          // triangular mini-fills?
-									tighten,        // -M score tightening mode
+									msconsts->extend,       // extend seed hits
+									msconsts->doEnable8,        // use 8-bit SSE where possible
+									msconsts->cMinLen,        // checkpoint if read is longer
+									msconsts->cPow2,          // checkpointer interval, log2
+									msconsts->tri,          // triangular mini-fills?
+									msconsts->doTighten,        // -M score tightening mode
 									msobj.ca,       // seed alignment cache
 									msobj.rnd,      // pseudo-random source
 									msinkwrap.prm,  // per-read metrics
@@ -2826,18 +2841,18 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 										interval,       // interval between seeds
 										minsc[mate],    // minimum score for valid
 										nceil[mate],    // N ceil for anchor
-										maxhalf,        // max width on one DP side
+										msconsts->maxHalf,        // max width on one DP side
 										msconsts->mxIter,         // max extend loop iters
 										msconsts->mxUg,           // max # ungapped extends
 										msconsts->mxDp,           // max # DPs
 										msconsts->streak,         // stop after streak of this many end-to-end fails
 										msconsts->streak,         // stop after streak of this many ungap fails
-										doExtend,       // extend seed hits
-										enable8,        // use 8-bit SSE where possible
-										cminlen,        // checkpoint if read is longer
-										cpow2,          // checkpointer interval, log2
-										doTri,          // triangular mini-fills?
-										tighten,        // -M score tightening mode
+										msconsts->extend,       // extend seed hits
+										msconsts->doEnable8,        // use 8-bit SSE where possible
+										msconsts->cMinLen,        // checkpoint if read is longer
+										msconsts->cPow2,          // checkpointer interval, log2
+										msconsts->tri,          // triangular mini-fills?
+										msconsts->doTighten,        // -M score tightening mode
 										msobj.ca,       // seed alignment cache
 										msobj.rnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
