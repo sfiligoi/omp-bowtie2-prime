@@ -19,6 +19,7 @@
 
 #include "ds.h"
 
+#ifdef USE_MEM_TALLY
 MemoryTally gMemTally;
 
 /**
@@ -46,6 +47,7 @@ void MemoryTally::del(int cat, uint64_t amt) {
 	tots_[cat] -= amt;
 	tot_ -= amt;
 }
+#endif
 
 #ifdef MAIN_DS
 

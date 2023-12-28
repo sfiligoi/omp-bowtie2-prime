@@ -245,6 +245,7 @@ protected:
 };
 
 
+#ifdef USE_MEM_TALLY
 /**
  * Tally how much memory is allocated to certain
  */
@@ -313,7 +314,6 @@ protected:
 	uint64_t peak_;
 };
 
-#ifdef USE_MEM_TALLY
 extern MemoryTally gMemTally;
 #endif
 
