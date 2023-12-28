@@ -2426,15 +2426,13 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   }
 
 		   // ASSERT: done[:] == false
-		   matemap.resize(num_parallel_tasks);
-		   current_num_parallel_tasks = 0;
+		   matemap.clear();
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) {
-				matemap[ current_num_parallel_tasks ] = mate;
-				current_num_parallel_tasks++;
+				matemap.push_back(mate);
 			}
 		   }
-		   matemap.resize(current_num_parallel_tasks);
+		   current_num_parallel_tasks = matemap.size();
 
 		   // Expected fraction of mates: 100%
 		   // we can do all of the "mates" in parallel
@@ -2480,14 +2478,14 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 	
 		   // ASSERT: done[:] == false
 		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
-		   matemap.resize(num_parallel_tasks);
+		   matemap.clear();
 		   current_num_parallel_tasks = 0;
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if ((!done_reading[mate]) && (nelt[mate] != 0)) {
-				matemap[ current_num_parallel_tasks ] = mate;
-				current_num_parallel_tasks++;
+				matemap.push_back(mate);
 			}
 		   }
+		   current_num_parallel_tasks = matemap.size();
 
 		   // Expected fraction of mates: 33%
 		   // we can do all of the "mates" in parallel
@@ -2580,19 +2578,29 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					nelt[mate] = 0;
 		   } // for mate
 	
-		   current_num_parallel_tasks = 0;
+		   matemap.clear();
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if ( (!done_reading[mate]) && (!done[mate]) && (ybits[mate]!=0) )  {
-				matemap[ current_num_parallel_tasks ] = mate;
-				current_num_parallel_tasks++;
+				matemap.push_back(mate);
 			}
 		   }
+		   current_num_parallel_tasks = matemap.size();
 
 		   // Expected fraction of mates: 50%
 		   // we can do all of the "mates" in parallel
+#if defined(USE_ACC_STDPAR)
+		   std::for_each(std::execution::par_unseq, matemap.begin(), matemap.end(),
+			[g_msobjs,msconsts,nelt,rds,ybits,minsc](size_t mate) mutable {
+#else
+
+#if defined(USE_ACC_CPU)
 #pragma omp parallel for default(shared)
+#else
+#pragma acc parallel loop gang vector vector_length(32)
+#endif
 		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
 			const size_t mate=matemap[fidx];
+#endif
 					msWorkerObjs& msobj = g_msobjs[mate];
 					// ybits[mate]!=0 equivalent to yfw || yrc
 					bool not_yfw = (ybits[mate] & 1) ==0;
@@ -2612,15 +2620,18 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									msobj.shs);     // seed hits (hits installed here)
 					nelt[mate] = msobj.shs.num1mmE2eHits();
 		   } // for mate
+#if defined(USE_ACC_STDPAR)
+		   );
+#endif
 	
 		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
-		   current_num_parallel_tasks = 0;
+		   matemap.clear();
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if ((!done_reading[mate])  && (!done[mate]) && (nelt[mate] != 0)) {
-				matemap[ current_num_parallel_tasks ] = mate;
-				current_num_parallel_tasks++;
+				matemap.push_back(mate);
 			}
 		   }
+		   current_num_parallel_tasks = matemap.size();
 
 		   // Expected fraction of mates: 20%
 		   // we can do all of the "mates" in parallel
@@ -2699,13 +2710,13 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							}
 		   } // for mate
 	
-		   current_num_parallel_tasks = 0;
+		   matemap.clear();
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if ((!done_reading[mate])  && (!done[mate]) ) {
-				matemap[ current_num_parallel_tasks ] = mate;
-				current_num_parallel_tasks++;
+				matemap.push_back(mate);
 			}
 		   }
+		   current_num_parallel_tasks = matemap.size();
 
 		   // Expected fraction of mates: 95%+
 		   // we can do all of the "mates" in parallel
