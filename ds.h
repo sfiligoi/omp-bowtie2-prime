@@ -35,6 +35,7 @@
 /**
  * Custom allocator of polled memory 
  * aligned to double, since that's the most restrictive type we expect
+ * (Relying on malloc being at least double aligned)
  *
  * This allocator will leak memory, but this is by design
  * as we expect very little memory churn in the process.
@@ -77,7 +78,7 @@ public:
 
 		if ((pool_buf_== NULL) || 	// global version
 		    (ndoubles>MAX_POOLED_EL)) { // too big, just use regular new
-			buf = new double[ndoubles];
+			buf = (double *) malloc(sizeof(double)*ndoubles);
 			//std::cerr << "Raw new " << ndoubles << std::endl;
 		} else {
 			//std::cerr << "Pooled new " << ndoubles << std::endl;
@@ -96,8 +97,7 @@ public:
 	void deallocate(void* ptr, const size_t nels, const size_t elsize) const {
 		if (pool_buf_==NULL) {
 			// all allocs were from global memory, so we can delete, too
-			double *buf = (double *)ptr;
-			delete[] buf;
+			free(ptr);
 		} else {
 			// NOOP, we accept memory will be leaked
 			//std::cerr << "Leak " << nels*elsize/sizeof(double) << std::endl;
@@ -138,7 +138,7 @@ protected:
 	void get_new_block() {
 		// forget about the old one, accept memory leak
 		//std::cerr << "Raw pool new " << POOL_BUF_SIZE << std::endl;
-		pool_buf_ = new double[POOL_BUF_SIZE];
+		pool_buf_ = (double*) malloc(sizeof(double)*POOL_BUF_SIZE);
 		pool_dsize_ = POOL_BUF_SIZE;
 		pool_dcur_ = 0;
 	}
@@ -159,7 +159,7 @@ public:
 		// in a single large new, then distribute among them
 		constexpr size_t one_ndoubles = BTAllocator::POOL_BUF_SIZE;
 		size_t ndoubles = n_threads*one_ndoubles;
-		double *initial_buf = new double[ndoubles];
+		double *initial_buf = (double *) malloc(sizeof(double)*ndoubles);
 
 		allocs_.reserve(n_threads);
 		for (size_t i=0; i<n_threads; i++) {
