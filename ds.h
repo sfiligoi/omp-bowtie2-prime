@@ -226,7 +226,12 @@ protected:
 	}
 
 	inline T *allocate(size_t sz) {
-		if (sz==0) {std::cerr << "Internal error: alloc 0 " << this << std::endl; throw 1;}
+		if (sz==0) {
+#ifndef NDEBUG
+			std::cerr << "Internal error: alloc 0 " << this << std::endl;
+#endif
+			throw 1;
+		}
 		T* tmp = NULL;
 		if (alloc_!=NULL) {
 			// use the custom allocator
@@ -236,7 +241,12 @@ protected:
 			// no custom allocator, use the default new
 			tmp = new T[sz];
 		}
-		assert(tmp != NULL);
+		if (tmp == NULL) {
+#ifndef NDEBUG
+			std::cerr << "Runtime error: alloc returned NULL" << this << std::endl;
+#endif
+			throw 1;
+		}
 		return tmp;
 	}
 
