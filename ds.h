@@ -104,36 +104,47 @@ public:
 		}
 	}
 
-
 	/**
  	 *
  	 * To be used by useres for BTAllocator to manage allocator propagation
  	 *
  	 **/ 
 
-	// credit: https://stackoverflow.com/questions/8911897/detecting-a-function-in-c-at-compile-time
 	template <typename T>
-	auto propagate_alloc_to_list(T *ptr, size_t sz) -> decltype(ptr->set_alloc(this), void()) {
+	void propagate_alloc_to_list(T *ptr, size_t sz) {
+		propagate_alloc_to_list_imp(this, ptr, sz, 0);
+	}
+
+	template <typename T>
+	void propagate_alloc_to_obj_imp(T &obj) {
+		propagate_alloc_to_obj_imp(this, obj, 0);
+	}
+
+protected:
+	// credit: https://stackoverflow.com/questions/8911897/detecting-a-function-in-c-at-compile-time
+	// credit: https://stackoverflow.com/questions/257288/how-can-you-check-whether-a-templated-class-has-a-member-function
+	// SNIFAE will prefer int over long, if avaialble
+	template <typename T>
+	static auto propagate_alloc_to_list_imp(BTAllocator* me, T *ptr, size_t sz, int dummy) -> decltype(ptr->set_alloc(me), void()) {
 		for (size_t i=0; i<sz; i++) {
-			ptr[i].set_alloc(this); // propagate_alloc_==true
+			ptr[i].set_alloc(me); // propagate_alloc_==true
 		}
 	}
 
-	void propagate_alloc_to_list(...) {
+	template <typename T>
+	static void propagate_alloc_to_list_imp(BTAllocator* me, T *ptr, size_t sz, long dummy) {
 		// this type does not support propagation, noop
 	}
 
 	template <typename T>
-	auto propagate_alloc_to_obj(T &obj) -> decltype(obj.set_alloc(this), void()) {
+	static auto propagate_alloc_to_obj_imp(BTAllocator* me, T &obj, int dummy) -> decltype(obj.set_alloc(me), void()) {
 		obj.set_alloc(this); // propagate_alloc_==true
 	}
 
-	void propagate_alloc_to_obj(...) {
+	template <typename T>
+	static void propagate_alloc_to_obj_imp(BTAllocator* me, T &obj, long dummy) {
 		// this type does not support propagation, noop
 	}
-
-
-protected:
 
 	void get_new_block() {
 		// forget about the old one, accept memory leak
