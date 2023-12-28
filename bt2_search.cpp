@@ -2150,6 +2150,39 @@ public:
 	EList<Seed> seed;
 };
 
+class msWorkerConsts {
+public:
+
+	msWorkerConsts()
+		: ref(*multiseed_refs)
+		, sc(*multiseed_sc)
+		, ebwtFw(*multiseed_ebwtFw)
+		, ebwtBw(multiseed_ebwtBw)
+		, nofw( gNofw )
+		, norc( gNorc )
+		, mxKHMul( (khits > 1) ? (khits-1) : 0 )
+		, streak( maxDpStreak + mxKHMul * maxStreakIncr )
+		, mxDp(   maxDp       + mxKHMul * maxItersIncr  )
+		, mxUg(   maxUg       + mxKHMul * maxItersIncr  )
+		, mxIter( maxIters    + mxKHMul * maxItersIncr  )
+	{}
+
+	const BitPairReference& ref;
+	const Scoring&          sc;
+	const Ebwt&             ebwtFw;
+	const Ebwt* const       ebwtBw;
+
+	const bool nofw;
+	const bool norc;
+
+	// Calculate streak length
+	const size_t mxKHMul;
+	const size_t streak;
+	const size_t mxDp;
+	const size_t mxUg;
+	const size_t mxIter;
+};
+
 /**
  * Called once per thread.  Sets up per-thread pointers to the shared global
  * data structures, creates per-thread structures, then enters the alignment
@@ -2167,20 +2200,13 @@ public:
 static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
-	const Ebwt&             ebwtFw   = *multiseed_ebwtFw;
-	const Ebwt*             ebwtBw   = multiseed_ebwtBw;
-	const Scoring&          sc       = *multiseed_sc;
-	const BitPairReference& ref      = *multiseed_refs;
 	AlnSink&                msink    = *multiseed_msink;
-	const Ebwt*             pebwtFw  = multiseed_ebwtFw;
-	const Scoring*          psc      = multiseed_sc;
 
 	bool paired = false;
 
-	// local copy needed for GPU code
-	bool nofw = gNofw;
-	bool norc = gNorc;
-
+	// allocate to heap to make it GPU accessible
+	const msWorkerConsts *msconsts = new msWorkerConsts;
+ 
 	BTAllocator worker_alloc(false);
 	BTPerThreadAllocators mate_allocs(num_parallel_tasks);
 
@@ -2210,7 +2236,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		v_msinkwrap.reserve(num_parallel_tasks);
 		
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			bmapq.emplace_back(new_mapq(mapqv, scoreMin, sc));
+			bmapq.emplace_back(new_mapq(mapqv, scoreMin, msconsts->sc));
 			v_msinkwrap.emplace_back(
 							msink,        // global sink
 							*rp,           // reporting parameters
@@ -2237,13 +2263,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		size_t* nelt = new(worker_alloc.allocate(num_parallel_tasks,sizeof(size_t))) size_t[num_parallel_tasks];
 		uint8_t *ybits = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint8_t))) uint8_t[num_parallel_tasks];
-
-		// Calculate streak length
-		const size_t mxKHMul = (khits > 1) ? (khits-1) : 0;
-		const size_t streak    = maxDpStreak + mxKHMul * maxStreakIncr;
-		const size_t mxDp      = maxDp       + mxKHMul * maxItersIncr;
-		const size_t mxUg      = maxUg       + mxKHMul * maxItersIncr;
-		const size_t mxIter    = maxIters    + mxKHMul * maxItersIncr;
 
 		// Used by thread with threadid == 1 to measure time elapsed
 		time_t iTime = time(0);
@@ -2316,7 +2335,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						rds[mate],
 						NULL,
 						rdid,
-						sc.qualitiesMatter());
+						msconsts->sc.qualitiesMatter());
 					assert(msinkwrap.inited());
 					minsc[mate] = scoreMin.f<TAlScore>(rdlen);
 					if(minsc[mate] > 0) {
@@ -2325,11 +2344,11 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					}
 					{
 						// N filter; does the read have too many Ns?
-						bool nfilt = sc.nFilter(rds[mate]->patFw);
+						bool nfilt = msconsts->sc.nFilter(rds[mate]->patFw);
 
 						// Score filter; does the read enough character to rise above
 						// the score threshold?
-						bool scfilt = sc.scoreFilter(minsc[mate], rdlen);
+						bool scfilt =msconsts->sc.scoreFilter(minsc[mate], rdlen);
 						bool lenfilt = true;
 						if(rdlen <= (size_t)multiseedMms || rdlen < 2) {
 							if(!gQuiet) printMmsSkipMsg(*ps[mate], paired, true, multiseedMms);
@@ -2352,8 +2371,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					exhaustive[mate] = false;
 					msobj.rnd.init(rds[mate]->seed);
 
-					msinkwrap.prm.maxDPFails = streak;
-					assert_gt(streak, 0);
+					msinkwrap.prm.maxDPFails = msconsts->streak;
+					assert_gt(msconsts->streak, 0);
 					msobj.shs.clear();
 
 					// Whether we're done with mate
@@ -2376,7 +2395,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							&msobj.shs,           // seed results for mate 1
 							exhaustive[mate],     // exhausted seed hits for mate 1?
 							msobj.rnd,            // pseudo-random generator
-							sc,                   // scoring scheme
+							msconsts->sc,                   // scoring scheme
 							true,                 // suppress seed summaries?
 							false,                // suppress alignments?
 							scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
@@ -2406,7 +2425,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   // we can do all of the "mates" in parallel
 #if defined(USE_ACC_STDPAR)
 		   std::for_each(std::execution::par_unseq, matemap.begin(), matemap.end(),
-			[g_msobjs,nelt,pebwtFw,rds,psc,ybits,nofw,norc](size_t mate) mutable {
+			[g_msobjs,msconsts,nelt,rds,ybits](size_t mate) mutable {
 #else
 
 #if defined(USE_ACC_CPU)
@@ -2422,18 +2441,18 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					size_t minedfw = 0;
 					size_t minedrc = 0;
 					nelt[mate] = msobj.al.exactSweep(
-								*pebwtFw,        // index
+								msconsts->ebwtFw,        // index
 								*rds[mate],    // read
-								*psc,            // scoring scheme
-								nofw,         // nofw?
-								norc,         // norc?
+								msconsts->sc,            // scoring scheme
+								msconsts->nofw,         // nofw?
+								msconsts->norc,         // norc?
 								2,             // max # edits we care about
 								minedfw,       // minimum # edits for fw mate
 								minedrc,       // minimum # edits for rc mate
 								true,          // report 0mm hits
 								msobj.shs);     // put end-to-end results here
-					bool yfw = minedfw <= 1 && !nofw;
-					bool yrc = minedrc <= 1 && !norc;
+					bool yfw = minedfw <= 1 && !(msconsts->nofw);
+					bool yrc = minedrc <= 1 && !(msconsts->norc);
 					// encode the two together, as they always use them together
 					ybits[mate] = (yfw ? 1 : 0) | (yrc ? 2 : 0);
 					if(nelt[mate] == 0) {
@@ -2472,22 +2491,22 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									*rds[mate],     // read
 									true,           // mate #1?
 									msobj.shs,      // seed hits
-									ebwtFw,         // bowtie index
-									ebwtBw,         // rev bowtie index
-									ref,            // packed reference strings
+									msconsts->ebwtFw,         // bowtie index
+									msconsts->ebwtBw,         // rev bowtie index
+									msconsts->ref,            // packed reference strings
 									msobj.sw,       // dynamic prog aligner
-									sc,             // scoring scheme
+									msconsts->sc,             // scoring scheme
 									-1,             // # mms allowed in a seed
 									0,              // length of a seed
 									0,              // interval between seeds
 									minsc[mate],    // minimum score for valid
 									nceil[mate],    // N ceil for anchor
 									maxhalf,        // max width on one DP side
-									mxIter,         // max extend loop iters
-									mxUg,           // max # ungapped extends
-									mxDp,           // max # DPs
-									streak,         // stop after streak of this many end-to-end fails
-									streak,         // stop after streak of this many ungap fails
+									msconsts->mxIter,         // max extend loop iters
+									msconsts->mxUg,           // max # ungapped extends
+									msconsts->mxDp,           // max # DPs
+									msconsts->streak,         // stop after streak of this many end-to-end fails
+									msconsts->streak,         // stop after streak of this many ungap fails
 									doExtend,       // extend seed hits
 									enable8,        // use 8-bit SSE where possible
 									cminlen,        // checkpoint if read is longer
@@ -2526,7 +2545,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								done[mate] = true;
 							}
 							if(!done[mate]) {
-								TAlScore perfectScore = sc.perfectScore(rdlen);
+								TAlScore perfectScore = msconsts->sc.perfectScore(rdlen);
 								if(minsc[mate] == perfectScore) {
 									done[mate] = true;
 								}
@@ -2566,10 +2585,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					// 1-mismatch
 					// Clear out the exact hits
 					msobj.al.oneMmSearch(
-									&ebwtFw,        // BWT index
-									ebwtBw,         // BWT' index
+									&msconsts->ebwtFw,        // BWT index
+									msconsts->ebwtBw,         // BWT' index
 									*rds[mate],     // read
-									sc,             // scoring scheme
+									msconsts->sc,             // scoring scheme
 									minsc[mate],    // minimum score
 									not_yfw,        // don't align forward read
 									not_yrc,        // don't align revcomp read
@@ -2603,22 +2622,22 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									*rds[mate],     // read
 									true,           // mate #1?
 									msobj.shs,      // seed hits
-									ebwtFw,         // bowtie index
-									ebwtBw,         // rev bowtie index
-									ref,            // packed reference strings
+									msconsts->ebwtFw,         // bowtie index
+									msconsts->ebwtBw,         // rev bowtie index
+									msconsts->ref,            // packed reference strings
 									msobj.sw,       // dynamic prog aligner
-									sc,             // scoring scheme
+									msconsts->sc,             // scoring scheme
 									-1,             // # mms allowed in a seed
 									0,              // length of a seed
 									0,              // interval between seeds
 									minsc[mate],    // minimum score for valid
 									nceil[mate],    // N ceil for anchor
 									maxhalf,        // max width on one DP side
-									mxIter,         // max extend loop iters
-									mxUg,           // max # ungapped extends
-									mxDp,           // max # DPs
-									streak,         // stop after streak of this many end-to-end fails
-									streak,         // stop after streak of this many ungap fails
+									msconsts->mxIter,         // max extend loop iters
+									msconsts->mxUg,           // max # ungapped extends
+									msconsts->mxDp,           // max # DPs
+									msconsts->streak,         // stop after streak of this many end-to-end fails
+									msconsts->streak,         // stop after streak of this many ungap fails
 									doExtend,       // extend seed hits
 									enable8,        // use 8-bit SSE where possible
 									cminlen,        // checkpoint if read is longer
@@ -2658,7 +2677,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								done[mate] = true;
 							}
 							if(!done[mate]) {
-								TAlScore perfectScore = sc.perfectScore(rdlen);
+								TAlScore perfectScore = msconsts->sc.perfectScore(rdlen);
 								if(minsc[mate] == perfectScore) {
 									done[mate] = true;
 								}
@@ -2737,9 +2756,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds
 								*rds[mate],     // read to align
-								sc,             // scoring scheme
-								gNofw,          // don't align forward read
-								gNorc,          // don't align revcomp read
+								msconsts->sc,             // scoring scheme
+								msconsts->nofw,          // don't align forward read
+								msconsts->norc,          // don't align revcomp read
 								msobj.ca,       // holds some seed hits from previous reads
 								msobj.shs,      // holds all the seed hits
 								instFw,
@@ -2757,10 +2776,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							// Align seeds
 							msobj.al.searchAllSeeds(
 								msobj.seed,       // search seeds
-								&ebwtFw,          // BWT index
-								ebwtBw,           // BWT' index
+								&msconsts->ebwtFw,          // BWT index
+								msconsts->ebwtBw,           // BWT' index
 								*rds[mate],       // read
-								sc,               // scoring scheme
+								msconsts->sc,               // scoring scheme
 								msobj.ca,         // alignment cache
 								msobj.shs,        // store seed hits here
 								msinkwrap.prm);   // per-read metrics
@@ -2797,22 +2816,22 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 										*rds[mate],     // read
 										true,           // mate #1?
 										msobj.shs,      // seed hits
-										ebwtFw,         // bowtie index
-										ebwtBw,         // rev bowtie index
-										ref,            // packed reference strings
+										msconsts->ebwtFw,         // bowtie index
+										msconsts->ebwtBw,         // rev bowtie index
+										msconsts->ref,            // packed reference strings
 										msobj.sw,       // dynamic prog aligner
-										sc,             // scoring scheme
+										msconsts->sc,             // scoring scheme
 										multiseedMms,   // # mms allowed in a seed
 										seedlens,       // length of a seed
 										interval,       // interval between seeds
 										minsc[mate],    // minimum score for valid
 										nceil[mate],    // N ceil for anchor
 										maxhalf,        // max width on one DP side
-										mxIter,         // max extend loop iters
-										mxUg,           // max # ungapped extends
-										mxDp,           // max # DPs
-										streak,         // stop after streak of this many end-to-end fails
-										streak,         // stop after streak of this many ungap fails
+										msconsts->mxIter,         // max extend loop iters
+										msconsts->mxUg,           // max # ungapped extends
+										msconsts->mxDp,           // max # DPs
+										msconsts->streak,         // stop after streak of this many end-to-end fails
+										msconsts->streak,         // stop after streak of this many ungap fails
 										doExtend,       // extend seed hits
 										enable8,        // use 8-bit SSE where possible
 										cminlen,        // checkpoint if read is longer
@@ -2888,7 +2907,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					&msobj.shs,           // seed results for mate 1
 					exhaustive[mate],     // exhausted seed hits for mate 1?
 					msobj.rnd,            // pseudo-random generator
-					sc,                   // scoring scheme
+					msconsts->sc,                   // scoring scheme
 					true,                 // suppress seed summaries?
 					false,                // suppress alignments?
 					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
@@ -2919,6 +2938,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// do not delete objects managed by the allocator
 		// accept memory leak
 	}
+
+	delete msconsts;
 
 	return;
 }
