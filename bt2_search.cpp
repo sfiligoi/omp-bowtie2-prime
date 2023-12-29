@@ -2219,7 +2219,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 	constexpr bool paired = false;
 
-	BTAllocator worker_alloc(false);
+	BTAllocator worker_alloc;
 	BTPerThreadAllocators mate_allocs(num_parallel_tasks);
 
 	// allocate to heap to make it GPU accessible
@@ -2304,6 +2304,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		size_t current_num_parallel_tasks = num_parallel_tasks;
 
 		while (true) { // will exit with a break
+		   mate_allocs.ensure_spare();
 		   {
 			bool found_unread = false;
 			// Note: Will use mate to distinguish between tread-specific elements
@@ -2425,6 +2426,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			if (!found_unread) break; // nothing else to do
 		   }
 
+		   // always call ensure_spare from main CPU thread
+		   mate_allocs.ensure_spare();
+
 		   // ASSERT: done[:] == false
 		   matemap.clear();
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
@@ -2476,6 +2480,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   );
 #endif
 	
+		   // always call ensure_spare from main CPU thread
+		   mate_allocs.ensure_spare();
+
 		   // ASSERT: done[:] == false
 		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
 		   matemap.clear();
@@ -2578,6 +2585,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					nelt[mate] = 0;
 		   } // for mate
 	
+		   // always call ensure_spare from main CPU thread
+		   mate_allocs.ensure_spare();
+
 		   matemap.clear();
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if ( (!done_reading[mate]) && (!done[mate]) && (ybits[mate]!=0) )  {
@@ -2624,6 +2634,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   );
 #endif
 	
+		   // always call ensure_spare from main CPU thread
+		   mate_allocs.ensure_spare();
+
 		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
 		   matemap.clear();
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
@@ -2710,6 +2723,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							}
 		   } // for mate
 	
+		   // always call ensure_spare from main CPU thread
+		   mate_allocs.ensure_spare();
+
 		   matemap.clear();
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if ((!done_reading[mate])  && (!done[mate]) ) {
@@ -2907,6 +2923,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						}
 					} // end loop over reseeding rounds
 		   } // for mate
+
+		   // always call ensure_spare from main CPU thread
+		   mate_allocs.ensure_spare();
 
 		   // we could do all of the "mates" in parallel, but the overhead is likely higher than the speedup
 #pragma omp parallel for default(shared)
