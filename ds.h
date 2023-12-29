@@ -35,30 +35,32 @@
 /**
  * Custom allocator of polled memory 
  * aligned to double, since that's the most restrictive type we expect
- * (Relying on malloc being at least double aligned)
  *
  * This allocator will leak memory, but this is by design
  * as we expect very little memory churn in the process.
  *
- * Note: There is also a global memory version
+ * Note: Not multi-thread safe!
  **/
 class BTAllocator {
 public:
-	static constexpr size_t POOL_BUF_SIZE = 384*1024;
-	// anything larger than this will just use standard memory management
-	static constexpr size_t MAX_POOLED_EL = POOL_BUF_SIZE/4;
+	// in bytes
+	static constexpr size_t POOL_BUF_ALIGN = 4096;
+	// in multiples of double
+	static constexpr size_t POOL_BUF_DSIZE = 512*1024;
 
-	// if true, use global memory for everything, thus it is thread-safe
-	// if false (default), use pooled memory, but this is not thread-safe (and will lead to memory leaks)
-	BTAllocator(const bool is_safe=false)
-	: pool_buf_(NULL), pool_dsize_(0), pool_dcur_(0) {
-		if (!is_safe) get_new_block();
+	BTAllocator()
+	: pool_buf_(NULL), pool_dsize_(0), pool_dcur_(0)
+	, spare_buf_(NULL), spare_dsize_(0) {
+			allocate_spare();
+			get_new_block();
+			allocate_spare();
 	}
 
 	// take ownership of the given buffer, implies unsafe version
 	// Note: The buffer will not be deleted, as we don't know how it was allocated (likely leading to memory leaks)
-	BTAllocator(double *buf, const size_t size)
-	: pool_buf_(buf), pool_dsize_(size), pool_dcur_(0) {}
+	BTAllocator(double *pool_buf, const size_t pool_size, double *spare_buf, const size_t spare_size)
+	: pool_buf_(pool_buf), pool_dsize_(pool_size), pool_dcur_(0)
+	, spare_buf_(spare_buf), spare_dsize_(spare_size) {}
 
 	// allow move operators
 	BTAllocator(BTAllocator&& o) = default;
@@ -70,17 +72,17 @@ public:
 
 	~BTAllocator() {}  // never deallocate the pool, accept memory leak
 
-	// align as if it was a double, since that's the most restrictive type we expect
+	// Call if you want to be sure we have a spare
+	void ensure_spare() {
+		if (spare_buf_ == NULL) allocate_spare();
+	}
+
 	void* allocate(const size_t nels, const size_t elsize) {
 		size_t nbytes = nels*elsize;
 		size_t ndoubles = (nbytes+sizeof(double)-1)/sizeof(double); // round up
 		double *buf = NULL;
 
-		if ((pool_buf_== NULL) || 	// global version
-		    (ndoubles>MAX_POOLED_EL)) { // too big, just use regular new
-			buf = (double *) malloc(sizeof(double)*ndoubles);
-			//std::cerr << "Raw new " << ndoubles << std::endl;
-		} else {
+		{
 			//std::cerr << "Pooled new " << ndoubles << std::endl;
 			size_t pool_dafter = pool_dcur_ + ndoubles;
 			if (pool_dafter>pool_dsize_) {
@@ -89,19 +91,20 @@ public:
 			}
 			buf = pool_buf_ + pool_dcur_;
 			pool_dcur_ += ndoubles;
+			if (pool_dcur_>pool_dsize_) {
+#ifndef NDEBUG
+				std::cerr << "Runtime error: alloc exceeded buffer size" << pool_dcur_ << ">" << pool_dsize_ << std::endl;
+#endif
+				throw 1;
+			}
 		}
 
 		return (void*) buf;
 	}
 
 	void deallocate(void* ptr, const size_t nels, const size_t elsize) const {
-		if (pool_buf_==NULL) {
-			// all allocs were from global memory, so we can delete, too
-			free(ptr);
-		} else {
-			// NOOP, we accept memory will be leaked
-			//std::cerr << "Leak " << nels*elsize/sizeof(double) << std::endl;
-		}
+		// NOOP, we accept memory will be leaked
+		//std::cerr << "Leak " << nels*elsize/sizeof(double) << std::endl;
 	}
 
 	/**
@@ -146,17 +149,34 @@ protected:
 		// this type does not support propagation, noop
 	}
 
-	void get_new_block() {
+	void allocate_spare() {
+		if (spare_buf_ != NULL) return; // allow for redundant calls
 		// forget about the old one, accept memory leak
-		//std::cerr << "Raw pool new " << POOL_BUF_SIZE << std::endl;
-		pool_buf_ = (double*) malloc(sizeof(double)*POOL_BUF_SIZE);
-		pool_dsize_ = POOL_BUF_SIZE;
+		//std::cerr << "Raw pool new " << POOL_BUF_DSIZE << std::endl;
+		spare_buf_ = (double*) aligned_alloc(POOL_BUF_ALIGN,sizeof(double)*POOL_BUF_DSIZE);
+		spare_dsize_ = POOL_BUF_DSIZE;
+	}
+
+	void get_new_block() {
+		if (spare_buf_==NULL) {
+#ifndef NDEBUG
+			std::cerr << "Runtime error: no spare buffer found" << this << std::endl;
+#endif
+			throw 1;
+	
+		}
+		pool_buf_ = spare_buf_;
+		pool_dsize_ = spare_dsize_;
 		pool_dcur_ = 0;
+		spare_buf_ = NULL;
+		spare_dsize_ = 0;
 	}
 
 	double *pool_buf_;	// if !=NULL, the current pool buffer
 	size_t pool_dsize_;	// size of the pool buffer
 	size_t pool_dcur_;	// offset in the pool buffer
+	double *spare_buf_;	// if !=NULL, the spare pool buffer
+	size_t spare_dsize_;	// size of the spare buffer
 };
 
 /**
@@ -168,14 +188,18 @@ public:
 	: allocs_() {
 		// get the initial buffer for all the per-thread allocators 
 		// in a single large new, then distribute among them
-		constexpr size_t one_ndoubles = BTAllocator::POOL_BUF_SIZE;
+		constexpr size_t one_ndoubles = BTAllocator::POOL_BUF_DSIZE;
 		size_t ndoubles = n_threads*one_ndoubles;
-		double *initial_buf = (double *) malloc(sizeof(double)*ndoubles);
+		// initialization cost usually higher, so double the size
+		constexpr size_t first_multiplier = 2;
+		double *initial_buf = (double *) aligned_alloc(BTAllocator::POOL_BUF_ALIGN,sizeof(double)*first_multiplier*ndoubles);
+		double *initial_spare = (double *) aligned_alloc(BTAllocator::POOL_BUF_ALIGN,sizeof(double)*ndoubles);
 
 		allocs_.reserve(n_threads);
 		for (size_t i=0; i<n_threads; i++) {
-			allocs_.emplace_back(initial_buf, one_ndoubles);
-			initial_buf+=one_ndoubles;
+			allocs_.emplace_back(initial_buf, first_multiplier*one_ndoubles, initial_spare, one_ndoubles);
+			initial_buf+=first_multiplier*one_ndoubles;
+			initial_spare+=one_ndoubles;
 		}
 		// Foget about initial_buf from now on
 		// This will be a one-off memory leak that will be cleaned up
@@ -188,6 +212,10 @@ public:
 
 	size_t size() {return allocs_.size();}
 
+	// Call if you want to be sure we have a spare
+	void ensure_spare() {
+		for (auto& i : allocs_) i.ensure_spare();
+	}
 protected:
 
 	std::vector<BTAllocator> allocs_;
