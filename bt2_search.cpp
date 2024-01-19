@@ -2747,9 +2747,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					const int interval = max((int)msIval.f<int>((double)rdlen), 1);
 					// Calculate # seed rounds for each mate
 					const size_t nrounds = min<size_t>(nSeedRounds, interval);
-					int seedlens = { multiseedLen};
+					const int seedlens = { multiseedLen};
 					Constraint gc = Constraint::penaltyFuncBased(scoreMin);
-					for(size_t roundi = 0; roundi < nSeedRounds; roundi++) {
+					for(size_t roundi = 0; roundi < nrounds; roundi++) {
 						msobj.ca.nextRead(); // Clear cache in preparation for new search
 						msobj.shs.clearSeeds();
 						assert(msobj.shs.empty());
@@ -2761,16 +2761,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							if(done[mate] || msinkwrap.state().doneWithMate(true)) {
 								// Done with this mate
 								done[mate] = true;
-								continue;
-							}
-							if(roundi >= nrounds) {
-								// Not doing this round for this mate
-								continue;
-							}
-							// Figure out the seed offset
-							if(interval <= (int)roundi) {
-								// Can't do this round, seeds already packed as
-								// tight as possible
 								continue;
 							}
 							size_t offset = (interval * roundi) / nrounds;
