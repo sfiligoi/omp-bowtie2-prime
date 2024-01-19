@@ -2765,6 +2765,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							//size_t mate = matemap[matei];
                                                 	//const size_t mate = 0;
 							if(msinkwrap.state().doneWithMate(true)) {
+								// Should never get in here, but just in case
 								// Done with this mate
 								done[mate] = true;
 								continue;
@@ -2831,7 +2832,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						// shs contain what we need to know to update our seed
 						// summaries for this seeding
 						msinkwrap.updateSHSCounters(msobj.shs);
-						{
+
                                                 	//const size_t matei = 0;
 							//size_t mate = matemap[matei];
                                                 	// const size_t mate = 0;
@@ -2841,10 +2842,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							} else if(msobj.shs.empty()) {
 								// nothing to do
 							} else {
-								// If there aren't any seed hits...
-								if(msobj.shs.empty()) {
-									continue; // on to the next mate
-								}
 								// Sort seed hits into ranks
 								msobj.shs.rankSeedHits(msobj.rnd, msinkwrap.allHits());
 								int ret = 0;
@@ -2884,36 +2881,23 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 										exhaustive[mate]);
 								}
 								assert_gt(ret, 0);
-								if(ret == EXTEND_EXHAUSTED_CANDIDATES) {
-									// Not done yet
-								} else if(ret == EXTEND_POLICY_FULFILLED) {
-									// Policy is satisfied for this mate at least
-									if(msinkwrap.state().doneWithMate(true)) {
-										done[mate] = true;
-									}
-								} else if(ret == EXTEND_PERFECT_SCORE) {
-									// We exhausted this made at least
-									done[mate] = true;
-								} else if(ret == EXTEND_EXCEEDED_HARD_LIMIT) {
-									// We exceeded a per-read limit
-									done[mate] = true;
-								} else if(ret == EXTEND_EXCEEDED_SOFT_LIMIT) {
+								if ((ret == EXTEND_EXHAUSTED_CANDIDATES) ||
+								     (ret == EXTEND_EXCEEDED_SOFT_LIMIT) ||
+                                                                     (ret == EXTEND_POLICY_FULFILLED)) {
 									// Not done yet
 								} else {
-									//
-									cerr << "Bad return value: " << ret << endl;
-									// We do not have clean exception handling, so just report to the user 
 									done[mate] = true;
 								}
 							}
-						} // for(size_t matei = 0; matei < 1; matei++)
 
-						// We don't necessarily have to continue investigating both
-						// mates.  We continue on a mate only if its average
-						// interval length is high (> 1000)
-						for(size_t matei = 0; matei < 1; matei++) {
-							// size_t mate = matei
-							if(!done[mate] && msobj.shs.averageHitsPerSeed() < seedBoostThresh) {
+						if(!done[mate]) {
+							// We don't necessarily have to continue investigating both
+							// mates.  We continue on a mate only if its average
+							// interval length is high (> 1000)
+							if(msobj.shs.averageHitsPerSeed() < seedBoostThresh) {
+								done[mate] = true;
+							}
+							if(msinkwrap.state().doneWithMate(true)) {
 								done[mate] = true;
 							}
 						}
