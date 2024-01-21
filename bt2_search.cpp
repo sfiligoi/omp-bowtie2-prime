@@ -2749,27 +2749,22 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 					const size_t rdlen = rds[mate]->length();
+					if(msinkwrap.state().doneWithMate(true)) {
+						// Should never get in here, but just in case
+						// Done with this mate
+						done[mate] = true;
+						continue;
+					}
 
 					// Calculate interval length for both mates
 					const int interval = max((int)msIval.f<int>((double)rdlen), 1);
 					// Calculate # seed rounds for each mate
 					const size_t nrounds = min<size_t>(nSeedRounds, interval);
-					const int seedlens = { multiseedLen};
 					Constraint gc = Constraint::penaltyFuncBased(scoreMin);
 						msobj.ca.nextRead(); // Clear cache in preparation for new search
 						msobj.shs.clearSeeds();
 						assert(msobj.shs.empty());
 						assert(msobj.shs.repOk(&msobj.ca.current()));
-						for(size_t matei = 0; matei < 1; matei++) { // keep the for, due to logic using continue and break
-                                                	//const size_t matei = 0;
-							//size_t mate = matemap[matei];
-                                                	//const size_t mate = 0;
-							if(msinkwrap.state().doneWithMate(true)) {
-								// Should never get in here, but just in case
-								// Done with this mate
-								done[mate] = true;
-								continue;
-							}
 							size_t offset = (interval * roundi) / nrounds;
 							assert(roundi == 0 || offset > 0);
 							assert(!msinkwrap.maxed());
@@ -2780,17 +2775,19 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							msobj.seed.clear();
 							Seed::mmSeeds(
 								multiseedMms,    // max # mms per seed
-								seedlens,        // length of a multiseed seed
+								multiseedLen,    // length of a multiseed seed
 								msobj.seed,      // seeds
 								gc);             // global constraint
 							// Check whether the offset would drive the first seed
 							// off the end
-							if(offset > 0 && msobj.seed[0].len + offset > rds[mate]->length()) {
-								continue;
+							if(offset > 0 && multiseedLen + offset > rds[mate]->length()) {
+								done[mate] = true;
 							}
+						std::pair<int, int> instFw, instRc;
+						std::pair<int, int> inst;
+						if (!done[mate]) {
 							// Instantiate the seeds
-							std::pair<int, int> instFw, instRc;
-							std::pair<int, int> inst = msobj.al.instantiateSeeds(
+							inst = msobj.al.instantiateSeeds(
 								msobj.seed,     // search seeds
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds
@@ -2807,11 +2804,13 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								// No seed hits!  Done with this mate.
 								assert(msobj.shs.empty());
 								done[mate] = true;
-								break;
+							} else {
+								msinkwrap.seedsTried += (inst.first + inst.second);
+								msinkwrap.seedsTriedMS[0] = instFw.first + instFw.second;
+								msinkwrap.seedsTriedMS[1] = instRc.first + instRc.second;
 							}
-							msinkwrap.seedsTried += (inst.first + inst.second);
-							msinkwrap.seedsTriedMS[0] = instFw.first + instFw.second;
-							msinkwrap.seedsTriedMS[1] = instRc.first + instRc.second;
+						}
+						if (!done[mate]) {
 							// Align seeds
 							msobj.al.searchAllSeeds(
 								msobj.seed,       // search seeds
@@ -2826,17 +2825,15 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							if(msobj.shs.empty()) {
 								// No seed alignments!  Done with this mate.
 								done[mate] = true;
-								break;
+							} else {
+								// shs contain what we need to know to update our seed
+								// summaries for this seeding
+								msinkwrap.updateSHSCounters(msobj.shs);
 							}
 						}
-						// shs contain what we need to know to update our seed
-						// summaries for this seeding
-						msinkwrap.updateSHSCounters(msobj.shs);
 
-                                                	//const size_t matei = 0;
-							//size_t mate = matemap[matei];
-                                                	// const size_t mate = 0;
-							if(done[mate] || msinkwrap.state().doneWithMate(true)) {
+						if (!done[mate]) {
+							if(msinkwrap.state().doneWithMate(true)) {
 								// Done with this mate
 								done[mate] = true;
 							} else if(msobj.shs.empty()) {
@@ -2857,7 +2854,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 										msobj.sw,       // dynamic prog aligner
 										msconsts->sc,             // scoring scheme
 										multiseedMms,   // # mms allowed in a seed
-										seedlens,       // length of a seed
+										multiseedLen,   // length of a seed
 										interval,       // interval between seeds
 										minsc[mate],    // minimum score for valid
 										nceil[mate],    // N ceil for anchor
@@ -2889,6 +2886,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									done[mate] = true;
 								}
 							}
+						}
 
 						if(!done[mate]) {
 							// We don't necessarily have to continue investigating both
