@@ -1420,6 +1420,38 @@ protected:
 	EList<size_t> tmpMedian_; // temporary storage for calculating median
 };
 
+/**
+ * Data structure for holding all of the seed hits associated with a 
+ * list of read.
+ * Partially implemnted, TODO
+ **/
+class SeedMultiResults {
+
+public:
+	SeedMultiResults(unsigned int nResults) :
+                nResults_(nResults),
+                singleResults_(nResults)
+	{}
+	
+	SeedMultiResults(const SeedMultiResults& other) = delete;
+	SeedMultiResults& operator=(const SeedMultiResults& other) = delete;
+
+	void set_alloc(BTAllocator& main_alloc,
+                       BTPerThreadAllocators &el_allocs) {
+		// TODO: some elements will be in this object, so have main_alloc ready 
+		for (unsigned int i =0; i<nResults_; i++) {
+		  singleResults_[i].set_alloc(&(el_allocs[i])); 
+		}
+	}
+
+	SeedResults& operator[](unsigned int resIdx) {return singleResults_[resIdx];}
+	const SeedResults& operator[](unsigned int resIdx) const {return singleResults_[resIdx];}
+
+protected:
+        unsigned int nResults_;
+        std::vector<SeedResults> singleResults_;  // fixed sized array of size nResults_
+};
+
 
 // Forward decl
 class Ebwt;
