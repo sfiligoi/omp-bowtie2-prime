@@ -468,14 +468,14 @@ enum {
  * reference strand.  I.e. if fw is false, then the sequence that appears in
  * 'seq' is the reverse complement of the raw read substring.
  */
-inline void
-instantiateSeq(
+void
+SeedAligner::instantiateSeq(
 	const Read& read, // input read
 	BTDnaString& seq, // output sequence
 	BTString& qual,   // output qualities
 	int len,          // seed length
 	int depth,        // seed's 0-based offset from 5' end
-	bool fw)          // seed's orientation
+	bool fw) const    // seed's orientation
 {
 	// Fill in 'seq' and 'qual'
 	int seedlen = len;
@@ -495,14 +495,14 @@ instantiateSeq(
  *
  * For each seed, instantiate the seed, retracting if necessary.
  */
-inline pair<int, int> instantiateSeedsOne(
+pair<int, int> SeedAligner::instantiateSeeds(
 	const EList<Seed>& seeds,  // search seeds
-	const size_t off,          // offset into read to start extracting
-	const int per,             // interval between seeds
+	size_t off,                // offset into read to start extracting
+	int per,                   // interval between seeds
 	const Read& read,          // read to align
 	const Scoring& pens,       // scoring scheme
-	const bool nofw,                 // don't align forward read
-	const bool norc,                 // don't align revcomp read
+	bool nofw,                 // don't align forward read
+	bool norc,                 // don't align revcomp read
 	AlignmentCacheIface& cache,// holds some seed hits from previous reads
 	SeedResults& sr,           // holds all the seed hits
 	pair<int, int>& instFw,
@@ -522,10 +522,10 @@ inline pair<int, int> instantiateSeedsOne(
 	if((int)read.length() - (int)off > len) {
 		nseeds += ((int)read.length() - (int)off - len) / per;
 	}
-	sr.reset(read, off, per, nseeds);
 	pair<int, int> ret;
 	ret.first = 0;  // # seeds that require alignment
 	ret.second = 0; // # seeds that hit in cache with non-empty results
+	sr.reset(read, off, per, nseeds);
 	assert(sr.repOk(&cache.current(), true)); // require that SeedResult be initialized
 	// For each seed position
 	for(int fwi = 0; fwi < 2; fwi++) {
@@ -579,23 +579,6 @@ inline pair<int, int> instantiateSeedsOne(
 	}
 	return ret;
 }
-
-pair<int, int> SeedAligner::instantiateSeeds(
-	const EList<Seed>& seeds,  // search seeds
-	size_t off,                // offset into read to start extracting
-	int per,                   // interval between seeds
-	const Read& read,          // read to align
-	const Scoring& pens,       // scoring scheme
-	bool nofw,                 // don't align forward read
-	bool norc,                 // don't align revcomp read
-	AlignmentCacheIface& cache,// holds some seed hits from previous reads
-	SeedResults& sr,           // holds all the seed hits
-	pair<int, int>& instFw,
-	pair<int, int>& instRc)
-{
-	return instantiateSeedsOne(seeds,off,per,read,pens,nofw,norc,cache,sr,instFw,instRc);
-}
-
 
 /**
  * We assume that all seeds are the same length.
