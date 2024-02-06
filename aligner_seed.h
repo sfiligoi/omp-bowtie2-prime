@@ -721,26 +721,25 @@ public:
 	 * Clear buffered seed hits and state.  Set the number of seed
 	 * offsets and the read.
 	 */
-	void reset(
+protected:
+	void resetNoOff(
 		const Read& read,
-		const EList<uint32_t>& offIdx2off,
-		size_t numOffs)
+		const size_t numOffs)
 	{
 		assert_gt(numOffs, 0);
 		clearSeeds();
 		numOffs_ = numOffs;
-		seqFw_.resize(numOffs_);
-		seqRc_.resize(numOffs_);
-		qualFw_.resize(numOffs_);
-		qualRc_.resize(numOffs_);
-		hitsFw_.resize(numOffs_);
-		hitsRc_.resize(numOffs_);
-		isFw_.resize(numOffs_);
-		isRc_.resize(numOffs_);
-		sortedFw_.resize(numOffs_);
-		sortedRc_.resize(numOffs_);
-		offIdx2off_ = offIdx2off;
-		for(size_t i = 0; i < numOffs_; i++) {
+		seqFw_.resize(numOffs);
+		seqRc_.resize(numOffs);
+		qualFw_.resize(numOffs);
+		qualRc_.resize(numOffs);
+		hitsFw_.resize(numOffs);
+		hitsRc_.resize(numOffs);
+		isFw_.resize(numOffs);
+		isRc_.resize(numOffs);
+		sortedFw_.resize(numOffs);
+		sortedRc_.resize(numOffs);
+		for(size_t i = 0; i < numOffs; i++) {
 			sortedFw_[i] = sortedRc_[i] = false;
 			hitsFw_[i].reset();
 			hitsRc_[i].reset();
@@ -749,6 +748,29 @@ public:
 		}
 		read_ = &read;
 		sorted_ = false;
+	}
+
+public:
+	void reset(
+		const Read& read,
+		const EList<uint32_t>& offIdx2off,
+		size_t numOffs)
+	{
+		resetNoOff(read,numOffs);
+		offIdx2off_ = offIdx2off;
+	}
+
+	void reset(
+		const Read& read,
+		const size_t off,                // offset into read to start extracting
+		const int per,                   // interval between seeds
+		size_t numOffs)
+	{
+		resetNoOff(read,numOffs);
+		offIdx2off_.clear();
+		for(int i = 0; i < numOffs; i++) {
+			offIdx2off_.push_back(per * i + (int)off);
+                }
 	}
 	
 	/**
@@ -1647,18 +1669,16 @@ public:
 	/**
 	 * Initialize with index.
 	 */
-	SeedAligner() : edits_(AL_CAT), offIdx2off_(AL_CAT) { }
+	SeedAligner() : edits_(AL_CAT) { }
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		edits_.set_alloc(alloc, propagate_alloc);
-		offIdx2off_.set_alloc(alloc, propagate_alloc);
 		tmprfdnastr_.set_alloc(alloc, propagate_alloc);
 		tmpdnastr_.set_alloc(alloc, propagate_alloc);
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
 		edits_.set_alloc(arg);
-		offIdx2off_.set_alloc(arg);
 		tmprfdnastr_.set_alloc(arg);
 		tmpdnastr_.set_alloc(arg);
 	}
@@ -1908,7 +1928,6 @@ protected:
 	const Read* read_;         // read whose seeds are currently being aligned
 	
 	EList<Edit> edits_;        // temporary place to sort edits
-	EList<uint32_t> offIdx2off_;// offset idx to read offset map, set up instantiateSeeds()
 	uint64_t bwops_;           // Burrows-Wheeler operations
 	uint64_t bwedits_;         // Burrows-Wheeler edits
 	BTDnaString tmprfdnastr_;  // used in reportHit
