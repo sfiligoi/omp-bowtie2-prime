@@ -2775,7 +2775,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					size_t offset = (interval * roundi) / nrounds;
 							std::pair<int, int> instFw, instRc;
 							// Instantiate the seeds
-							std::pair<int, int> inst = msobj.al.instantiateSeeds(
+							std::pair<int, int> inst = SeedAligner::instantiateSeeds(
 								msobj.seed,     // search seeds
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds
