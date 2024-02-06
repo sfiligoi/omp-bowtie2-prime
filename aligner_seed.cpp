@@ -836,13 +836,13 @@ inline bool exactSweepStep(
 inline size_t exactSweepOne(
 	const Ebwt&        ebwt,    // BWT index
 	const Read&        read,    // read to align
-	const Scoring&     sc,      // scoring scheme
-	bool               nofw,    // don't align forward read
-	bool               norc,    // don't align revcomp read
-	size_t             mineMax, // don't care about edit bounds > this
+	const int64_t      match_score, // scoring scheme match result
+	const bool         nofw,    // don't align forward read
+	const bool         norc,    // don't align revcomp read
+	const bool         repex,   // report 0mm hits?
+	const size_t       mineMax, // don't care about edit bounds > this
 	size_t&            mineFw,  // minimum # edits for forward read
 	size_t&            mineRc,  // minimum # edits for revcomp read
-	bool               repex,   // report 0mm hits?
         uint64_t&          bwops,
 	SeedResults&       hits)    // holds all the seed hits (and exact hit)
 {
@@ -933,7 +933,7 @@ inline size_t exactSweepOne(
 			if(nedit[fwi] == 0 && bot[fwi] > top[fwi]) {
 				if(repex) {
 					// This is an exact hit
-					int64_t score = len * sc.match();
+					int64_t score = len * match_score;
 					if(fw) {
 						hits.addExactEeFw(top[fwi], bot[fwi], NULL, NULL, fw, score);
 						assert(ebwt.contains(fw ? read.patFw : read.patRc, NULL, NULL));
@@ -960,7 +960,7 @@ inline size_t exactSweepOne(
 size_t SeedAligner::exactSweep(
 	const Ebwt&        ebwt,    // BWT index
 	const Read&        read,    // read to align
-	const Scoring&     sc,      // scoring scheme
+	const int64_t      match_score, // scoring scheme match result
 	bool               nofw,    // don't align forward read
 	bool               norc,    // don't align revcomp read
 	size_t             mineMax, // don't care about edit bounds > this
@@ -969,7 +969,7 @@ size_t SeedAligner::exactSweep(
 	bool               repex,   // report 0mm hits?
 	SeedResults&       hits)    // holds all the seed hits (and exact hit)
 {
-	return exactSweepOne(ebwt,read,sc,nofw,norc,mineMax,mineFw,mineRc,repex,bwops_,hits);
+	return exactSweepOne(ebwt,read,match_score,nofw,norc,repex,mineMax,mineFw,mineRc,bwops_,hits);
 }
 
 /**

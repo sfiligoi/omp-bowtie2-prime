@@ -1729,7 +1729,7 @@ public:
 	size_t exactSweep(
 		const Ebwt&        ebwt,    // BWT index
 		const Read&        read,    // read to align
-		const Scoring&     sc,      // scoring scheme
+		const int64_t      match_score, // scoring scheme match result
 		bool               nofw,    // don't align forward read
 		bool               norc,    // don't align revcomp read
 		size_t             mineMax, // don't care about edit bounds > this

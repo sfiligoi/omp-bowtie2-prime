@@ -2464,7 +2464,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					nelt[mate] = msobj.al.exactSweep(
 								msconsts->ebwtFw,        // index
 								*rds[mate],    // read
-								msconsts->sc,            // scoring scheme
+								msconsts->sc.match(),
 								msconsts->nofw,         // nofw?
 								msconsts->norc,         // norc?
 								2,             // max # edits we care about
