@@ -2263,6 +2263,8 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		SeedMultiResults* multi_shs = new SeedMultiResults(num_parallel_tasks);
 		multi_shs->set_alloc(worker_alloc,mate_allocs);
 
+		MultiSeedAligner multi_al(num_parallel_tasks);
+
 		// Major per-thread objects
 		msWorkerObjs* g_msobjs = new msWorkerObjs[num_parallel_tasks];
 		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) g_msobjs[mate].set_alloc(&(mate_allocs[mate]));
@@ -2442,7 +2444,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   current_num_parallel_tasks = matemap.size();
 
 		   // Expected fraction of mates: 100%
-		   SeedAligner::exactSweepMany(
+		   multi_al.exactSweep(
 					msconsts->ebwtFw,           // index
 					current_num_parallel_tasks, // n. elements
 					matemap.data(),             // index
@@ -2464,7 +2466,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   current_num_parallel_tasks = 0;
 		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) {
-				size_t myNElt = SeedAligner::encGetNEls(alResults[mate]); // really only care about zero/non-zero
+				size_t myNElt = multi_al.encGetNEls(alResults[mate]); // really only care about zero/non-zero
                                 nelt[mate] = myNElt;
 				if (myNElt!=0) {
 					matemap.push_back(mate);
@@ -2570,14 +2572,14 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 
 		   matemap.clear();
 		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
-			if ( (!done_reading[mate]) && (!done[mate]) && SeedAligner::encHasNoBits(alResults[mate]) )  {
+			if ( (!done_reading[mate]) && (!done[mate]) && multi_al.encHasNoBits(alResults[mate]) )  {
 				matemap.push_back(mate);
 			}
 		   }
 		   current_num_parallel_tasks = matemap.size();
 
 		   // Expected fraction of mates: 50%
-		   SeedAligner::oneMmSearchMany(
+		   multi_al.oneMmSearch(
 					&msconsts->ebwtFw,          // BWT index
 					msconsts->ebwtBw,           // BWT' index
 					current_num_parallel_tasks, // n. elements
@@ -2587,12 +2589,12 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					msconsts->sc,               // scoring scheme
 					false,                      // do exact match
 					true,                       // do 1mm
-					alResults,                 // encoded results, updates those from exactSweepMany
+					alResults,                 // encoded results, updates those from exactSweep
 					*multi_shs);                // holds all the seed hits (and exact hit)
 
 		   for (uint32_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
 			const uint32_t mate=matemap[fidx];
-			nelt[mate] = SeedAligner::encGetNEls(alResults[mate]); // really only care about zero/non-zero
+			nelt[mate] = multi_al.encGetNEls(alResults[mate]); // really only care about zero/non-zero
 		   }
 	
 		   // always call ensure_spare from main CPU thread

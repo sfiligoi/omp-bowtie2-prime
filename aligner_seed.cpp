@@ -1002,8 +1002,7 @@ size_t SeedAligner::exactSweep(
 	return exactSweepOne(ebwt,read,matchScore,nofw,norc,repex,mineMax,mineFw,mineRc,bwops,hits);
 }
 
-// Returns bwops
-uint64_t SeedAligner::exactSweepMany(
+void MultiSeedAligner::exactSweep(
 	const Ebwt&           ebwt,       // BWT index
 	const uint32_t        nReads,     // size of readIdxs
 	const uint32_t        readIdxs[], // pointers inside read and hits
@@ -1032,7 +1031,7 @@ uint64_t SeedAligner::exactSweepMany(
 		bool yrc = minedrc <= 1 && !(norc);
 		encResults[idx] = ((nelt==0) ? 0 : encMaskNEls) | (yfw ? encMaskNoFw : 0) | (yrc ? encMaskNoRc : 0) ;
 	}
-	return bwops;
+	bwops_ += bwops;
 }
 
 /**
@@ -1381,8 +1380,7 @@ bool SeedAligner::oneMmSearch(
   return oneMmSearchOne(ebwtFw,ebwtBw,read,sc,minsc,nofw,norc,repex,rep1mm,bwops,hits);
 }
 
-// Returns bwops
-size_t SeedAligner::oneMmSearchMany(
+void MultiSeedAligner::oneMmSearch(
 	const Ebwt* const     ebwtFw, // BWT index
 	const Ebwt* const     ebwtBw, // BWT' index
 	const uint32_t        nReads,     // size of readIdxs
@@ -1392,7 +1390,7 @@ size_t SeedAligner::oneMmSearchMany(
 	const Scoring&        sc,     // scoring
 	const bool            repex,  // report 0mm hits?
 	const bool            rep1mm, // report 1mm hits?
-	uint8_t               encResults[], // encoded results from exactSweepMany, NEls returned
+	uint8_t               encResults[], // encoded results from exactSweep, NEls returned
 	SeedMultiResults&     hits)    // holds all the seed hits (and exact hit)
 {
 	uint64_t bwops = 0;
@@ -1408,7 +1406,7 @@ size_t SeedAligner::oneMmSearchMany(
                                hits[idx]);
 		encResults[idx] = ((hits[idx].num1mmE2eHits()==0) ? 0 : encMaskNEls);
         }
-	return bwops;
+	bwops_ += bwops;
 }
 
 inline void
