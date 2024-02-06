@@ -510,7 +510,6 @@ pair<int, int> SeedAligner::instantiateSeeds(
 	assert(!seeds.empty());
 	assert_gt(read.length(), 0);
 	// Check whether read has too many Ns
-	offIdx2off_.clear();
 	int len = seeds[0].len; // assume they're all the same length
 #ifndef NDEBUG
 	for(size_t i = 1; i < seeds.size(); i++) {
@@ -522,13 +521,10 @@ pair<int, int> SeedAligner::instantiateSeeds(
 	if((int)read.length() - (int)off > len) {
 		nseeds += ((int)read.length() - (int)off - len) / per;
 	}
-	for(int i = 0; i < nseeds; i++) {
-		offIdx2off_.push_back(per * i + (int)off);
-	}
 	pair<int, int> ret;
 	ret.first = 0;  // # seeds that require alignment
 	ret.second = 0; // # seeds that hit in cache with non-empty results
-	sr.reset(read, offIdx2off_, nseeds);
+	sr.reset(read, off, per, nseeds);
 	// For each seed position
 	for(int fwi = 0; fwi < 2; fwi++) {
 		bool fw = (fwi == 0);
