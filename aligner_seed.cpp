@@ -972,6 +972,23 @@ size_t SeedAligner::exactSweep(
 	return exactSweepOne(ebwt,read,match_score,nofw,norc,repex,mineMax,mineFw,mineRc,bwops_,hits);
 }
 
+// Static version
+size_t SeedAligner::exactSweep(
+	const Ebwt&        ebwt,    // BWT index
+	const Read&        read,    // read to align
+	const int64_t      match_score, // scoring scheme match result
+	bool               nofw,    // don't align forward read
+	bool               norc,    // don't align revcomp read
+	size_t             mineMax, // don't care about edit bounds > this
+	size_t&            mineFw,  // minimum # edits for forward read
+	size_t&            mineRc,  // minimum # edits for revcomp read
+	bool               repex,   // report 0mm hits?
+	SeedResults&       hits,    // holds all the seed hits (and exact hit)
+	uint64_t&          bwops)
+{
+	return exactSweepOne(ebwt,read,match_score,nofw,norc,repex,mineMax,mineFw,mineRc,bwops,hits);
+}
+
 /**
  * Search for end-to-end exact hit for read.  Return true iff one is found.
  */

@@ -1738,6 +1738,19 @@ public:
 		bool               repex,   // report 0mm hits?
 		SeedResults&       hits);   // holds all the seed hits (and exact hit)
 
+	static size_t exactSweep(
+		const Ebwt&        ebwt,    // BWT index
+		const Read&        read,    // read to align
+		const int64_t      match_score, // scoring scheme match result
+		bool               nofw,    // don't align forward read
+		bool               norc,    // don't align revcomp read
+		size_t             mineMax, // don't care about edit bounds > this
+		size_t&            mineFw,  // minimum # edits for forward read
+		size_t&            mineRc,  // minimum # edits for revcomp read
+		bool               repex,   // report 0mm hits?
+		SeedResults&       hits,    // holds all the seed hits (and exact hit)
+		uint64_t&          bwops);
+
 	/**
 	 * Search for end-to-end alignments with up to 1 mismatch.
 	 */

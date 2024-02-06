@@ -2457,11 +2457,12 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			const size_t mate=matemap[fidx];
 #endif
 			    		SeedResults& shs = (*multi_shs)[mate];
-					msWorkerObjs& msobj = g_msobjs[mate];
+					// diagnostics only
+					uint64_t          bwops = 0;
 					// Find end-to-end exact alignments for each read
 					size_t minedfw = 0;
 					size_t minedrc = 0;
-					nelt[mate] = msobj.al.exactSweep(
+					nelt[mate] = SeedAligner::exactSweep(
 								msconsts->ebwtFw,        // index
 								*rds[mate],    // read
 								msconsts->sc.match(),
@@ -2471,7 +2472,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 								minedfw,       // minimum # edits for fw mate
 								minedrc,       // minimum # edits for rc mate
 								true,          // report 0mm hits
-								shs);     // put end-to-end results here
+								shs,           // put end-to-end results here
+								bwops);     
 					bool yfw = minedfw <= 1 && !(msconsts->nofw);
 					bool yrc = minedrc <= 1 && !(msconsts->norc);
 					// encode the two together, as they always use them together
