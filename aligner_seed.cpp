@@ -833,13 +833,7 @@ inline bool exactSweepStep(
 	return false;
 }
 
-/**
- * Sweep right-to-left and left-to-right using exact matching.  Remember all
- * the SA ranges encountered along the way.  Report exact matches if there are
- * any.  Calculate a lower bound on the number of edits in an end-to-end
- * alignment.
- */
-size_t SeedAligner::exactSweep(
+inline size_t exactSweepOne(
 	const Ebwt&        ebwt,    // BWT index
 	const Read&        read,    // read to align
 	const Scoring&     sc,      // scoring scheme
@@ -849,6 +843,7 @@ size_t SeedAligner::exactSweep(
 	size_t&            mineFw,  // minimum # edits for forward read
 	size_t&            mineRc,  // minimum # edits for revcomp read
 	bool               repex,   // report 0mm hits?
+        uint64_t&          bwops,
 	SeedResults&       hits)    // holds all the seed hits (and exact hit)
 {
 	assert_gt(mineMax, 0);
@@ -914,7 +909,7 @@ size_t SeedAligner::exactSweep(
 
 				if (dep[fwi]< len) {
 					exactSweepMapLF(ebwt, seq, len, dep[fwi], tloc[fwi], bloc[fwi],
-							top[fwi], bot[fwi], bwops_);
+							top[fwi], bot[fwi], bwops);
 
 					if ( exactSweepStep(ebwt, top[fwi], bot[fwi], mineMax,
 								tloc[fwi], bloc[fwi],
@@ -952,6 +947,29 @@ size_t SeedAligner::exactSweep(
 		}
 	}
 	return nelt;
+}
+
+
+
+/**
+ * Sweep right-to-left and left-to-right using exact matching.  Remember all
+ * the SA ranges encountered along the way.  Report exact matches if there are
+ * any.  Calculate a lower bound on the number of edits in an end-to-end
+ * alignment.
+ */
+size_t SeedAligner::exactSweep(
+	const Ebwt&        ebwt,    // BWT index
+	const Read&        read,    // read to align
+	const Scoring&     sc,      // scoring scheme
+	bool               nofw,    // don't align forward read
+	bool               norc,    // don't align revcomp read
+	size_t             mineMax, // don't care about edit bounds > this
+	size_t&            mineFw,  // minimum # edits for forward read
+	size_t&            mineRc,  // minimum # edits for revcomp read
+	bool               repex,   // report 0mm hits?
+	SeedResults&       hits)    // holds all the seed hits (and exact hit)
+{
+	return exactSweepOne(ebwt,read,sc,nofw,norc,mineMax,mineFw,mineRc,repex,bwops_,hits);
 }
 
 /**
