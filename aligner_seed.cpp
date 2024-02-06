@@ -836,7 +836,7 @@ inline bool exactSweepStep(
 inline size_t exactSweepOne(
 	const Ebwt&        ebwt,    // BWT index
 	const Read&        read,    // read to align
-	const int64_t      match_score, // scoring scheme match result
+	const int64_t      matchScore, // scoring scheme match result
 	const bool         nofw,    // don't align forward read
 	const bool         norc,    // don't align revcomp read
 	const bool         repex,   // report 0mm hits?
@@ -933,7 +933,7 @@ inline size_t exactSweepOne(
 			if(nedit[fwi] == 0 && bot[fwi] > top[fwi]) {
 				if(repex) {
 					// This is an exact hit
-					int64_t score = len * match_score;
+					int64_t score = len * matchScore;
 					if(fw) {
 						hits.addExactEeFw(top[fwi], bot[fwi], NULL, NULL, fw, score);
 						assert(ebwt.contains(fw ? read.patFw : read.patRc, NULL, NULL));
@@ -960,7 +960,7 @@ inline size_t exactSweepOne(
 size_t SeedAligner::exactSweep(
 	const Ebwt&        ebwt,    // BWT index
 	const Read&        read,    // read to align
-	const int64_t      match_score, // scoring scheme match result
+	const int64_t      matchScore, // scoring scheme match result
 	bool               nofw,    // don't align forward read
 	bool               norc,    // don't align revcomp read
 	size_t             mineMax, // don't care about edit bounds > this
@@ -969,14 +969,14 @@ size_t SeedAligner::exactSweep(
 	bool               repex,   // report 0mm hits?
 	SeedResults&       hits)    // holds all the seed hits (and exact hit)
 {
-	return exactSweepOne(ebwt,read,match_score,nofw,norc,repex,mineMax,mineFw,mineRc,bwops_,hits);
+	return exactSweepOne(ebwt,read,matchScore,nofw,norc,repex,mineMax,mineFw,mineRc,bwops_,hits);
 }
 
 // Static version
 size_t SeedAligner::exactSweep(
 	const Ebwt&        ebwt,    // BWT index
 	const Read&        read,    // read to align
-	const int64_t      match_score, // scoring scheme match result
+	const int64_t      matchScore, // scoring scheme match result
 	bool               nofw,    // don't align forward read
 	bool               norc,    // don't align revcomp read
 	size_t             mineMax, // don't care about edit bounds > this
@@ -984,9 +984,42 @@ size_t SeedAligner::exactSweep(
 	size_t&            mineRc,  // minimum # edits for revcomp read
 	bool               repex,   // report 0mm hits?
 	SeedResults&       hits,    // holds all the seed hits (and exact hit)
-	uint64_t&          bwops)
+	uint64_t&          bwops)   // diagnostic counter
 {
-	return exactSweepOne(ebwt,read,match_score,nofw,norc,repex,mineMax,mineFw,mineRc,bwops,hits);
+	return exactSweepOne(ebwt,read,matchScore,nofw,norc,repex,mineMax,mineFw,mineRc,bwops,hits);
+}
+
+// Returns bwops
+uint64_t SeedAligner::exactSweepMany(
+	const Ebwt&           ebwt,       // BWT index
+	const uint32_t        nReads,     // size of readIdxs
+	const uint32_t        readIdxs[], // pointers inside read and hits
+	Read const * const    reads[],    // pointers to reads to align
+	const int64_t         matchScore, // scoring scheme match result
+	const bool            nofw,       // don't align forward read
+	const bool            norc,       // don't align revcomp read
+	const bool            repex,      // report 0mm hits?
+	const size_t          mineMax,    // don't care about edit bounds > this
+	uint8_t               encResults[], // encoded results of the compute
+	SeedMultiResults&     hits)    // holds all the seed hits (and exact hit)
+{
+	uint64_t bwops = 0;
+	// We can do all of the reads in parallel
+#pragma omp parallel for default(shared) reduction(+:bwops)
+	for (uint32_t fidx=0; fidx<nReads; fidx++) {
+		const uint32_t idx=readIdxs[fidx];
+		size_t minedfw = 0;
+		size_t minedrc = 0;
+		size_t nelt = exactSweepOne(ebwt,*reads[idx],
+					    matchScore,nofw,norc,repex,mineMax,
+					    minedfw,minedrc,bwops,
+					    hits[idx]);
+		if (nelt==0) hits[idx].clearExactE2eHits();
+		bool yfw = minedfw <= 1 && !(nofw);
+		bool yrc = minedrc <= 1 && !(norc);
+		encResults[idx] = ((nelt==0) ? 0 : encMaskNEls) | (yfw ? encMaskNoFw : 0) | (yrc ? encMaskNoRc : 0) ;
+	}
+	return bwops;
 }
 
 /**
@@ -1316,6 +1349,53 @@ bool SeedAligner::oneMmSearch(
 	SeedResults&       hits)   // holds all the seed hits (and exact hit)
 {
   return oneMmSearchOne(ebwtFw,ebwtBw,read,sc,minsc,nofw,norc,repex,rep1mm,bwops_,hits);
+}
+
+// Static version
+bool SeedAligner::oneMmSearch(
+	const Ebwt*        ebwtFw, // BWT index
+	const Ebwt*        ebwtBw, // BWT' index
+	const Read&        read,   // read to align
+	const Scoring&     sc,     // scoring
+	int64_t            minsc,  // minimum score
+	bool               nofw,   // don't align forward read
+	bool               norc,   // don't align revcomp read
+	bool               repex,  // report 0mm hits?
+	bool               rep1mm, // report 1mm hits?
+	SeedResults&       hits,    // holds all the seed hits (and exact hit)
+	uint64_t&          bwops)   // diagnostic counter
+{
+  return oneMmSearchOne(ebwtFw,ebwtBw,read,sc,minsc,nofw,norc,repex,rep1mm,bwops,hits);
+}
+
+// Returns bwops
+size_t SeedAligner::oneMmSearchMany(
+	const Ebwt* const     ebwtFw, // BWT index
+	const Ebwt* const     ebwtBw, // BWT' index
+	const uint32_t        nReads,     // size of readIdxs
+	const uint32_t        readIdxs[], // pointers inside read and hits
+	Read const * const    reads[],    // pointers to reads to align
+	const int64_t         minsc[],  // minimum score
+	const Scoring&        sc,     // scoring
+	const bool            repex,  // report 0mm hits?
+	const bool            rep1mm, // report 1mm hits?
+	uint8_t               encResults[], // encoded results from exactSweepMany, NEls returned
+	SeedMultiResults&     hits)    // holds all the seed hits (and exact hit)
+{
+	uint64_t bwops = 0;
+	// We can do all of the reads in parallel
+#pragma omp parallel for default(shared) reduction(+:bwops)
+	for (uint32_t fidx=0; fidx<nReads; fidx++) {
+		const uint32_t idx=readIdxs[fidx];
+		const uint8_t myEnc = encResults[idx];
+		bool nofw = (myEnc & encMaskNoFw) == 0;
+		bool norc = (myEnc & encMaskNoRc) == 0;
+		oneMmSearchOne(ebwtFw,ebwtBw,*reads[idx],sc,minsc[idx],
+                               nofw,norc,repex,rep1mm,bwops,
+                               hits[idx]);
+		encResults[idx] = ((hits[idx].num1mmE2eHits()==0) ? 0 : encMaskNEls);
+        }
+	return bwops;
 }
 
 inline void

@@ -1444,8 +1444,8 @@ public:
 		}
 	}
 
-	SeedResults& operator[](unsigned int resIdx) {return singleResults_[resIdx];}
-	const SeedResults& operator[](unsigned int resIdx) const {return singleResults_[resIdx];}
+	template<typename T> SeedResults& operator[](T resIdx) {return singleResults_[resIdx];}
+	template<typename T> const SeedResults& operator[](T resIdx) const {return singleResults_[resIdx];}
 
 protected:
         unsigned int nResults_;
@@ -1751,6 +1751,20 @@ public:
 		SeedResults&       hits,    // holds all the seed hits (and exact hit)
 		uint64_t&          bwops);
 
+	// Returns bwops
+	static uint64_t exactSweepMany(
+		const Ebwt&           ebwt,       // BWT index
+		const uint32_t        nReads,     // size of readIdxs
+		const uint32_t        readIdxs[], // pointers inside read and hits
+		Read const * const    reads[],    // pointers to reads to align
+		const int64_t         matchScore, // scoring scheme match result
+		const bool            nofw,       // don't align forward read
+		const bool            norc,       // don't align revcomp read
+		const bool            repex,      // report 0mm hits?
+		const size_t          mineMax,    // don't care about edit bounds > this
+		uint8_t               encResults[], // encoded results of the compute
+		SeedMultiResults&     hits);    // holds all the seed hits (and exact hit)
+
 	/**
 	 * Search for end-to-end alignments with up to 1 mismatch.
 	 */
@@ -1765,6 +1779,41 @@ public:
 		bool               repex,  // report 0mm hits?
 		bool               rep1mm, // report 1mm hits?
 		SeedResults&       hits);  // holds all the seed hits (and exact hit)
+
+	static bool oneMmSearch(
+		const Ebwt*        ebwtFw, // BWT index
+		const Ebwt*        ebwtBw, // BWT' index
+		const Read&        read,   // read to align
+		const Scoring&     sc,     // scoring
+		int64_t            minsc,  // minimum score
+		bool               nofw,   // don't align forward read
+		bool               norc,   // don't align revcomp read
+		bool               repex,  // report 0mm hits?
+		bool               rep1mm, // report 1mm hits?
+		SeedResults&       hits,  // holds all the seed hits (and exact hit)
+		uint64_t&          bwops);
+
+	// Returns bwops
+	static size_t oneMmSearchMany(
+		const Ebwt* const     ebwtFw, // BWT index
+		const Ebwt* const     ebwtBw, // BWT' index
+		const uint32_t        nReads,     // size of readIdxs
+		const uint32_t        readIdxs[], // pointers inside read and hits
+		Read const * const    reads[],    // pointers to reads to align
+		const int64_t         minsc[],  // minimum score
+		const Scoring&        sc,     // scoring
+		const bool            repex,  // report 0mm hits?
+		const bool            rep1mm, // report 1mm hits?
+		uint8_t               encResults[], // encoded results, updates those from exactSweepMany
+		SeedMultiResults&     hits);    // holds all the seed hits (and exact hit)
+
+public:
+	static constexpr uint8_t encMaskNEls = 1;  // assumed to be the smallest
+	static constexpr uint8_t encMaskNoFw = 2;
+	static constexpr uint8_t encMaskNoRc = 4;
+
+	static uint8_t encGetNEls(uint8_t enc) {return enc & encMaskNEls;} // only 0/1 preserved
+	static bool encHasNoBits(uint8_t enc) {return enc > encMaskNEls;}
 
 protected:
 	class SeedAlignerSearchParams;

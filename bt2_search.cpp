@@ -2210,7 +2210,7 @@ public:
  * -
  */
  /* Work in progress: There is only one such invocation, parallelization inside */
-static void multiseedSearchWorker(const size_t num_parallel_tasks) {
+static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
 	AlnSink&                msink    = *multiseed_msink;
@@ -2248,7 +2248,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		bmapq.reserve(num_parallel_tasks);
 		v_msinkwrap.reserve(num_parallel_tasks);
 		
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			bmapq.emplace_back(new_mapq(mapqv, scoreMin, msconsts->sc));
 			v_msinkwrap.emplace_back(
 							msink,        // global sink
@@ -2265,21 +2265,21 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		// Major per-thread objects
 		msWorkerObjs* g_msobjs = new msWorkerObjs[num_parallel_tasks];
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) g_msobjs[mate].set_alloc(&(mate_allocs[mate]));
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) g_msobjs[mate].set_alloc(&(mate_allocs[mate]));
 
 		// These arrays move between CPU and GPU often
 		// Keep them together
 
 		// Whether we're done with g_psrah mate
 		bool *done_reading = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			done_reading[mate] = false;
 		}
 		// Whether we're done with mate
 		bool *done = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
 
 		size_t* nelt = new(worker_alloc.allocate(num_parallel_tasks,sizeof(size_t))) size_t[num_parallel_tasks];
-		uint8_t *ybits = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint8_t))) uint8_t[num_parallel_tasks];
+		uint8_t *alResults = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint8_t))) uint8_t[num_parallel_tasks];
 
 		// Used by thread with threadid == 1 to measure time elapsed
 		time_t iTime = time(0);
@@ -2302,8 +2302,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
 
 		// matemap vector is local to CPU
-		std::vector<size_t> matemap(num_parallel_tasks);
-		size_t current_num_parallel_tasks = num_parallel_tasks;
+		std::vector<uint32_t> matemap(num_parallel_tasks);
+		uint32_t current_num_parallel_tasks = num_parallel_tasks;
 
 		while (true) { // will exit with a break
 		   mate_allocs.ensure_spare();
@@ -2311,7 +2311,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			bool found_unread = false;
 			// Note: Will use mate to distinguish between tread-specific elements
 			// Note2: we could potentially run this as OMP, but the overhead is likely higher than the speedup
-			for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			    SeedResults& shs = (*multi_shs)[mate];
 			    msWorkerObjs& msobj = g_msobjs[mate];
 			    while (!done_reading[mate]) { // External loop, including filtering
@@ -2434,7 +2434,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		   // ASSERT: done[:] == false
 		   matemap.clear();
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) {
 				matemap.push_back(mate);
 			}
@@ -2442,60 +2442,33 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   current_num_parallel_tasks = matemap.size();
 
 		   // Expected fraction of mates: 100%
-		   // we can do all of the "mates" in parallel
-#if defined(USE_ACC_STDPAR)
-		   std::for_each(std::execution::par_unseq, matemap.begin(), matemap.end(),
-			[multi_shs,g_msobjs,msconsts,nelt,rds,ybits](size_t mate) mutable {
-#else
-
-#if defined(USE_ACC_CPU)
-#pragma omp parallel for default(shared)
-#else
-#pragma acc parallel loop gang vector vector_length(32)
-#endif
-		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-			const size_t mate=matemap[fidx];
-#endif
-			    		SeedResults& shs = (*multi_shs)[mate];
-					// diagnostics only
-					uint64_t          bwops = 0;
-					// Find end-to-end exact alignments for each read
-					size_t minedfw = 0;
-					size_t minedrc = 0;
-					nelt[mate] = SeedAligner::exactSweep(
-								msconsts->ebwtFw,        // index
-								*rds[mate],    // read
-								msconsts->sc.match(),
-								msconsts->nofw,         // nofw?
-								msconsts->norc,         // norc?
-								2,             // max # edits we care about
-								minedfw,       // minimum # edits for fw mate
-								minedrc,       // minimum # edits for rc mate
-								true,          // report 0mm hits
-								shs,           // put end-to-end results here
-								bwops);     
-					bool yfw = minedfw <= 1 && !(msconsts->nofw);
-					bool yrc = minedrc <= 1 && !(msconsts->norc);
-					// encode the two together, as they always use them together
-					ybits[mate] = (yfw ? 1 : 0) | (yrc ? 2 : 0);
-					if(nelt[mate] == 0) {
-						shs.clearExactE2eHits();
-					}
-		   } // for mate
-#if defined(USE_ACC_STDPAR)
-		   );
-#endif
+		   SeedAligner::exactSweepMany(
+					msconsts->ebwtFw,           // index
+					current_num_parallel_tasks, // n. elements
+					matemap.data(),             // index
+					rds,                        // reads
+					msconsts->sc.match(),       // match score
+					msconsts->nofw,             // nofw?
+					msconsts->norc,             // norc?
+					2,                          // max # edits we care about
+					true,                       // report 0mm hits
+					alResults,                 // results of the operation
+					*multi_shs);                // holds all the seed hits (and exact hit)
 	
 		   // always call ensure_spare from main CPU thread
 		   mate_allocs.ensure_spare();
 
 		   // ASSERT: done[:] == false
-		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
+		   // alResults[:] has been modified by the previous function, but we only care about the non-0 ones
 		   matemap.clear();
 		   current_num_parallel_tasks = 0;
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if ((!done_reading[mate]) && (nelt[mate] != 0)) {
-				matemap.push_back(mate);
+		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+			if (!done_reading[mate]) {
+				size_t myNElt = SeedAligner::encGetNEls(alResults[mate]); // really only care about zero/non-zero
+                                nelt[mate] = myNElt;
+				if (myNElt!=0) {
+					matemap.push_back(mate);
+				}
 			}
 		   }
 		   current_num_parallel_tasks = matemap.size();
@@ -2503,8 +2476,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   // Expected fraction of mates: 33%
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-			const size_t mate=matemap[fidx];
+		   for (uint32_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+			const uint32_t mate=matemap[fidx];
 			    		SeedResults& shs = (*multi_shs)[mate];
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
@@ -2596,58 +2569,38 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   mate_allocs.ensure_spare();
 
 		   matemap.clear();
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if ( (!done_reading[mate]) && (!done[mate]) && (ybits[mate]!=0) )  {
+		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+			if ( (!done_reading[mate]) && (!done[mate]) && SeedAligner::encHasNoBits(alResults[mate]) )  {
 				matemap.push_back(mate);
 			}
 		   }
 		   current_num_parallel_tasks = matemap.size();
 
 		   // Expected fraction of mates: 50%
-		   // we can do all of the "mates" in parallel
-#if defined(USE_ACC_STDPAR)
-		   std::for_each(std::execution::par_unseq, matemap.begin(), matemap.end(),
-			[multi_shs,g_msobjs,msconsts,nelt,rds,ybits,minsc](size_t mate) mutable {
-#else
+		   SeedAligner::oneMmSearchMany(
+					&msconsts->ebwtFw,          // BWT index
+					msconsts->ebwtBw,           // BWT' index
+					current_num_parallel_tasks, // n. elements
+					matemap.data(),             // index
+					rds,                        // reads
+					minsc,                      // minimum score
+					msconsts->sc,               // scoring scheme
+					false,                      // do exact match
+					true,                       // do 1mm
+					alResults,                 // encoded results, updates those from exactSweepMany
+					*multi_shs);                // holds all the seed hits (and exact hit)
 
-#if defined(USE_ACC_CPU)
-#pragma omp parallel for default(shared)
-#else
-#pragma acc parallel loop gang vector vector_length(32)
-#endif
-		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-			const size_t mate=matemap[fidx];
-#endif
-			    		SeedResults& shs = (*multi_shs)[mate];
-					msWorkerObjs& msobj = g_msobjs[mate];
-					// ybits[mate]!=0 equivalent to yfw || yrc
-					bool not_yfw = (ybits[mate] & 1) ==0;
-					bool not_yrc = (ybits[mate] & 2) ==0;
-					// 1-mismatch
-					// Clear out the exact hits
-					msobj.al.oneMmSearch(
-									&msconsts->ebwtFw,        // BWT index
-									msconsts->ebwtBw,         // BWT' index
-									*rds[mate],     // read
-									msconsts->sc,             // scoring scheme
-									minsc[mate],    // minimum score
-									not_yfw,        // don't align forward read
-									not_yrc,        // don't align revcomp read
-									false,          // do exact match
-									true,           // do 1mm
-									shs);     // seed hits (hits installed here)
-					nelt[mate] = shs.num1mmE2eHits();
-		   } // for mate
-#if defined(USE_ACC_STDPAR)
-		   );
-#endif
+		   for (uint32_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+			const uint32_t mate=matemap[fidx];
+			nelt[mate] = SeedAligner::encGetNEls(alResults[mate]); // really only care about zero/non-zero
+		   }
 	
 		   // always call ensure_spare from main CPU thread
 		   mate_allocs.ensure_spare();
 
 		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
 		   matemap.clear();
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			if ((!done_reading[mate])  && (!done[mate]) && (nelt[mate] != 0)) {
 				matemap.push_back(mate);
 			}
@@ -2657,8 +2610,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   // Expected fraction of mates: 20%
 		   // we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-			const size_t mate=matemap[fidx];
+		   for (uint32_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+			const uint32_t mate=matemap[fidx];
 			    		SeedResults& shs = (*multi_shs)[mate];
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
@@ -2738,7 +2691,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		 	mate_allocs.ensure_spare();
 
 		 	matemap.clear();
-		  	for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		  	for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 				const size_t rdlen = rds[mate]->length();
 				// Calculate interval length for both mates
 				const int interval = max((int)msIval.f<int>((double)rdlen), 1);
@@ -2752,8 +2705,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		   	// we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   	for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-				const size_t mate=matemap[fidx];
+		   	for (uint32_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+				const uint32_t mate=matemap[fidx];
 			    		SeedResults& shs = (*multi_shs)[mate];
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
@@ -2797,7 +2750,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		 	mate_allocs.ensure_spare();
 
 		 	matemap.clear();
-		  	for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		  	for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 				const size_t rdlen = rds[mate]->length();
 				// Calculate interval length for both mates
 				const int interval = max((int)msIval.f<int>((double)rdlen), 1);
@@ -2810,8 +2763,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		   	// we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   	for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-				const size_t mate=matemap[fidx];
+		   	for (uint32_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+				const uint32_t mate=matemap[fidx];
 			    		SeedResults& shs = (*multi_shs)[mate];
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
@@ -2849,7 +2802,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		 	mate_allocs.ensure_spare();
 
 		 	matemap.clear();
-		  	for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		  	for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 				const size_t rdlen = rds[mate]->length();
 				// Calculate interval length for both mates
 				const int interval = max((int)msIval.f<int>((double)rdlen), 1);
@@ -2862,8 +2815,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		   	// we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   	for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-				const size_t mate=matemap[fidx];
+		   	for (uint32_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+				const uint32_t mate=matemap[fidx];
 			    		SeedResults& shs = (*multi_shs)[mate];
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
@@ -2892,8 +2845,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		 	mate_allocs.ensure_spare();
 
 		 	matemap.clear();
-		  	for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-				const size_t rdlen = rds[mate]->length();
+		  	for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+				const uint32_t rdlen = rds[mate]->length();
 				// Calculate interval length for both mates
 				const int interval = max((int)msIval.f<int>((double)rdlen), 1);
 				const size_t nrounds = min<size_t>(nSeedRounds, interval);
@@ -2905,8 +2858,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		   	// we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
-		   	for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-				const size_t mate=matemap[fidx];
+		   	for (uint32_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
+				const uint32_t mate=matemap[fidx];
 			    		SeedResults& shs = (*multi_shs)[mate];
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
@@ -2969,7 +2922,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			} // for mate
 
 			// no point doing in parallel
-		  	for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		  	for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 				const size_t rdlen = rds[mate]->length();
 				// Calculate interval length for both mates
 				const int interval = max((int)msIval.f<int>((double)rdlen), 1);
@@ -2995,7 +2948,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		   // we could do all of the "mates" in parallel, but the overhead is likely higher than the speedup
 //pragma omp parallel for default(shared)
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
 			 	SeedResults& shs = (*multi_shs)[mate];
 				msWorkerObjs& msobj = g_msobjs[mate];
@@ -3031,7 +2984,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		// Merge in the metrics
 		// Must be done sequentially
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			msink.mergeMetricsUnsafe(g_msinkwrap[mate].rpm);
 		}
 
@@ -4757,7 +4710,7 @@ static void driver(
 			}
 
 			// We need the mirror index if mismatches are allowed
-			// cannot use stack objects on GPUs
+			// Allocate on heap, cannot use stack objects on GPUs
 			std::unique_ptr<Ebwt> pebwtBw( new Ebwt(
 				adjIdxBase + ".rev",
 				0,       // index is colorspace
