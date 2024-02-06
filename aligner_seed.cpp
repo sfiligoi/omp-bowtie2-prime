@@ -975,16 +975,17 @@ size_t SeedAligner::exactSweep(
 /**
  * Search for end-to-end exact hit for read.  Return true iff one is found.
  */
-bool SeedAligner::oneMmSearch(
+inline bool oneMmSearchOne(
 	const Ebwt*        ebwtFw, // BWT index
 	const Ebwt*        ebwtBw, // BWT' index
 	const Read&        read,   // read to align
 	const Scoring&     sc,     // scoring
-	int64_t            minsc,  // minimum score
-	bool               nofw,   // don't align forward read
-	bool               norc,   // don't align revcomp read
-	bool               repex,  // report 0mm hits?
-	bool               rep1mm, // report 1mm hits?
+	const int64_t      minsc,  // minimum score
+	const bool         nofw,   // don't align forward read
+	const bool         norc,   // don't align revcomp read
+	const bool         repex,  // report 0mm hits?
+	const bool         rep1mm, // report 1mm hits?
+	uint64_t&          bwops,
 	SeedResults&       hits)   // holds all the seed hits (and exact hit)
 {
 	assert(!rep1mm || ebwtBw != NULL);
@@ -998,6 +999,8 @@ bool SeedAligner::oneMmSearch(
 		// Can't align this with 0 mismatches
 		return false;
 	}
+	uint64_t bwops_ = bwops;
+
 	assert_geq(len, 2);
 	assert(!rep1mm || ebwtBw->eh().ftabChars() == ebwtFw->eh().ftabChars());
 #ifndef NDEBUG
@@ -1276,7 +1279,26 @@ bool SeedAligner::oneMmSearch(
 			} // for(; dep < len; dep++)
 		} // for(int ebwtfw = 0; ebwtfw < 2; ebwtfw++)
 	} // for(int fw = 0; fw < 2; fw++)
+	bwops = bwops_;
 	return results;
+}
+
+/**
+ * Search for end-to-end exact hit for read.  Return true iff one is found.
+ */
+bool SeedAligner::oneMmSearch(
+	const Ebwt*        ebwtFw, // BWT index
+	const Ebwt*        ebwtBw, // BWT' index
+	const Read&        read,   // read to align
+	const Scoring&     sc,     // scoring
+	int64_t            minsc,  // minimum score
+	bool               nofw,   // don't align forward read
+	bool               norc,   // don't align revcomp read
+	bool               repex,  // report 0mm hits?
+	bool               rep1mm, // report 1mm hits?
+	SeedResults&       hits)   // holds all the seed hits (and exact hit)
+{
+  return oneMmSearchOne(ebwtFw,ebwtBw,read,sc,minsc,nofw,norc,repex,rep1mm,bwops_,hits);
 }
 
 inline void
