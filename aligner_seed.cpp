@@ -837,8 +837,7 @@ inline size_t exactSweepOne(
 	const bool         norc,    // don't align revcomp read
 	const bool         repex,   // report 0mm hits?
 	const size_t       mineMax, // don't care about edit bounds > this
-	size_t&            mineFw,  // minimum # edits for forward read
-	size_t&            mineRc,  // minimum # edits for revcomp read
+	size_t             mines[],  // minimum # edits for forward and revcomp read
         uint64_t&          bwops,
 	SeedResults&       hits)    // holds all the seed hits (and exact hit)
 {
@@ -896,7 +895,7 @@ inline size_t exactSweepOne(
 							dep[fwi], top[fwi], bot[fwi]);          // out
 					if ( exactSweepStep(ebwt, top[fwi], bot[fwi], mineMax,
 							tloc[fwi], bloc[fwi],
-							fw ? mineFw : mineRc,
+							mines[fwi],
 							nedit[fwi], done[fwi]) ) {
 						continue;
 					}
@@ -909,7 +908,7 @@ inline size_t exactSweepOne(
 
 					if ( exactSweepStep(ebwt, top[fwi], bot[fwi], mineMax,
 								tloc[fwi], bloc[fwi],
-								fw ? mineFw : mineRc,
+								mines[fwi],
 								nedit[fwi], done[fwi]) ) {
 						doInit[fwi]=true;
 					}
@@ -924,7 +923,7 @@ inline size_t exactSweepOne(
 			const bool fw = (fwi == 0);
 
 			// Set the minimum # edits
-			if(fw) { mineFw = nedit[fwi]; } else { mineRc = nedit[fwi]; }
+			mines[fwi] = nedit[fwi];
 			// Done
 			if(nedit[fwi] == 0 && bot[fwi] > top[fwi]) {
 				if(repex) {
@@ -965,7 +964,11 @@ size_t SeedAligner::exactSweep(
 	bool               repex,   // report 0mm hits?
 	SeedResults&       hits)    // holds all the seed hits (and exact hit)
 {
-	return exactSweepOne(ebwt,read,matchScore,nofw,norc,repex,mineMax,mineFw,mineRc,bwops_,hits);
+	size_t mines[2] = {mineFw,mineRc};
+	size_t nels = exactSweepOne(ebwt,read,matchScore,nofw,norc,repex,mineMax,mines,bwops_,hits);
+	mineFw = mines[0];
+	mineRc = mines[1];
+	return nels;
 }
 
 // Static version
@@ -982,7 +985,11 @@ size_t SeedAligner::exactSweep(
 	SeedResults&       hits,    // holds all the seed hits (and exact hit)
 	uint64_t&          bwops)   // diagnostic counter
 {
-	return exactSweepOne(ebwt,read,matchScore,nofw,norc,repex,mineMax,mineFw,mineRc,bwops,hits);
+	size_t mines[2] = {mineFw,mineRc};
+	size_t nels = exactSweepOne(ebwt,read,matchScore,nofw,norc,repex,mineMax,mines,bwops,hits);
+	mineFw = mines[0];
+	mineRc = mines[1];
+	return nels;
 }
 
 void MultiSeedAligner::exactSweep(
@@ -1003,15 +1010,14 @@ void MultiSeedAligner::exactSweep(
 #pragma omp parallel for default(shared) reduction(+:bwops)
 	for (uint32_t fidx=0; fidx<nReads; fidx++) {
 		const uint32_t idx=readIdxs[fidx];
-		size_t minedfw = 0;
-		size_t minedrc = 0;
+		size_t mines[2] = {0,0};
 		size_t nelt = exactSweepOne(ebwt,*reads[idx],
 					    matchScore,nofw,norc,repex,mineMax,
-					    minedfw,minedrc,bwops,
+					    mines,bwops,
 					    hits[idx]);
 		if (nelt==0) hits[idx].clearExactE2eHits();
-		bool yfw = minedfw <= 1 && !(nofw);
-		bool yrc = minedrc <= 1 && !(norc);
+		bool yfw = mines[0] <= 1 && !(nofw);
+		bool yrc = mines[1] <= 1 && !(norc);
 		encResults[idx] = ((nelt==0) ? 0 : encMaskNEls) | (yfw ? encMaskNoFw : 0) | (yrc ? encMaskNoRc : 0) ;
 	}
 	bwops_ += bwops;
