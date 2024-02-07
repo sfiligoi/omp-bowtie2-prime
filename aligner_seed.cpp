@@ -829,6 +829,58 @@ inline bool exactSweepStep(
 	return false;
 }
 
+inline void exactSweepIteration(
+	const Ebwt&        ebwt,
+	const size_t       mineMax, // don't care about edit bounds > this
+	const uint32_t     nEls,    // size of the arrays
+        const size_t       lens[],  // lengths of the read
+        const BTDnaString* seqs[],  // read sequences
+	bool               done[],
+	size_t             dep[],
+	bool               doInit[],
+	TIndexOffU         top[],
+	TIndexOffU         bot[],
+	SideLocus          tloc[],
+	SideLocus          bloc[],
+	size_t             nedit[],
+	size_t             mines[],  // minimum # edits for forward and revcomp read
+        uint64_t&          bwops)
+{
+		const int ftabLen = ebwt.eh().ftabChars();
+		for(int fwi = 0; fwi < nEls; fwi++) {
+			const size_t len = lens[fwi];
+			if (dep[fwi] < len && !done[fwi]) {
+				const BTDnaString& seq = *(seqs[fwi]);
+
+				if (doInit[fwi]) {
+					exactSweepInit(ebwt, seq, ftabLen, len,            // in
+							dep[fwi], top[fwi], bot[fwi]);          // out
+					if ( exactSweepStep(ebwt, top[fwi], bot[fwi], mineMax,
+							tloc[fwi], bloc[fwi],
+							mines[fwi],
+							nedit[fwi], done[fwi]) ) {
+						continue;
+					}
+					doInit[fwi]=false;
+				}
+
+				if (dep[fwi]< len) {
+					exactSweepMapLF(ebwt, seq, len, dep[fwi], tloc[fwi], bloc[fwi],
+							top[fwi], bot[fwi], bwops);
+
+					if ( exactSweepStep(ebwt, top[fwi], bot[fwi], mineMax,
+								tloc[fwi], bloc[fwi],
+								mines[fwi],
+								nedit[fwi], done[fwi]) ) {
+						doInit[fwi]=true;
+					}
+					dep[fwi]++;
+				}
+			}
+		}
+}
+
+// One read from start to end
 inline size_t exactSweepOne(
 	const Ebwt&        ebwt,    // BWT index
 	const Read&        read,    // read to align
@@ -843,12 +895,14 @@ inline size_t exactSweepOne(
 {
 	assert_gt(mineMax, 0);
 	const size_t len = read.length();
+	const size_t lens[2] = {len,len};
 	const int ftabLen = ebwt.eh().ftabChars();
+	const BTDnaString* seqs[2] = {&read.patFw, &read.patRc};
 
 	size_t nelt = 0;
 
-	std::array<SideLocus,2> tloc;
-	std::array<SideLocus,2> bloc;
+	SideLocus tloc[2];
+	SideLocus bloc[2];
 	TIndexOffU top[2] = {0, 0};
 	TIndexOffU bot[2] = {0, 0};
 
@@ -885,37 +939,11 @@ inline size_t exactSweepOne(
 			prefetch_count=0;
 		}
 		// by doing both fw in the internal loop, I give the prefetch in exactSweepStep to be effective
-		for(int fwi = 0; fwi < 2; fwi++) {
-			if (dep[fwi] < len && !done[fwi]) {
-				bool fw = (fwi == 0);
-				const BTDnaString& seq = fw ? read.patFw : read.patRc;
-
-				if (doInit[fwi]) {
-					exactSweepInit(ebwt, seq, ftabLen, len,            // in
-							dep[fwi], top[fwi], bot[fwi]);          // out
-					if ( exactSweepStep(ebwt, top[fwi], bot[fwi], mineMax,
-							tloc[fwi], bloc[fwi],
-							mines[fwi],
-							nedit[fwi], done[fwi]) ) {
-						continue;
-					}
-					doInit[fwi]=false;
-				}
-
-				if (dep[fwi]< len) {
-					exactSweepMapLF(ebwt, seq, len, dep[fwi], tloc[fwi], bloc[fwi],
-							top[fwi], bot[fwi], bwops);
-
-					if ( exactSweepStep(ebwt, top[fwi], bot[fwi], mineMax,
-								tloc[fwi], bloc[fwi],
-								mines[fwi],
-								nedit[fwi], done[fwi]) ) {
-						doInit[fwi]=true;
-					}
-					dep[fwi]++;
-				}
-			}
-		}
+		exactSweepIteration(ebwt,mineMax,
+				2, // back and forth
+				lens,seqs,
+				done, dep, doInit, top, bot, tloc, bloc, nedit,
+				mines,bwops);
 	}
 
 	for(int fwi = 0; fwi < 2; fwi++) {
@@ -943,8 +971,6 @@ inline size_t exactSweepOne(
 	}
 	return nelt;
 }
-
-
 
 /**
  * Sweep right-to-left and left-to-right using exact matching.  Remember all
