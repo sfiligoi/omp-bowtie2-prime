@@ -829,6 +829,26 @@ inline bool exactSweepStep(
 	return false;
 }
 
+inline void exactSweepPrefetch(
+	const uint32_t     nEls,    // size of the arrays
+        const size_t       lens[],  // lengths of the read
+        const BTDnaString* seqs[],  // read sequences
+	bool               done[],
+	size_t             dep[])
+{
+	for(int fwi = 0; fwi < nEls; fwi++) {
+		const size_t len = lens[fwi];
+		if (dep[fwi] < len && !done[fwi]) {
+			const BTDnaString& seq = *(seqs[fwi]);
+			const size_t left = len-dep[fwi];
+			__builtin_prefetch(&(seq[left-1]));
+			if (left>48) {
+				__builtin_prefetch(&(seq[left-49])); // HW prefetch prediction assumes forward, help it
+			}
+		}
+	}
+}
+
 inline void exactSweepIteration(
 	const Ebwt&        ebwt,
 	const size_t       mineMax, // don't care about edit bounds > this
@@ -913,29 +933,18 @@ inline size_t exactSweepOne(
 	size_t prefetch_count = 0;
 	bool done[2] = {nofw, norc};
 
-	for(int fwi = 0; fwi < 2; fwi++) {
-		if (!done[fwi]) {
-			bool fw = (fwi == 0);
-			const BTDnaString& seq = fw ? read.patFw : read.patRc;
-			assert(!seq.empty());
-			__builtin_prefetch(&(seq[len-1]));
-			if (len>48) __builtin_prefetch(&(seq[len-49])); // HW prefetch prediction assumes forward, help it
-		}
-	}
+	exactSweepPrefetch(
+			2, // back and forth
+			lens,seqs,
+			done, dep);
 
 	while( (dep[0] < len && !done[0]) || (dep[1] < len && !done[1]) ) {
 		prefetch_count++;
 		if (prefetch_count>=48) { // cache line is 64 bytes, but we may skip some deps
-			for(int fwi = 0; fwi < 2; fwi++) {
-				if (dep[fwi] < len && !done[fwi]) {
-					bool fw = (fwi == 0);
-					const BTDnaString& seq = fw ? read.patFw : read.patRc;
-					const size_t left = len-dep[fwi];
-					if (left>48) {
-						__builtin_prefetch(&(seq[left-49])); // HW prefetch prediction assumes forward, help it
-					}
-				}
-			}
+			exactSweepPrefetch(
+					2, // back and forth
+					lens,seqs,
+					done, dep);
 			prefetch_count=0;
 		}
 		// by doing both fw in the internal loop, I give the prefetch in exactSweepStep to be effective
