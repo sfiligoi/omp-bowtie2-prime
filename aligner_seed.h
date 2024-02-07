@@ -636,13 +636,33 @@ public:
 		offIdx2off_(AL_CAT),
 		rankOffs_(AL_CAT),
 		rankFws_(AL_CAT),
-		mm1Hit_(AL_CAT)
+		mm1Hit_(AL_CAT),
+		exactFwHit_(NULL),
+		exactRcHit_(NULL)
 	{
-		clear();
+		clearSeeds();
+		read_ = NULL;
+		mm1Hit_.clear();
+		mm1Sorted_ = false;
+		mm1Elt_ = 0;
+		// The bottom pointers (e.g. exactFwHit_)
+		// need to be properly inialized at a later stage
+		// Not doing in the contructor, since creating
+		// vectors without a default constructor is hard
 	}
-	
+
 	SeedResults(const SeedResults& other) = delete;
 	SeedResults& operator=(const SeedResults& other) = delete;
+
+	void finishConstruction(
+		EEHit              *exactFwHit, // end-to-end exact hit for fw read
+		EEHit              *exactRcHit) // end-to-end exact hit for rc read
+	{
+		// Just link, do not take ownership
+		exactFwHit_ = exactFwHit;
+		exactRcHit_ = exactRcHit;
+	}
+
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		seqFw_.set_alloc(alloc, propagate_alloc);
@@ -808,8 +828,8 @@ public:
 	void clear() {
 		clearSeeds();
 		read_ = NULL;
-		exactFwHit_.reset();
-		exactRcHit_.reset();
+		exactFwHit_->reset();
+		exactRcHit_->reset();
 		mm1Hit_.clear();
 		mm1Sorted_ = false;
 		mm1Elt_ = 0;
@@ -1261,12 +1281,14 @@ public:
 	/**
 	 * Return exact end-to-end alignment of fw read.
 	 */
-	EEHit exactFwEEHit() const { return exactFwHit_; }
+	EEHit& exactFwEEHit() { return *exactFwHit_; }
+	const EEHit& exactFwEEHit() const { return *exactFwHit_; }
 
 	/**
 	 * Return exact end-to-end alignment of rc read.
 	 */
-	EEHit exactRcEEHit() const { return exactRcHit_; }
+	EEHit& exactRcEEHit() { return *exactRcHit_; }
+	const EEHit& exactRcEEHit() const { return *exactRcHit_; }
 	
 	/**
 	 * Return const ref to list of 1-mismatch end-to-end alignments.
@@ -1326,7 +1348,7 @@ public:
 		bool fw,
 		int64_t score)
 	{
-		exactFwHit_.init(top, bot, e1, e2, fw, score);
+		exactFwHit_->init(top, bot, e1, e2, fw, score);
 	}
 
 	/**
@@ -1340,15 +1362,15 @@ public:
 		bool fw,
 		int64_t score)
 	{
-		exactRcHit_.init(top, bot, e1, e2, fw, score);
+		exactRcHit_->init(top, bot, e1, e2, fw, score);
 	}
 	
 	/**
 	 * Clear out the end-to-end exact alignments.
 	 */
 	void clearExactE2eHits() {
-		exactFwHit_.reset();
-		exactRcHit_.reset();
+		exactFwHit_->reset();
+		exactRcHit_->reset();
 	}
 	
 	/**
@@ -1365,14 +1387,14 @@ public:
 	 * found.
 	 */
 	size_t numE2eHits() const {
-		return exactFwHit_.size() + exactRcHit_.size() + mm1Elt_;
+		return exactFwHit_->size() + exactRcHit_->size() + mm1Elt_;
 	}
 
 	/**
 	 * Return the number of distinct exact end-to-end hits found.
 	 */
 	size_t numExactE2eHits() const {
-		return exactFwHit_.size() + exactRcHit_.size();
+		return exactFwHit_->size() + exactRcHit_->size();
 	}
 
 	/**
@@ -1433,13 +1455,16 @@ protected:
 	size_t              numOffs_;   // # different seed offsets possible
 	const Read*         read_;      // read from which seeds were extracted
 	
-	EEHit               exactFwHit_; // end-to-end exact hit for fw read
-	EEHit               exactRcHit_; // end-to-end exact hit for rc read
 	EList<EEHit>        mm1Hit_;     // 1-mismatch end-to-end hits
 	size_t              mm1Elt_;     // number of 1-mismatch hit rows
 	bool                mm1Sorted_;  // true iff we've sorted the mm1Hit_ list
 
 	EList<size_t> tmpMedian_; // temporary storage for calculating median
+
+	// The following ones are just pointers to areas allocated by others
+	// Not owned by this object
+	EEHit              *exactFwHit_; // end-to-end exact hit for fw read
+	EEHit              *exactRcHit_; // end-to-end exact hit for rc read
 };
 
 /**
@@ -1450,10 +1475,18 @@ protected:
 class SeedMultiResults {
 
 public:
-	SeedMultiResults(unsigned int nResults) :
+	SeedMultiResults(uint32_t nResults) :
                 nResults_(nResults),
+		exactFwHits_(nResults),
+		exactRcHits_(nResults),
                 singleResults_(nResults)
-	{}
+	{
+		for (uint32_t i=0; i<nResults; i++) {
+			singleResults_[i].finishConstruction(
+				&(exactFwHits_[i]),
+				&(exactRcHits_[i]) );
+		}
+	}
 	
 	SeedMultiResults(const SeedMultiResults& other) = delete;
 	SeedMultiResults& operator=(const SeedMultiResults& other) = delete;
@@ -1466,11 +1499,18 @@ public:
 		}
 	}
 
+	uint32_t size() const {return nResults_;}
+
 	template<typename T> SeedResults& operator[](T resIdx) {return singleResults_[resIdx];}
 	template<typename T> const SeedResults& operator[](T resIdx) const {return singleResults_[resIdx];}
 
+	EEHit* getExactFwHits() {return exactFwHits_.data();}
+	EEHit* getExactRcHits() {return exactRcHits_.data();}
+
 protected:
-        unsigned int nResults_;
+        const uint32_t nResults_;
+        std::vector<EEHit> exactFwHits_;  // fixed sized array of size nResults_
+        std::vector<EEHit> exactRcHits_;  // fixed sized array of size nResults_
         std::vector<SeedResults> singleResults_;  // fixed sized array of size nResults_
 };
 
@@ -1918,8 +1958,9 @@ public:
 		const bool            norc,       // don't align revcomp read
 		const bool            repex,      // report 0mm hits?
 		const size_t          mineMax,    // don't care about edit bounds > this
-		uint8_t               encResults[], // encoded results of the compute
-		SeedMultiResults&     hits);    // holds all the seed hits (and exact hit)
+		uint8_t               encResults[],  // encoded results of the compute
+		EEHit                 exactFwHit[],  // holds the Fw seed hits
+		EEHit                 exactRcHit[]); // holds the Fw seed hits
 
 	void oneMmSearch(
 		const Ebwt* const     ebwtFw, // BWT index

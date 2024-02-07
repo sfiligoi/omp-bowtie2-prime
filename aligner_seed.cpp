@@ -911,7 +911,7 @@ inline size_t exactSweepOne(
 	const size_t       mineMax, // don't care about edit bounds > this
 	size_t             mines[],  // minimum # edits for forward and revcomp read
         uint64_t&          bwops,
-	SeedResults&       hits)    // holds all the seed hits (and exact hit)
+	EEHit*             hits[])    // holds all the seed hits (and exact hit)
 {
 	assert_gt(mineMax, 0);
 	const size_t len = read.length();
@@ -957,24 +957,20 @@ inline size_t exactSweepOne(
 
 	for(int fwi = 0; fwi < 2; fwi++) {
 		if( (!done[fwi]) && (dep[fwi] >= len) ) {
-			const bool fw = (fwi == 0);
-
+			const TIndexOffU myBot = bot[fwi];
+			const TIndexOffU myTop = top[fwi];
 			// Set the minimum # edits
 			mines[fwi] = nedit[fwi];
 			// Done
-			if(nedit[fwi] == 0 && bot[fwi] > top[fwi]) {
+			if(nedit[fwi] == 0 && myBot > myTop) {
+				nelt += (myBot - myTop);
 				if(repex) {
+					const bool fw = (fwi == 0);
 					// This is an exact hit
 					int64_t score = len * matchScore;
-					if(fw) {
-						hits.addExactEeFw(top[fwi], bot[fwi], NULL, NULL, fw, score);
-						assert(ebwt.contains(fw ? read.patFw : read.patRc, NULL, NULL));
-					} else {
-						hits.addExactEeRc(top[fwi], bot[fwi], NULL, NULL, fw, score);
-						assert(ebwt.contains(fw ? read.patFw : read.patRc, NULL, NULL));
-					}
+					hits[fwi]->init(myTop, myBot, NULL, NULL, fw, score);
+					assert(ebwt.contains(fw ? read.patFw : read.patRc, NULL, NULL));
 				}
-				nelt += (bot[fwi] - top[fwi]);
 			}
 		}
 	}
@@ -987,6 +983,8 @@ inline size_t exactSweepOne(
  * any.  Calculate a lower bound on the number of edits in an end-to-end
  * alignment.
  */
+// Original version
+// Note: Deprecated
 size_t SeedAligner::exactSweep(
 	const Ebwt&        ebwt,    // BWT index
 	const Read&        read,    // read to align
@@ -997,8 +995,9 @@ size_t SeedAligner::exactSweep(
 	size_t&            mineFw,  // minimum # edits for forward read
 	size_t&            mineRc,  // minimum # edits for revcomp read
 	bool               repex,   // report 0mm hits?
-	SeedResults&       hits)    // holds all the seed hits (and exact hit)
+	SeedResults&       shs)     // holds all the seed hits (and exact hit)
 {
+	EEHit* hits[2] = {&(shs.exactFwEEHit()),&(shs.exactRcEEHit())};
 	size_t mines[2] = {mineFw,mineRc};
 	size_t nels = exactSweepOne(ebwt,read,matchScore,nofw,norc,repex,mineMax,mines,bwops_,hits);
 	mineFw = mines[0];
@@ -1007,6 +1006,7 @@ size_t SeedAligner::exactSweep(
 }
 
 // Static version
+// Note: Deprecated
 size_t SeedAligner::exactSweep(
 	const Ebwt&        ebwt,    // BWT index
 	const Read&        read,    // read to align
@@ -1017,9 +1017,10 @@ size_t SeedAligner::exactSweep(
 	size_t&            mineFw,  // minimum # edits for forward read
 	size_t&            mineRc,  // minimum # edits for revcomp read
 	bool               repex,   // report 0mm hits?
-	SeedResults&       hits,    // holds all the seed hits (and exact hit)
+	SeedResults&       shs,     // holds all the seed hits (and exact hit)
 	uint64_t&          bwops)   // diagnostic counter
 {
+	EEHit* hits[2] = {&(shs.exactFwEEHit()),&(shs.exactRcEEHit())};
 	size_t mines[2] = {mineFw,mineRc};
 	size_t nels = exactSweepOne(ebwt,read,matchScore,nofw,norc,repex,mineMax,mines,bwops,hits);
 	mineFw = mines[0];
@@ -1038,19 +1039,24 @@ void MultiSeedAligner::exactSweep(
 	const bool            repex,      // report 0mm hits?
 	const size_t          mineMax,    // don't care about edit bounds > this
 	uint8_t               encResults[], // encoded results of the compute
-	SeedMultiResults&     hits)    // holds all the seed hits (and exact hit)
+	EEHit                 exactFwHit[],  // holds the Fw seed hits
+	EEHit                 exactRcHit[])  // holds the Fw seed hits
 {
 	uint64_t bwops = 0;
 	// We can do all of the reads in parallel
 #pragma omp parallel for default(shared) reduction(+:bwops)
 	for (uint32_t fidx=0; fidx<nReads; fidx++) {
 		const uint32_t idx=readIdxs[fidx];
+		EEHit* hits[2] = {&exactFwHit[idx],&exactRcHit[idx]};
 		size_t mines[2] = {0,0};
 		size_t nelt = exactSweepOne(ebwt,*reads[idx],
 					    matchScore,nofw,norc,repex,mineMax,
 					    mines,bwops,
-					    hits[idx]);
-		if (nelt==0) hits[idx].clearExactE2eHits();
+					    hits);
+		if (nelt==0) {
+			exactFwHit[idx].reset();
+			exactRcHit[idx].reset();
+		}
 		bool yfw = mines[0] <= 1 && !(nofw);
 		bool yrc = mines[1] <= 1 && !(norc);
 		encResults[idx] = ((nelt==0) ? 0 : encMaskNEls) | (yfw ? encMaskNoFw : 0) | (yrc ? encMaskNoRc : 0) ;

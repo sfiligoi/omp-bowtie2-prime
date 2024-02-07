@@ -2454,8 +2454,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					msconsts->norc,             // norc?
 					2,                          // max # edits we care about
 					true,                       // report 0mm hits
-					alResults,                 // results of the operation
-					*multi_shs);                // holds all the seed hits (and exact hit)
+					alResults,                    // results of the operation
+					multi_shs->getExactFwHits(),  // holds the Fw seed hits
+					multi_shs->getExactRcHits()); // holds the Fw seed hits
 	
 		   // always call ensure_spare from main CPU thread
 		   mate_allocs.ensure_spare();
