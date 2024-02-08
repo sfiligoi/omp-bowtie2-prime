@@ -2277,7 +2277,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		bool *done = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
 
 		size_t* nelt = new(worker_alloc.allocate(num_parallel_tasks,sizeof(size_t))) size_t[num_parallel_tasks];
-		uint8_t *ybits = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint8_t))) uint8_t[num_parallel_tasks];
 
 		// Used by thread with threadid == 1 to measure time elapsed
 		time_t iTime = time(0);
@@ -2432,165 +2431,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   // ASSERT: done[:] == false
 		   matemap.clear();
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if (!done_reading[mate]) {
-				matemap.push_back(mate);
-			}
-		   }
-		   current_num_parallel_tasks = matemap.size();
-
-		   // Expected fraction of mates: 100%
-		   // we can do all of the "mates" in parallel
-#if defined(USE_ACC_STDPAR)
-		   std::for_each(std::execution::par_unseq, matemap.begin(), matemap.end(),
-			[g_msobjs,msconsts,nelt,rds,ybits](size_t mate) mutable {
-#else
-
-#if defined(USE_ACC_CPU)
-#pragma omp parallel for default(shared)
-#else
-#pragma acc parallel loop gang vector vector_length(32)
-#endif
-		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-			const size_t mate=matemap[fidx];
-#endif
-					msWorkerObjs& msobj = g_msobjs[mate];
-					// Find end-to-end exact alignments for each read
-					size_t minedfw = 0;
-					size_t minedrc = 0;
-					nelt[mate] = msobj.al.exactSweep(
-								msconsts->ebwtFw,        // index
-								*rds[mate],    // read
-								msconsts->sc,            // scoring scheme
-								msconsts->nofw,         // nofw?
-								msconsts->norc,         // norc?
-								2,             // max # edits we care about
-								minedfw,       // minimum # edits for fw mate
-								minedrc,       // minimum # edits for rc mate
-								true,          // report 0mm hits
-								msobj.shs);     // put end-to-end results here
-					bool yfw = minedfw <= 1 && !(msconsts->nofw);
-					bool yrc = minedrc <= 1 && !(msconsts->norc);
-					// encode the two together, as they always use them together
-					ybits[mate] = (yfw ? 1 : 0) | (yrc ? 2 : 0);
-					if(nelt[mate] == 0) {
-						msobj.shs.clearExactE2eHits();
-					}
-		   } // for mate
-#if defined(USE_ACC_STDPAR)
-		   );
-#endif
-	
-		   // always call ensure_spare from main CPU thread
-		   mate_allocs.ensure_spare();
-
-		   // ASSERT: done[:] == false
-		   // nelt[:] has been modified by the previous loop, but we only care about the non-0 ones
-		   matemap.clear();
-		   current_num_parallel_tasks = 0;
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if ((!done_reading[mate]) && (nelt[mate] != 0)) {
-				matemap.push_back(mate);
-			}
-		   }
-		   current_num_parallel_tasks = matemap.size();
-
-		   // Expected fraction of mates: 33%
-		   // we can do all of the "mates" in parallel
-#pragma omp parallel for default(shared)
-		   for (size_t fidx=0; fidx<current_num_parallel_tasks; fidx++) {
-			const size_t mate=matemap[fidx];
-					msWorkerObjs& msobj = g_msobjs[mate];
-					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-
-					// Find end-to-end exact alignments for each read, part 2
-							assert(!msinkwrap.maxed());
-							assert(msinkwrap.repOk());
-							// Unpaired dynamic programming driver
-							int	ret = msobj.sd.extendSeeds(
-									*rds[mate],     // read
-									true,           // mate #1?
-									msobj.shs,      // seed hits
-									msconsts->ebwtFw,         // bowtie index
-									msconsts->ebwtBw,         // rev bowtie index
-									msconsts->ref,            // packed reference strings
-									msobj.sw,       // dynamic prog aligner
-									msconsts->sc,             // scoring scheme
-									-1,             // # mms allowed in a seed
-									0,              // length of a seed
-									0,              // interval between seeds
-									minsc[mate],    // minimum score for valid
-									nceil[mate],    // N ceil for anchor
-									msconsts->maxHalf,        // max width on one DP side
-									msconsts->mxIter,         // max extend loop iters
-									msconsts->mxUg,           // max # ungapped extends
-									msconsts->mxDp,           // max # DPs
-									msconsts->streak,         // stop after streak of this many end-to-end fails
-									msconsts->streak,         // stop after streak of this many ungap fails
-									msconsts->extend,       // extend seed hits
-									msconsts->doEnable8,        // use 8-bit SSE where possible
-									msconsts->cMinLen,        // checkpoint if read is longer
-									msconsts->cPow2,          // checkpointer interval, log2
-									msconsts->tri,          // triangular mini-fills
-									msconsts->doTighten,        // -M score tightening mode
-									msobj.ca,       // seed alignment cache
-									msobj.rnd,      // pseudo-random source
-									msinkwrap.prm,  // per-read metrics
-									&msinkwrap,     // for organizing hits
-									true,           // report hits once found
-									exhaustive[mate]);
-							assert_gt(ret, 0);
-							// Clear out the exact hits so that we don't try to
-							// extend them again later!
-							msobj.shs.clearExactE2eHits();
-							if(ret == EXTEND_EXHAUSTED_CANDIDATES) {
-								// Not done yet
-							} else if(ret == EXTEND_POLICY_FULFILLED) {
-								// Policy is satisfied for this mate at least
-								if(msinkwrap.state().doneWithMate(true)) {
-									done[mate] = true;
-								}
-							} else if(ret == EXTEND_PERFECT_SCORE) {
-								// We exhausted this mode at least
-								done[mate] = true;
-							} else if(ret == EXTEND_EXCEEDED_HARD_LIMIT) {
-								// We exceeded a per-read limit
-								done[mate] = true;
-							} else if(ret == EXTEND_EXCEEDED_SOFT_LIMIT) {
-								// Not done yet
-							} else {
-								//
-								cerr << "Runtime ERROR: Bad return value: " << ret << endl;
-								// We do not have clean exception handling, so just report to the user 
-								done[mate] = true;
-							}
-							if(!done[mate]) {
-								const size_t rdlen = rds[mate]->length();
-								TAlScore perfectScore = msconsts->sc.perfectScore(rdlen);
-								if(minsc[mate] == perfectScore) {
-									done[mate] = true;
-								}
-							}
- 
-							if (done[mate]) {
-								// Done with this mate, cleanup
-								msobj.shs.clear1mmE2eHits();
-							} else {
-								// We are still done, but different cleanup path (legacy)
-								if(msinkwrap.state().doneWithMate(true)) {
-									done[mate] = true;
-								}
-							}
-
-					// reset nelt[:]=0 for next iteration
-					nelt[mate] = 0;
-		   } // for mate
-	
-		   // always call ensure_spare from main CPU thread
-		   mate_allocs.ensure_spare();
-
-		   matemap.clear();
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if ( (!done_reading[mate]) && (!done[mate]) && (ybits[mate]!=0) )  {
+			if ( (!done_reading[mate]) && (!done[mate]) )  {
 				matemap.push_back(mate);
 			}
 		   }
@@ -2600,7 +2441,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   // we can do all of the "mates" in parallel
 #if defined(USE_ACC_STDPAR)
 		   std::for_each(std::execution::par_unseq, matemap.begin(), matemap.end(),
-			[g_msobjs,msconsts,nelt,rds,ybits,minsc](size_t mate) mutable {
+			[g_msobjs,msconsts,nelt,rds,minsc](size_t mate) mutable {
 #else
 
 #if defined(USE_ACC_CPU)
@@ -2612,9 +2453,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			const size_t mate=matemap[fidx];
 #endif
 					msWorkerObjs& msobj = g_msobjs[mate];
-					// ybits[mate]!=0 equivalent to yfw || yrc
-					bool not_yfw = (ybits[mate] & 1) ==0;
-					bool not_yrc = (ybits[mate] & 2) ==0;
+					bool not_yfw = false;
+					bool not_yrc = false;
 					// 1-mismatch
 					// Clear out the exact hits
 					msobj.al.oneMmSearch(
