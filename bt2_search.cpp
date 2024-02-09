@@ -2280,24 +2280,19 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// Whether we're done with mate
 		bool *done = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
 
-		size_t* nelt = new(worker_alloc.allocate(num_parallel_tasks,sizeof(size_t))) size_t[num_parallel_tasks];
-
 		// Used by thread with threadid == 1 to measure time elapsed
 		time_t iTime = time(0);
 
-		// Keep track of whether last search was exhaustive for mates 1 and 2
-		bool *exhaustive = new bool[num_parallel_tasks];
-		// Keep track of whether mates 1/2 were filtered out last time through
-		bool *filt = new bool[num_parallel_tasks];
+		// Keep track of whether last search was exhaustive
+		bool *exhaustive = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
 
+		int* nceil = new(worker_alloc.allocate(num_parallel_tasks,sizeof(int))) int[num_parallel_tasks];
 
 		// read object
 		typedef Read* ReadPtr;
-		Read* *rds = new ReadPtr[num_parallel_tasks];
+		Read* *rds = new(worker_alloc.allocate(num_parallel_tasks,sizeof(ReadPtr))) ReadPtr[num_parallel_tasks];
 		// Calculate the minimum valid score threshold for the read
 		TAlScore* minsc = new TAlScore[num_parallel_tasks];
-
-		int* nceil = new int[num_parallel_tasks];
 
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
@@ -2368,6 +2363,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						if(!gQuiet) printEEScoreMsg(*ps[mate], paired, true);
 						minsc[mate] = 0;
 					}
+					// Keep track of whether the read was filtered
+					bool filt = false;
 					{
 						// N filter; does the read have too many Ns?
 						bool nfilt = msconsts->sc.nFilter(rds[mate]->patFw);
@@ -2388,9 +2385,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						if(qcFilter) {
 							qcfilt = (rds[mate]->filter != '0');
 						}
-						filt[mate] = msinkwrap.setAndComputeFilter(nfilt, scfilt, lenfilt, qcfilt);
+						filt = msinkwrap.setAndComputeFilter(nfilt, scfilt, lenfilt, qcfilt);
 					}
-					msinkwrap.prm.nFilt += (filt[mate] ? 0 : 1);
+					msinkwrap.prm.nFilt += (filt ? 0 : 1);
 					// For each mate...
 					assert(msinkwrap.empty());
 					msobj.sd.nextRead(false, rdlen, 0); // SwDriver
@@ -2402,9 +2399,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					msobj.shs.clear();
 
 					// Whether we're done with mate
-					done[mate] = !filt[mate];
+					done[mate] = !filt;
 					// Increment counters according to what got filtered
-					if(filt[mate]) { // done[mate] == false
+					if(filt) { // done[mate] == false
 						msobj.shs.nextRead(*rds[mate]);
 						assert(msobj.shs.empty());
 
@@ -2414,7 +2411,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						irounds[mate] = 0;
 
 						nceil[mate] = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
-						nelt[mate] = 0;
 						found_unread = true;
 						break; // we found a good read, can get out
 					} else { // done[mate] == true
@@ -2744,13 +2740,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		v_msinkwrap.clear();
 		delete rp;
 
-		delete[] exhaustive;
-		delete[] filt;
-
-		delete[] rds;
 		delete[] minsc;
-		delete[] nceil;
-
 		delete[] g_msobjs;
 
 		// do not delete objects managed by the allocator
