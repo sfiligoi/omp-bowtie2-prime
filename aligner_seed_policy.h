@@ -225,7 +225,7 @@ public:
 		int&        multiseedLen,
 		SimpleFunc& multiseedIval,
 		size_t&     failStreak,
-		size_t&     seedRounds);
+		uint16_t&   seedRounds);
 };
 
 

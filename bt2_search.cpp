@@ -235,7 +235,7 @@ static int mapqv;             // MAPQ calculation version
 static int tighten;           // -M tighten mode (0=none, 1=best, 2=secbest+1)
 static size_t do1mmMinLen;    // length below which we disable 1mm e2e search
 static size_t seedBoostThresh;   // if average non-zero position has more than this many elements
-static size_t nSeedRounds;    // # seed rounds
+static uint16_t nSeedRounds;    // # seed rounds
 static bool reorder;          // true -> reorder SAM recs in -p mode
 static float sampleFrac;      // only align random fraction of input reads
 static bool arbitraryRandom;  // pseudo-randoms no longer a function of read properties
@@ -2268,10 +2268,14 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		// These arrays move between CPU and GPU often
 		// Keep them together
 
+		uint16_t* intervals = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint16_t))) uint16_t[num_parallel_tasks];
+		uint16_t* irounds = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint16_t))) uint16_t[num_parallel_tasks];
+
 		// Whether we're done with g_psrah mate
 		bool *done_reading = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
 		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			done_reading[mate] = false;
+			irounds[mate] = nSeedRounds; // invalid
 		}
 		// Whether we're done with mate
 		bool *done = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
@@ -2311,6 +2315,13 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			    msWorkerObjs& msobj = g_msobjs[mate];
 			    while (!done_reading[mate]) { // External loop, including filtering
+
+				if (irounds[mate]!=nSeedRounds) {
+					// we are not done with this read
+					// no need to load a new one, keep going
+					found_unread = true;
+					break;
+				}
 
 				while (!done_reading[mate]) { // Internal loop, just buffer reads and retries
 					done_reading[mate] = !have_next_read(g_psrah[mate]);
@@ -2397,6 +2408,11 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						msobj.shs.nextRead(*rds[mate]);
 						assert(msobj.shs.empty());
 
+						// Calculate interval length for both mates
+						const int interval = max((int)msIval.f<int>((double)rdlen), 1);
+						intervals[mate] = interval;
+						irounds[mate] = 0;
+
 						nceil[mate] = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
 						nelt[mate] = 0;
 						found_unread = true;
@@ -2426,18 +2442,16 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   }
 
 		   // ASSERT: done[:] == false
-		   // Expected fraction of mates: 99%+
-                   for(size_t roundi = 0; roundi < nSeedRounds; roundi++) {	
+
 			// always call ensure_spare from main CPU thread
 		 	mate_allocs.ensure_spare();
 
 		 	matemap.clear();
 		  	for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-				const size_t rdlen = rds[mate]->length();
-				// Calculate interval length for both mates
-				const int interval = max((int)msIval.f<int>((double)rdlen), 1);
+				const uint16_t roundi = irounds[mate];
+				const uint16_t interval = intervals[mate];
 				// Calculate # seed rounds for each mate
-				const size_t nrounds = min<size_t>(nSeedRounds, interval);
+				const uint16_t nrounds = min<uint16_t>(nSeedRounds, interval);
 				if ((!done_reading[mate])  && (!done[mate]) && (roundi<nrounds) ) {
 					matemap.push_back(mate);
 				}
@@ -2450,7 +2464,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 				const size_t mate=matemap[fidx];
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-					const size_t rdlen = rds[mate]->length();
 					if(msinkwrap.state().doneWithMate(true)) {
 						// Should never get in here, but just in case
 						// Done with this mate
@@ -2458,16 +2471,16 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						continue;
 					}
 
-					// Calculate interval length for both mates
-					const int interval = max((int)msIval.f<int>((double)rdlen), 1);
+					const uint32_t roundi = irounds[mate]; // promote to 32bit due to multiplication
+					const uint16_t interval = intervals[mate];
 					// Calculate # seed rounds for each mate
-					const size_t nrounds = min<size_t>(nSeedRounds, interval);
+					const uint32_t nrounds = min<uint16_t>(nSeedRounds, interval);
 					Constraint gc = Constraint::penaltyFuncBased(scoreMin);
 						msobj.ca.nextRead(); // Clear cache in preparation for new search
 						msobj.shs.clearSeeds();
 						assert(msobj.shs.empty());
 						assert(msobj.shs.repOk(&msobj.ca.current()));
-							size_t offset = (interval * roundi) / nrounds;
+							const uint32_t offset = (interval * roundi) / nrounds;
 							assert(roundi == 0 || offset > 0);
 							assert(!msinkwrap.maxed());
 							assert(msinkwrap.repOk());
@@ -2491,10 +2504,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		 	matemap.clear();
 		  	for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-				const size_t rdlen = rds[mate]->length();
-				// Calculate interval length for both mates
-				const int interval = max((int)msIval.f<int>((double)rdlen), 1);
-				const size_t nrounds = min<size_t>(nSeedRounds, interval);
+				const uint16_t roundi = irounds[mate];
+				const uint16_t interval = intervals[mate];
+				// Calculate # seed rounds for each mate
+				const uint16_t nrounds = min<uint16_t>(nSeedRounds, interval);
 				if ((!done_reading[mate])  && (!done[mate]) && (roundi<nrounds) ) {
 					matemap.push_back(mate);
 				}
@@ -2507,11 +2520,11 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 				const size_t mate=matemap[fidx];
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-					const size_t rdlen = rds[mate]->length();
-					// Calculate interval length for both mates
-					const int interval = max((int)msIval.f<int>((double)rdlen), 1);
-					const size_t nrounds = min<size_t>(nSeedRounds, interval);
-					size_t offset = (interval * roundi) / nrounds;
+					const uint32_t roundi = irounds[mate]; // promote to 32bit due to multiplication
+					const uint16_t interval = intervals[mate];
+					// Calculate # seed rounds for each mate
+					const uint32_t nrounds = min<uint16_t>(nSeedRounds, interval);
+					const uint32_t offset = (interval * roundi) / nrounds;
 							std::pair<int, int> instFw, instRc;
 							// Instantiate the seeds
 							std::pair<int, int> inst = msobj.al.instantiateSeeds(
@@ -2542,10 +2555,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		 	matemap.clear();
 		  	for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-				const size_t rdlen = rds[mate]->length();
-				// Calculate interval length for both mates
-				const int interval = max((int)msIval.f<int>((double)rdlen), 1);
-				const size_t nrounds = min<size_t>(nSeedRounds, interval);
+				const uint16_t roundi = irounds[mate];
+				const uint16_t interval = intervals[mate];
+				// Calculate # seed rounds for each mate
+				const uint16_t nrounds = min<uint16_t>(nSeedRounds, interval);
 				if ((!done_reading[mate])  && (!done[mate]) && (roundi<nrounds) ) {
 					matemap.push_back(mate);
 				}
@@ -2584,10 +2597,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		 	matemap.clear();
 		  	for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-				const size_t rdlen = rds[mate]->length();
-				// Calculate interval length for both mates
-				const int interval = max((int)msIval.f<int>((double)rdlen), 1);
-				const size_t nrounds = min<size_t>(nSeedRounds, interval);
+				const uint16_t roundi = irounds[mate];
+				const uint16_t interval = intervals[mate];
+				// Calculate # seed rounds for each mate
+				const uint16_t nrounds = min<uint16_t>(nSeedRounds, interval);
 				if ((!done_reading[mate])  && (!done[mate]) && (roundi<nrounds) ) {
 					matemap.push_back(mate);
 				}
@@ -2606,9 +2619,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						done[mate] = true;
 						continue;
 					}
-					const size_t rdlen = rds[mate]->length();
-					// Calculate interval length for both mates
-					const int interval = max((int)msIval.f<int>((double)rdlen), 1);
+					const uint16_t interval = intervals[mate];
 								// Sort seed hits into ranks
 								msobj.shs.rankSeedHits(msobj.rnd, msinkwrap.allHits());
 								int ret = 0;
@@ -2660,10 +2671,10 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 			// no point doing in parallel
 		  	for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-				const size_t rdlen = rds[mate]->length();
-				// Calculate interval length for both mates
-				const int interval = max((int)msIval.f<int>((double)rdlen), 1);
-				const size_t nrounds = min<size_t>(nSeedRounds, interval);
+				const uint16_t roundi = irounds[mate];
+				const uint16_t interval = intervals[mate];
+				// Calculate # seed rounds for each mate
+				const uint16_t nrounds = min<uint16_t>(nSeedRounds, interval);
 				if ((!done_reading[mate])  && (!done[mate]) && (roundi<nrounds) ) {
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
@@ -2678,7 +2689,6 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							}
 				}
 			} // for mate
-		   } // end loop over reseeding rounds
 
 		   // always call ensure_spare from main CPU thread
 		   mate_allocs.ensure_spare();
@@ -2686,9 +2696,16 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 #pragma omp parallel for default(shared)
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
+			  const uint16_t roundi = ++irounds[mate];  // increment the irounds, so we are ready for new round, if needed
+			  const uint16_t interval = intervals[mate];
+			  // Calculate # seed rounds for each mate
+			  const uint16_t nrounds = min<uint16_t>(nSeedRounds, interval);
+			  if (done[mate] || (roundi>=nrounds)) { // only finalize reads that have no outstanding rounds left
 				msWorkerObjs& msobj = g_msobjs[mate];
 				AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 		
+				irounds[mate] = nSeedRounds; // invalidate
+
 				const size_t rdlen = rds[mate]->length();
 				size_t totnucs = 0;
 				{
@@ -2713,6 +2730,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 					xeq);
 
+			  } // if more rounds
 			} // if (!done_reading[mate])
 		   } // for mate
 		} // while(true)

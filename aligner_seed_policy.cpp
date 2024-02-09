@@ -267,7 +267,7 @@ void SeedAlignmentPolicy::parseString(
 	int&        multiseedLen,
 	SimpleFunc& multiseedIval,
 	size_t&     failStreak,
-	size_t&     seedRounds)
+	uint16_t&   seedRounds)
 {
 
 	bonusMatchType    = local ? DEFAULT_MATCH_BONUS_TYPE_LOCAL : DEFAULT_MATCH_BONUS_TYPE;
