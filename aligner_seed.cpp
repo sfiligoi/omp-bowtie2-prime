@@ -503,7 +503,6 @@ pair<int, int> SeedAligner::instantiateSeeds(
 	const Scoring& pens,       // scoring scheme
 	bool nofw,                 // don't align forward read
 	bool norc,                 // don't align revcomp read
-	AlignmentCacheIface& cache,// holds some seed hits from previous reads
 	SeedResults& sr,           // holds all the seed hits
 	pair<int, int>& instFw,
 	pair<int, int>& instRc)
@@ -530,7 +529,6 @@ pair<int, int> SeedAligner::instantiateSeeds(
 	ret.first = 0;  // # seeds that require alignment
 	ret.second = 0; // # seeds that hit in cache with non-empty results
 	sr.reset(read, offIdx2off_, nseeds);
-	assert(sr.repOk(&cache.current(), true)); // require that SeedResult be initialized
 	// For each seed position
 	for(int fwi = 0; fwi < 2; fwi++) {
 		bool fw = (fwi == 0);

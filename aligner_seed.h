@@ -1656,7 +1656,6 @@ public:
 		const Scoring& pens,        // scoring scheme
 		bool nofw,                  // don't align forward read
 		bool norc,                  // don't align revcomp read
-		AlignmentCacheIface& cache, // holds some seed hits from previous reads
 		SeedResults& sr,            // holds all the seed hits
 		std::pair<int, int>& instFw,
 		std::pair<int, int>& instRc);
