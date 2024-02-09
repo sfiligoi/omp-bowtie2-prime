@@ -2493,17 +2493,17 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					// Calculate # seed rounds for each mate
 					const uint32_t nrounds = min<uint16_t>(nSeedRounds, interval);
 					Constraint gc = Constraint::penaltyFuncBased(scoreMin);
-							const uint32_t offset = (interval * roundi) / nrounds;
-							assert(roundi == 0 || offset > 0);
-							// Set up seeds
-							msobj.seed.clear();
-							Seed::mmSeeds(
-								multiseedMms,    // max # mms per seed
-								multiseedLen,    // length of a multiseed seed
-								msobj.seed,      // seeds
-								gc);             // global constraint
-							// Check whether the offset would drive the first seed
-							// off the end
+					const uint32_t offset = (interval * roundi) / nrounds;
+					assert(roundi == 0 || offset > 0);
+					// Set up seeds
+					msobj.seed.clear();
+					Seed::mmSeeds(
+						multiseedMms,    // max # mms per seed
+						multiseedLen,    // length of a multiseed seed
+						msobj.seed,      // seeds
+						gc);             // global constraint
+					// Check whether the offset would drive the first seed
+					// off the end
 					if(offset > 0 && multiseedLen + offset > rds[mate]->length()) {
 						done[mate] = true;
 					} else {
@@ -2512,7 +2512,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 						assert(msobj.shs.repOk(&msobj.ca.current()));
 							std::pair<int, int> instFw, instRc;
 							// Instantiate the seeds
-							std::pair<int, int> inst = msobj.al.instantiateSeeds(
+							std::pair<int, int> inst = SeedAligner::instantiateSeeds(
 								msobj.seed,     // search seeds
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds

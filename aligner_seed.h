@@ -1656,19 +1656,19 @@ public:
 	 * read (or its reverse complement), fill in 'seq' and 'qual' objects
 	 * with the seed sequence and qualities.
 	 */
-	void instantiateSeq(
+	static void instantiateSeq(
 		const Read& read, // input read
 		BTDnaString& seq, // output sequence
 		BTString& qual,   // output qualities
 		int len,          // seed length
 		int depth,        // seed's 0-based offset from 5' end
-		bool fw) const;   // seed's orientation
+		bool fw);         // seed's orientation
 
 	/**
 	 * Iterate through the seeds that cover the read and initiate a
 	 * search for each seed.
 	 */
-	std::pair<int, int> instantiateSeeds(
+	static std::pair<int, int> instantiateSeeds(
 		const EList<Seed>& seeds,   // search seeds
 		size_t off,                 // offset into read to start extracting
 		int per,                    // interval between seeds

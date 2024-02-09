@@ -475,7 +475,7 @@ SeedAligner::instantiateSeq(
 	BTString& qual,   // output qualities
 	int len,          // seed length
 	int depth,        // seed's 0-based offset from 5' end
-	bool fw) const    // seed's orientation
+	bool fw)         // seed's orientation
 {
 	// Fill in 'seq' and 'qual'
 	int seedlen = len;
