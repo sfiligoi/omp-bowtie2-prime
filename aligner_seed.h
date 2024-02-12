@@ -1458,12 +1458,33 @@ public:
 		const BTString& _qual     // quality string for current seed
 		)
 		: qv()
-		, seq(_seq)
-		, qual(_qual)
+		, pseq(&_seq)
+		, pqual(&_qual)
 		, cachedEls()
 		, cachep(NULL)
 	{
 		cachedEls.reserve(16); // do not expect I will need more
+	}
+
+	SeedSearchCache()
+		: qv()
+		, pseq(NULL)
+		, pqual(NULL)
+		, cachedEls()
+		, cachep(NULL)
+	{
+		cachedEls.reserve(16); // do not expect I will need more
+	}
+
+	SeedSearchCache& operator=(const SeedSearchCache& other) = default;
+
+	void reset(
+		const BTDnaString& _seq,  // sequence of current seed
+		const BTString& _qual     // quality string for current seed
+		)
+	{
+		pseq = &_seq;
+		pqual = &_qual;
 	}
 
 	/**
@@ -1474,7 +1495,7 @@ public:
 	 */
 	int beginAlign(AlignmentCacheIface& cache) 
 	{ 
-		int ret = cache.beginAlign(seq, qual, qv);
+		int ret = cache.beginAlign(*pseq, *pqual, qv);
 		if (ret>=0) {
 			cachep = &cache;
 		}
@@ -1526,7 +1547,8 @@ public:
                 TIndexOffU topb,            // top in BWT' index
                 TIndexOffU botb)            // bot in BWT' index
 	{
-		cachedEls.emplace_back(rfseq, topf, botf, topb, botb);
+		cachedEls.expand();
+		cachedEls.back().reset(rfseq, topf, botf, topb, botb);
 	}
 
 	/**
@@ -1537,8 +1559,8 @@ public:
 	bool qvValid() const { return qv.valid();}
 
 	const QVal&          getQv() const {return qv;}
-	const BTDnaString&   getSeq() const {return seq;}
-	const BTString&      getQual() const {return qual;}
+	const BTDnaString&   getSeq() const {return *pseq;}
+	const BTString&      getQual() const {return *pqual;}
 
 protected:
 	class AddEl {
@@ -1555,6 +1577,22 @@ protected:
 			topf(_topf), botf(_botf), topb(_topb), botb(_botb) 
 		{}
 
+		AddEl() {}
+
+		void reset(
+                        const BTDnaString& rfseq, // reference sequence close to read seq
+                        TIndexOffU _topf,            // top in BWT index
+                        TIndexOffU _botf,            // bot in BWT index
+                        TIndexOffU _topb,            // top in BWT' index
+                        TIndexOffU _botb             // bot in BWT' index
+                        )
+		{
+			sak.init(rfseq ASSERT_ONLY(, tmp));
+			topf = _topf; botf = _botf; topb = _topb;  botb = _botb;
+		}
+
+		AddEl& operator=(const AddEl& other) = default;
+
                 ASSERT_ONLY(BTDnaString tmp;)
                 SAKey      sak;
                 TIndexOffU topf;            // top in BWT index
@@ -1564,10 +1602,10 @@ protected:
 	};
 
 	QVal                 qv;
-	const BTDnaString&   seq;   // sequence of current seed
-	const BTString&      qual;  // quality string for current seed
+	const BTDnaString*   pseq;   // sequence of current seed
+	const BTString*      pqual;  // quality string for current seed
 
-	std::vector<AddEl>    cachedEls; // tmp storage of values that will go in the cache
+	EList<AddEl>          cachedEls; // tmp storage of values that will go in the cache
 	AlignmentCacheIface*  cachep; // local alignment cache for seed alignment, set at beginAliginings
 };
 
@@ -1589,7 +1627,8 @@ public:
 		bool fw                  // is it fw?
 		)
 	{
-		cacheVec.emplace_back(seq, qual, seedoffidx, fw);
+		cacheVec.expand();
+		cacheVec.back().reset(seq, qual, seedoffidx, fw);
 	}
 
 	// Same semantics as std::vector
@@ -1618,13 +1657,29 @@ protected:
 			, seedoffidx(_seedoffidx)
 			, fw(_fw) {}
 		
+		CacheEl()
+			: srcache()
+			, seedoffidx(0), fw(true) // just to have a default
+			{}
+
+		void reset(
+			const BTDnaString& _seq,  // sequence of current seed
+			const BTString& _qual,    // quality string for current seed
+			int _seedoffidx,          // seed index
+			bool _fw                  // is it fw?
+			) {
+			srcache.reset(_seq, _qual);
+			seedoffidx = _seedoffidx;
+			fw = _fw;
+			}
+		
 
 		SeedSearchCache     srcache;   // search wrapper
 		int                 seedoffidx; // seed index
 		bool                fw;      // is it fw?
 	};
 
-	std::vector<CacheEl> cacheVec;
+	EList<CacheEl> cacheVec;
 };
 
 /**
