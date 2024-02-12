@@ -2353,7 +2353,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   {
 			bool found_unread = false;
 			// Note: Will use mate to distinguish between tread-specific elements
-#pragma omp parallel for reduction(||:found_unread) default(shared)
+#pragma omp parallel for reduction(||:found_unread) default(shared) schedule(dynamic,8)
 			for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			    msWorkerObjs& msobj = g_msobjs[mate];
 			    while (!done_reading[mate]) { // External loop, including filtering
@@ -2540,7 +2540,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		 	mate_allocs.ensure_spare();
 
 		   	// we can do all of the "mates" in parallel
-#pragma omp parallel for default(shared)
+#pragma omp parallel for default(shared) schedule(dynamic,8)
 			for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 				if (!done[mate]) {
 					msWorkerObjs& msobj = g_msobjs[mate];
@@ -2573,7 +2573,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		 	mate_allocs.ensure_spare();
 
 		   	// we can do all of the "mates" in parallel
-#pragma omp parallel for default(shared)
+#pragma omp parallel for default(shared) schedule(dynamic,8)
 			for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 				if (!done[mate]) {
 					msWorkerObjs& msobj = g_msobjs[mate];
@@ -2642,7 +2642,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   // always call ensure_spare from main CPU thread
 		   mate_allocs.ensure_spare();
 
-#pragma omp parallel for default(shared)
+#pragma omp parallel for default(shared) schedule(dynamic,8)
 		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
 			  const uint16_t roundi = ++irounds[mate];  // increment the irounds, so we are ready for new round, if needed
