@@ -81,31 +81,44 @@ class SeedAligner::SeedAlignerSearchParams {
 public:
 	class CacheAndSeed {
 	public:
+		CacheAndSeed()
+		: pcache(NULL), pseed(NULL)
+		, hasi0(false), fwi0(0), bwi0(0) {}
+
 		CacheAndSeed(
 			SeedSearchCache &_cache,         // local seed alignment cache
 			const InstantiatedSeed& _seed,   // current instantiated seed
 		        const Ebwt* ebwtFw, 	         // forward index (BWT)
 			const Ebwt* ebwtBw               // backward/mirror index (BWT')
 
-		) : cache(_cache)
-		  , seed(_seed)
-		  , hasi0(false), fwi0(0), bwi0(0) // just set a default
+		) : pcache(NULL), pseed(NULL)
+		, hasi0(false), fwi0(0), bwi0(0) // just set a default
+		{ reset(_cache,_seed,ebwtFw,ebwtBw); }
+
+		void reset(
+			SeedSearchCache &_cache,         // local seed alignment cache
+			const InstantiatedSeed& _seed,   // current instantiated seed
+		        const Ebwt* ebwtFw, 	         // forward index (BWT)
+			const Ebwt* ebwtBw               // backward/mirror index (BWT')
+		)
 		{
-	                int off = seed.steps[0];
+			pcache = &_cache;
+			pseed = &_seed;
+	                int off = pseed->steps[0];
 	                bool ltr = off > 0;
         	        off = abs(off)-1;
 			int ftabLen = ebwtFw->eh().ftabChars();
-			hasi0 = (ftabLen > 1 && ftabLen <= seed.maxjump);
+			hasi0 = (ftabLen > 1 && ftabLen <= pseed->maxjump);
 			if(hasi0) {
 				if(!ltr) {
 					assert_geq(off+1, ftabLen-1);
 					off = off - ftabLen + 1;
 				}
 				// startSearchSeedBi will need them, start prefetching now
-				fwi0 = ebwtFw->ftabSeqToInt( cache.getSeq(), off, false);
+				fwi0 = ebwtFw->ftabSeqToInt( pcache->getSeq(), off, false);
 				ebwtFw->ftabLoHiPrefetch(fwi0);
 				if(ebwtBw!=NULL) {
-					bwi0 = ebwtBw->ftabSeqToInt( cache.getSeq(), off, false);
+					bwi0 = ebwtBw->ftabSeqToInt( pcache->getSeq(), off, false);
 					ebwtBw->ftabLoHiPrefetch(bwi0);
 				}
 			}
@@ -114,8 +127,11 @@ public:
 		CacheAndSeed(CacheAndSeed &other) = default;
 		CacheAndSeed(CacheAndSeed &&other) = default;
 
-		SeedSearchCache &cache;        // local seed alignment cache
-		const InstantiatedSeed& seed;  // current instantiated seed
+		CacheAndSeed& operator=(const CacheAndSeed& other) = default;
+
+		// Use pointers, so they can be changed 
+		SeedSearchCache *pcache;        // local seed alignment cache
+		const InstantiatedSeed* pseed;  // current instantiated seed
 		bool hasi0;
 		TIndexOffU fwi0;                // Idx of fw ftab
 		TIndexOffU bwi0;                // Idx of bw ftab
@@ -183,11 +199,46 @@ public:
 	, prevEdit(NULL)
 	{}
 
+	// create an empty bwt, tloc and bloc, with step=0
+	// and constratins from seed, for initial searchSeedBi invocation
+	SeedAlignerSearchParams()
+	: cs()
+	, step(0)
+	, depth(0)
+	, bwt()
+	, tloc()
+	, bloc()
+	, prevEdit(NULL)
+	{}
+
+	SeedAlignerSearchParams& operator=(const SeedAlignerSearchParams& other) = default;
+
+	void reset(
+		SeedSearchCache &cache,         // local seed alignment cache
+		const InstantiatedSeed& seed,   // current instantiated seed
+	        const Ebwt* ebwtFw, 	        // forward index (BWT)
+		const Ebwt* ebwtBw)             // backward/mirror index (BWT')
+	{
+	  cs.reset(cache, seed, ebwtFw, ebwtBw);
+	  step = 0;
+	  depth = 0;
+	  bwt.set(0,0,0,0);
+	  tloc.invalidate();
+	  bloc.invalidate();
+	  cv = { seed.cons[0], seed.cons[1], seed.cons[2]  };
+	  overall = seed.overall;
+	  prevEdit = NULL;
+	}
+
 	void checkCV() const {
 			assert(cv[0].acceptable());
 			assert(cv[1].acceptable());
 			assert(cv[2].acceptable());
 	}
+
+	// Assumes that the pointers are properly initialized to !=NULL
+	SeedSearchCache& get_cache() {return *(cs.pcache);}
+	const InstantiatedSeed& get_seed() const {return *(cs.pseed);}
 
 	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
 	int step;             // depth into steps[] array
@@ -616,7 +667,7 @@ void SeedAligner::searchAllSeeds(
 	const int ibatch_size = 8;
 
 	SeedSearchMultiCache mcache;
-	std::vector<SeedAlignerSearchParams> paramVec;
+	EList<SeedAlignerSearchParams> paramVec;
 
 	mcache.reserve(ibatch_size);
 	paramVec.reserve(ibatch_size*16); // assume no more than 16 iss per cache, on average
@@ -649,7 +700,8 @@ void SeedAligner::searchAllSeeds(
 					// and qualities already installed in SeedResults
 					assert_eq(fw, iss[j].fw);
 					assert_eq(i, (int)iss[j].seedoffidx);
-					paramVec.emplace_back(srcache, iss[j], ebwtFw_, ebwtBw_);
+					paramVec.expand();
+					paramVec.back().reset(srcache, iss[j], ebwtFw_, ebwtBw_);
 					seedsearches++;
 				}
 			}
@@ -1566,8 +1618,8 @@ SeedAligner::reportHit(
 bool
 SeedAligner::startSearchSeedBi(SeedAligner::SeedAlignerSearchParams &p)
 {
-	SeedSearchCache &cache = p.cs.cache;
-	const InstantiatedSeed& seed = p.cs.seed;
+	SeedSearchCache &cache = p.get_cache();
+	const InstantiatedSeed& seed = p.get_seed();
 	const BTDnaString& seq = cache.getSeq();
 
 	assert_gt(seed.steps.size(), 0);
@@ -1812,7 +1864,7 @@ SeedAligner::searchSeedBi(const size_t nparams, SeedAligner::SeedAlignerSearchPa
 		if (sstate.done) continue;
 
 		SeedAlignerSearchParams& p= paramVec[n];
-		const InstantiatedSeed& seed = p.cs.seed;
+		const InstantiatedSeed& seed = p.get_seed();
 		if (p.step >= (int) seed.steps.size()) {
 			sstate.done = true;
 			nleft--;
@@ -1821,7 +1873,7 @@ SeedAligner::searchSeedBi(const size_t nparams, SeedAligner::SeedAlignerSearchPa
 		size_t i = p.step; // call the stepIdx i for historical reasons
 		p.step++; // get ready for the next iteration
 
-		SeedSearchCache &cache = p.cs.cache;
+		SeedSearchCache &cache = p.get_cache();
 		const BTDnaString& seq = cache.getSeq();
 		const BTString& qual = cache.getQual();
 
