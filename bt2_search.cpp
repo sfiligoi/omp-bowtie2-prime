@@ -2255,7 +2255,7 @@ public:
  * -
  */
  /* Work in progress: There is only one such invocation, parallelization inside */
-static void multiseedSearchWorker(const size_t num_parallel_tasks) {
+static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
 	AlnSink&                msink    = *multiseed_msink;
@@ -2294,7 +2294,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		bmapq.reserve(num_parallel_tasks);
 		v_msinkwrap.reserve(num_parallel_tasks);
 		
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			bmapq.emplace_back(new_mapq(mapqv, scoreMin, msconsts->sc));
 			v_msinkwrap.emplace_back(
 							msink,        // global sink
@@ -2307,7 +2307,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		// Major per-thread objects
 		msWorkerObjs* g_msobjs = new msWorkerObjs[num_parallel_tasks];
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) g_msobjs[mate].set_alloc(&(mate_allocs[mate]));
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) g_msobjs[mate].set_alloc(&(mate_allocs[mate]));
 
 		// These arrays move between CPU and GPU often
 		// Keep them together
@@ -2315,14 +2315,16 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		uint16_t* intervals = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint16_t))) uint16_t[num_parallel_tasks];
 		uint16_t* irounds = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint16_t))) uint16_t[num_parallel_tasks];
 
-		// Whether we're done with g_psrah mate
-		bool *done_reading = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			done_reading[mate] = false;
+		static constexpr int32_t MATE_DONE_READING = -1000;  // done with g_psrah mate
+		static constexpr int32_t MATE_DONE = -1;             // done with this read
+		// Mate index for std::for_each
+		// Also used to ecode done and done_reading
+		int32_t *mate_idx = new(worker_alloc.allocate(num_parallel_tasks,sizeof(int32_t))) int32_t[num_parallel_tasks];
+
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+			mate_idx[mate] = mate;
 			irounds[mate] = nSeedRounds; // invalid
 		}
-		// Whether we're done with mate
-		bool *done = new(worker_alloc.allocate(num_parallel_tasks,sizeof(bool))) bool[num_parallel_tasks];
 
 		// Used by thread with threadid == 1 to measure time elapsed
 		time_t iTime = time(0);
@@ -2354,9 +2356,9 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 			bool found_unread = false;
 			// Note: Will use mate to distinguish between tread-specific elements
 #pragma omp parallel for reduction(||:found_unread) default(shared) schedule(dynamic,8)
-			for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			    msWorkerObjs& msobj = g_msobjs[mate];
-			    while (!done_reading[mate]) { // External loop, including filtering
+			    while (mate_idx[mate]!=MATE_DONE_READING) { // External loop, including filtering
 
 				if (irounds[mate]!=nSeedRounds) {
 					// we are not done with this read
@@ -2365,24 +2367,25 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					break;
 				}
 
-				while (!done_reading[mate]) { // Internal loop, just buffer reads and retries
-					done_reading[mate] = !have_next_read(g_psrah[mate]);
-					if (!done_reading[mate]) {
+				while (mate_idx[mate]!=MATE_DONE_READING) { // Internal loop, just buffer reads and retries
+					bool done_reading = !have_next_read(g_psrah[mate]);
+					if (!done_reading) {
 						pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
 						bool success = ret.first;
 						if(!success) {
-							done_reading[mate] = ret.second;
-							if (!done_reading[mate]) {
+							done_reading = ret.second;
+							if (!done_reading) {
 								// just retry the inner while
 								continue;
 							}
 						}
 					}
+					if (done_reading) mate_idx[mate]=MATE_DONE_READING;
 					// if we got here, do not retry inner loop anymore
 					break;
 				} // internal while loop
 
-				if (!done_reading[mate]) {
+				if (mate_idx[mate]!=MATE_DONE_READING) {
 					ps[mate] = g_psrah[mate].get()->ptr();
 					rds[mate] = &ps[mate]->read_a();
 
@@ -2446,7 +2449,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					msobj.shs.clear();
 
 					// Whether we're done with mate
-					done[mate] = !filt;
+					// done[mate] = !filt;
 					// Increment counters according to what got filtered
 					if(filt) { // done[mate] == false
 						msobj.shs.nextRead(*rds[mate]);
@@ -2459,6 +2462,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 						nceil[mate] = min((int)nCeil.f<int>((double)rdlen), (int)rdlen);
 						found_unread = true;
+						mate_idx[mate] = mate; // done[mate] = false
 						break; // we found a good read, can get out
 					} else { // done[mate] == true
 						// we are already done... finalize and read next
@@ -2474,16 +2478,18 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							false,                // suppress alignments?
 							scUnMapped,           // Consider soft-clipped bases unmapped when calculating TLEN
 							xeq);
+						mate_idx[mate] = MATE_DONE;
 					}
 
 		    		} // if (!done_reading[mate])
 
 			   } // external while loop
 
-			   done[mate] = done_reading[mate];
-			   if (!done_reading[mate]) {
+			   if (mate_idx[mate]!=MATE_DONE_READING) {
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
+
+					mate_idx[mate] = mate; // done[mate] = false
 
 					const uint32_t roundi = irounds[mate]; // promote to 32bit due to multiplication
 					const uint16_t interval = intervals[mate];
@@ -2502,7 +2508,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 					// Check whether the offset would drive the first seed
 					// off the end
 					if(offset > 0 && multiseedLen + offset > rds[mate]->length()) {
-						done[mate] = true;
+						mate_idx[mate] = MATE_DONE;
 					} else {
 						msobj.shs.clearSeeds();
 						assert(msobj.shs.empty());
@@ -2523,7 +2529,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							if(inst.first + inst.second == 0) {
 								// No seed hits!  Done with this mate.
 								assert(msobj.shs.empty());
-								done[mate] = true;
+								mate_idx[mate] = MATE_DONE;
 							} else {
 								msinkwrap.seedsTried += (inst.first + inst.second);
 								msinkwrap.seedsTriedMS[0] = instFw.first + instFw.second;
@@ -2541,8 +2547,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		   	// we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared) schedule(dynamic,8)
-			for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-				if (!done[mate]) {
+			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 						msobj.ca.nextRead(); // Clear cache in preparation for new search
@@ -2559,7 +2565,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 							assert(msobj.shs.repOk(&msobj.ca.current()));
 							if(msobj.shs.empty()) {
 								// No seed alignments!  Done with this mate.
-								done[mate] = true;
+								mate_idx[mate] = MATE_DONE;
 							} else {
 								// shs contain what we need to know to update our seed
 								// summaries for this seeding
@@ -2574,8 +2580,8 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		   	// we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared) schedule(dynamic,8)
-			for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-				if (!done[mate]) {
+			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 					const uint16_t interval = intervals[mate];
@@ -2627,12 +2633,12 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 									// mates.  We continue on a mate only if its average
 									// interval length is high (> 1000)
 									if(msobj.shs.averageHitsPerSeed() < seedBoostThresh) {
-										done[mate] = true;
+										mate_idx[mate] = MATE_DONE;
 									} else if(msinkwrap.state().doneWithMate(true)) {
-										done[mate] = true;
+										mate_idx[mate] = MATE_DONE;
 									}
 								} else {
-									done[mate] = true;
+									mate_idx[mate] = MATE_DONE;
 								}
 
 				} // if
@@ -2643,13 +2649,13 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 		   mate_allocs.ensure_spare();
 
 #pragma omp parallel for default(shared) schedule(dynamic,8)
-		   for (size_t mate=0; mate<num_parallel_tasks; mate++) {
-			if (!done_reading[mate]) { // only do it for valid ones, to handle end tails
+		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+			if (mate_idx[mate]!=MATE_DONE_READING) { // only do it for valid ones, to handle end tails
 			  const uint16_t roundi = ++irounds[mate];  // increment the irounds, so we are ready for new round, if needed
 			  const uint16_t interval = intervals[mate];
 			  // Calculate # seed rounds for each mate
 			  const uint16_t nrounds = min<uint16_t>(nSeedRounds, interval);
-			  if (done[mate] || (roundi>=nrounds)) { // only finalize reads that have no outstanding rounds left
+			  if ((mate_idx[mate]==MATE_DONE) || (roundi>=nrounds)) { // only finalize reads that have no outstanding rounds left
 				msWorkerObjs& msobj = g_msobjs[mate];
 				AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 		
@@ -2689,7 +2695,7 @@ static void multiseedSearchWorker(const size_t num_parallel_tasks) {
 
 		// Merge in the metrics
 		// Must be done sequentially
-		for (size_t mate=0; mate<num_parallel_tasks; mate++) {
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			msink.mergeMetricsUnsafe(g_msinkwrap[mate].rpm);
 		}
 
