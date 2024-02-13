@@ -1620,6 +1620,10 @@ public:
 		: cacheVec()
 	{}
 
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		cacheVec.set_alloc(alloc, propagate_alloc);
+	}
+
 	void emplace_back( 
 		const BTDnaString& seq,  // sequence of current seed
 		const BTString& qual,    // quality string for current seed
@@ -1682,6 +1686,74 @@ protected:
 	EList<CacheEl> cacheVec;
 };
 
+class SeedAlignerSearchState {
+public:
+	TIndexOffU tp[4], bp[4]; // dest BW ranges for "prime" index
+	TIndexOffU t[4], b[4];   // dest BW ranges
+	TIndexOffU *tf, *tb, *bf, *bb; // depend on ltr
+	const Ebwt* ebwt;
+
+	TIndexOffU ntop;
+	int off;
+	bool ltr;
+	bool done;
+public:
+	SeedAlignerSearchState()
+	: tp{0,0,0,0}, bp{0,0,0,0}
+	, t{0,0,0,0}, b{0,0,0,0}
+	, tf(NULL), tb(NULL), bf(NULL), bb(NULL)
+	, ebwt(NULL)
+	, ntop(0)
+	, off(0)
+	, ltr(false)
+	, done(false)
+	{}
+
+	void setOff(
+		size_t _off,
+		const BwtTopBot &bwt,      // The 4 BWT idxs
+		const Ebwt* ebwtFw_,       // forward index (BWT)
+		const Ebwt* ebwtBw_)       // backward/mirror index (BWT')
+	{
+		off = _off;
+		ltr = off > 0;
+		t[0] = t[1] = t[2] = t[3] = b[0] = b[1] = b[2] = b[3] = 0;
+		off = abs(off)-1;
+		if(ltr) {
+			ebwt = ebwtBw_;
+			tp[0] = tp[1] = tp[2] = tp[3] = bwt.topf;
+			bp[0] = bp[1] = bp[2] = bp[3] = bwt.botf;
+			tf = tp; tb = t;
+			bf = bp; bb = b;
+			ntop = bwt.topb;
+		} else {
+			ebwt = ebwtFw_;
+			tp[0] = tp[1] = tp[2] = tp[3] = bwt.topb;
+			bp[0] = bp[1] = bp[2] = bp[3] = bwt.botb;
+			tf = t; tb = tp;
+			bf = b; bb = bp;
+			ntop = bwt.topf;
+		}
+		assert(ebwt != NULL);
+	}
+
+public:
+#ifndef NDEBUG
+	TIndexOffU lasttot;
+
+	void initLastTot(TIndexOffU tot) { lasttot = tot;}
+	void assertLeqAndSetLastTot(TIndexOffU tot) {
+		assert_leq(tot, lasttot);
+		lasttot = tot;
+	}
+#else
+	// noop in production code
+	void initLastTot(TIndexOffU tot) {}
+	void assertLeqAndSetLastTot(TIndexOffU tot) {};
+#endif
+
+};
+
 /**
  * Given an index and a seeding scheme, searches for seed hits.
  */
@@ -1695,20 +1767,25 @@ public:
 	SeedAligner()
 	: edits_(AL_CAT)
         { 
-        	mcache_.reserve(ibatch_size);
-        	paramVec_.reserve(ibatch_size*iss_x_ibatch);
 	}
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		edits_.set_alloc(alloc, propagate_alloc);
 		tmprfdnastr_.set_alloc(alloc, propagate_alloc);
 		tmpdnastr_.set_alloc(alloc, propagate_alloc);
+		mcache_.set_alloc(alloc, propagate_alloc);
+		paramVec_.set_alloc(alloc, propagate_alloc);
+		sstateVec_.set_alloc(alloc, propagate_alloc);
+		// this is a good time to reserve the space
+                mcache_.reserve(ibatch_size);
+                paramVec_.reserve(ibatch_maxVec);
+                sstateVec_.reserve(ibatch_maxVec);
+		// set it to the right size immediately, no dynamic growing
+		while (sstateVec_.size()<ibatch_maxVec) sstateVec_.expand();
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		edits_.set_alloc(arg);
-		tmprfdnastr_.set_alloc(arg);
-		tmpdnastr_.set_alloc(arg);
+		set_alloc(arg.first,arg.second);
 	}
 	
 	/**
@@ -1904,8 +1981,10 @@ protected:
  	**/
 	static constexpr size_t ibatch_size = 8;
 	static constexpr size_t iss_x_ibatch = 16; // assume no more than 16 iss per cache, on average
+	static constexpr size_t ibatch_maxVec= ibatch_size*iss_x_ibatch;
 	SeedSearchMultiCache mcache_;
-	EList<SeedAlignerSearchParams> paramVec_;
+	EList<SeedAlignerSearchParams,int(ibatch_maxVec)> paramVec_;
+	EList<SeedAlignerSearchState, int(ibatch_maxVec)> sstateVec_;
 
 	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
 	BTDnaString tmpdnastr_;
