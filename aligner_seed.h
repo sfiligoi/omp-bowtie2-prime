@@ -1694,15 +1694,9 @@ public:
 	 */
 	SeedAligner()
 	: edits_(AL_CAT)
-	, ibatch_size_(8)
         { 
-		/**
-	 	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.
-	 	*       2 is too small for prefetch to be fully effective, 4 seems already OK, 
-	 	*       and 32 is too big (cache trashing).
-	 	**/
-        	mcache_.reserve(ibatch_size_);
-        	paramVec_.reserve(ibatch_size_*16); // assume no more than 16 iss per cache, on average
+        	mcache_.reserve(ibatch_size);
+        	paramVec_.reserve(ibatch_size*iss_x_ibatch);
 	}
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
@@ -1902,10 +1896,16 @@ protected:
 	uint64_t bwops_;           // Burrows-Wheeler operations
 	uint64_t bwedits_;         // Burrows-Wheeler edits
 	BTDnaString tmprfdnastr_;  // used in reportHit
-	
+
+	/**
+ 	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.
+ 	*       2 is too small for prefetch to be fully effective, 4 seems already OK, 
+ 	*       and 32 is too big (cache trashing).
+ 	**/
+	static constexpr size_t ibatch_size = 8;
+	static constexpr size_t iss_x_ibatch = 16; // assume no more than 16 iss per cache, on average
 	SeedSearchMultiCache mcache_;
 	EList<SeedAlignerSearchParams> paramVec_;
-	int ibatch_size_;
 
 	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
 	BTDnaString tmpdnastr_;

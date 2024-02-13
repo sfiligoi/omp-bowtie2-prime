@@ -658,17 +658,15 @@ void SeedAligner::searchAllSeeds(
 	bwops_ = bwedits_ = 0;
 	uint64_t possearches = 0, seedsearches = 0, ooms = 0;
 
-	const int ibatch_size = ibatch_size_;
-
 	SeedSearchMultiCache& mcache = mcache_;
 	EList<SeedAlignerSearchParams>& paramVec = paramVec_;
 
 	for(int fwi = 0; fwi < 2; fwi++) {
 		const bool fw = (fwi == 0);
-                int i =0;
+                size_t i =0;
 		// For each instantiated seed, but batched
-		while (i < (int)sr.numOffs()) {
-		   const int ibatch_max = std::min(i+ibatch_size,(int)sr.numOffs());
+		while (i < sr.numOffs()) {
+		   const size_t ibatch_max = std::min(i+ibatch_size,sr.numOffs());
 		   mcache.clear();
 		   paramVec.clear();
 		   // start aligning and find list of seeds to search
