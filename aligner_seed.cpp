@@ -1825,6 +1825,7 @@ SeedAligner::searchSeedBi(const size_t nparams, SeedAligner::SeedAlignerSearchPa
 		Constraint& cons    = p.cv[abs(seed.zones[i].first)];
 		//Constraint& insCons = p.cv[abs(seed.zones[i].second)];
 		// Is it legal for us to advance on characters other than 'c'?
+#if 0 /* We do not support mms>0, so this becomes NOOP */
 		if(!(cons.mustMatch() && !p.overall.mustMatch()) || c == 4) {
 			// There may be legal edits
 			bool bail = false;
@@ -1874,7 +1875,6 @@ SeedAligner::searchSeedBi(const size_t nparams, SeedAligner::SeedAlignerSearchPa
 					// as olds gets out of scope,
 					// restores cons, p.overall, p.tloc, p.bloc
 				}
-#if 0
 				if(cons.canGap() && p.overall.canGap()) {
 					throw 1; // TODO
 //					int delEx = 0;
@@ -1886,9 +1886,9 @@ SeedAligner::searchSeedBi(const size_t nparams, SeedAligner::SeedAlignerSearchPa
 //						// Try insert
 //					}
 				}
-#endif
 			} // if(!bail)
 		}
+#endif
 		if(c == 4) { // couldn't handle the N
 			sstate.done = true;
 			nleft--;
