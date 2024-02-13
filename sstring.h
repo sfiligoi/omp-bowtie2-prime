@@ -566,7 +566,7 @@ public:
 	/**
 	 * Destroy the expandable string object.
 	 */
-	virtual ~SString() {
+	~SString() {
 		if(cs_ != NULL) {
 			delete[] cs_;
 			cs_ = NULL;
@@ -682,7 +682,7 @@ public:
 	 * Copy 'sz' bytes from buffer 'b' into this string.  memcpy is used, not
 	 * operator=.
 	 */
-	virtual void install(const T* b, size_t sz) {
+	void install(const T* b, size_t sz) {
 		if(sz == 0) return;
 		resize(sz);
 		memcpy(cs_, b, sz * sizeof(T));
@@ -692,7 +692,7 @@ public:
 	 * Copy 'sz' bytes from buffer 'b' into this string.  memcpy is used, not
 	 * operator=.
 	 */
-	virtual void install(const std::basic_string<T>& b) {
+	void install(const std::basic_string<T>& b) {
 		size_t sz = b.length();
 		if(sz == 0) return;
 		resize(sz);
@@ -850,7 +850,7 @@ public:
 	 * Put a terminator in the 'len_'th element and then return a
 	 * pointer to the buffer.  Useful for printing.
 	 */
-	virtual const T* toZBuf() const {
+	const T* toZBuf() const {
 		const_cast<T*>(cs_)[len_] = 0;
 		return cs_;
 	}
@@ -977,7 +977,7 @@ public:
 	/**
 	 * Destroy the expandable string object.
 	 */
-	virtual ~S2bDnaString() {
+	~S2bDnaString() {
 		if(cs_ != NULL) {
 			delete[] cs_;
 			cs_ = NULL;
@@ -1702,7 +1702,7 @@ public:
 	/**
 	 * Destroy the expandable string object.
 	 */
-	virtual ~SStringExpandable() {
+	~SStringExpandable() {
 		free();
 	}
 
@@ -1848,7 +1848,7 @@ public:
 	/**
 	 * Copy 'sz' bytes from buffer 'b' into this string.
 	 */
-	virtual void install(const T* b, size_t sz) {
+	void install(const T* b, size_t sz) {
 		if(sz_ < sz) expandNoCopy((sz + S) * M);
 		auto buf_ = wbuf();
 		memcpy(buf_, b, sz * sizeof(T));
@@ -2084,7 +2084,7 @@ public:
 	 * Put a terminator in the 'len_'th element and then return a
 	 * pointer to the buffer.  Useful for printing.
 	 */
-	virtual const T* toZBuf() const {
+	const T* toZBuf() const {
 		if(empty()) {
 			return &zeroT_;
 		}
@@ -2249,7 +2249,7 @@ public:
 		install(b, strlen(b));
 	}
 
-	virtual ~SStringFixed() { } // C++ needs this
+	~SStringFixed() { } // C++ needs this
 
 	/**
 	 * Retrieve constant version of element i.
@@ -2375,7 +2375,7 @@ public:
 	/**
 	 * Copy 'sz' bytes from buffer 'b' into this string.
 	 */
-	virtual void install(const T* b, size_t sz) {
+	void install(const T* b, size_t sz) {
 		assert_leq(sz, S);
 		memcpy(cs_, b, sz * sizeof(T));
 		len_ = sz;
@@ -2575,7 +2575,7 @@ public:
 	 * Put a terminator in the 'len_'th element and then return a
 	 * pointer to the buffer.  Useful for printing.
 	 */
-	virtual const T* toZBuf() const {
+	const T* toZBuf() const {
 		const_cast<T*>(cs_)[len_] = 0;
 		return cs_;
 	}
@@ -2688,7 +2688,7 @@ public:
 		}
 	}
 
-	virtual ~SDnaStringFixed() { } // C++ needs this
+	~SDnaStringFixed() { } // C++ needs this
 
 	/**
 	 * Copy 'sz' bytes from buffer 'b' into this string, reverse-
@@ -2738,7 +2738,7 @@ public:
 	/**
 	 * Copy 'sz' bytes from buffer 'b' into this string.
 	 */
-	virtual void install(const char* b, size_t sz) {
+	void install(const char* b, size_t sz) {
 		assert_leq(sz, S);
 		memcpy(this->cs_, b, sz);
 #ifndef NDEBUG
@@ -2754,7 +2754,7 @@ public:
 	 * Copy buffer 'b' of ASCII DNA characters into normal DNA
 	 * characters.
 	 */
-	virtual void installChars(const char* b, size_t sz) {
+	void installChars(const char* b, size_t sz) {
 		assert_leq(sz, S);
 		for(size_t i = 0; i < sz; i++) {
 			assert_in(toupper(b[i]), "ACGTN-");
@@ -2769,7 +2769,7 @@ public:
 	 * Copy buffer 'b' of ASCII color characters into normal DNA
 	 * characters.
 	 */
-	virtual void installColors(const char* b, size_t sz) {
+	void installColors(const char* b, size_t sz) {
 		assert_leq(sz, S);
 		for(size_t i = 0; i < sz; i++) {
 			assert_in(b[i], "0123.");
@@ -2784,7 +2784,7 @@ public:
 	 * Copy C++ string of ASCII DNA characters into normal DNA
 	 * characters.
 	 */
-	virtual void installChars(const std::basic_string<char>& str) {
+	void installChars(const std::basic_string<char>& str) {
 		installChars(str.c_str(), str.length());
 	}
 
@@ -2792,7 +2792,7 @@ public:
 	 * Copy C++ string of ASCII color characters into normal DNA
 	 * characters.
 	 */
-	virtual void installColors(const std::basic_string<char>& str) {
+	void installColors(const std::basic_string<char>& str) {
 		installColors(str.c_str(), str.length());
 	}
 
@@ -2899,7 +2899,7 @@ public:
 	 * Put a terminator in the 'len_'th element and then return a
 	 * pointer to the buffer.  Useful for printing.
 	 */
-	virtual const char* toZBuf() const { return this->toZBufXForm("ACGTN"); }
+	const char* toZBuf() const { return this->toZBufXForm("ACGTN"); }
 };
 
 /**
@@ -2973,7 +2973,7 @@ public:
 		install(b, chars, colors);
 	}
 
-	virtual ~SDnaStringExpandable() { } // C++ needs this
+	~SDnaStringExpandable() { } // C++ needs this
 
 	/**
 	 * Copy 'sz' bytes from buffer 'b' into this string, reverse-
@@ -3023,7 +3023,7 @@ public:
 	/**
 	 * Copy 'sz' bytes from buffer 'b' into this string.
 	 */
-	virtual void install(
+	void install(
 		const char* b,
 		bool chars = false,
 		bool colors = false)
@@ -3042,7 +3042,7 @@ public:
 	/**
 	 * Copy 'sz' bytes from buffer 'b' into this string.
 	 */
-	virtual void install(const char* b, size_t sz) {
+	void install(const char* b, size_t sz) {
 		if(this->sz_ < sz) this->expandCopy((sz + S) * M);
 		memcpy(this->cs_, b, sz);
 #ifndef NDEBUG
@@ -3057,7 +3057,7 @@ public:
 	 * Copy buffer 'b' of ASCII DNA characters into normal DNA
 	 * characters.
 	 */
-	virtual void installChars(const char* b, size_t sz) {
+	void installChars(const char* b, size_t sz) {
 		if(this->sz_ < sz) this->expandCopy((sz + S) * M);
 		for(size_t i = 0; i < sz; i++) {
 			assert_in(toupper(b[i]), "ACGTN-");
@@ -3071,7 +3071,7 @@ public:
 	 * Copy buffer 'b' of ASCII color characters into normal DNA
 	 * characters.
 	 */
-	virtual void installColors(const char* b, size_t sz) {
+	void installColors(const char* b, size_t sz) {
 		if(this->sz_ < sz) this->expandCopy((sz + S) * M);
 		for(size_t i = 0; i < sz; i++) {
 			assert_in(b[i], "0123.");
@@ -3085,7 +3085,7 @@ public:
 	 * Copy C++ string of ASCII DNA characters into normal DNA
 	 * characters.
 	 */
-	virtual void installChars(const std::basic_string<char>& str) {
+	void installChars(const std::basic_string<char>& str) {
 		installChars(str.c_str(), str.length());
 	}
 
@@ -3093,7 +3093,7 @@ public:
 	 * Copy C++ string of ASCII color characters into normal DNA
 	 * characters.
 	 */
-	virtual void installColors(const std::basic_string<char>& str) {
+	void installColors(const std::basic_string<char>& str) {
 		installColors(str.c_str(), str.length());
 	}
 
@@ -3200,7 +3200,7 @@ public:
 	 * Put a terminator in the 'len_'th element and then return a
 	 * pointer to the buffer.  Useful for printing.
 	 */
-	virtual const char* toZBuf() const { return this->toZBufXForm("ACGTN"); }
+	const char* toZBuf() const { return this->toZBufXForm("ACGTN"); }
 };
 
 /**
@@ -3245,7 +3245,7 @@ public:
 		}
 	}
 
-	virtual ~SDnaMaskString() { } // C++ needs this
+	~SDnaMaskString() { } // C++ needs this
 
 	/**
 	 * Copy 'sz' bytes from buffer 'b' into this string, reverse-
@@ -3299,7 +3299,7 @@ public:
 	/**
 	 * Copy 'sz' bytes from buffer 'b' into this string.
 	 */
-	virtual void install(const char* b, size_t sz) {
+	void install(const char* b, size_t sz) {
 		while(this->sz_ < sz) {
 			this->expandNoCopy((sz + S) * M);
 		}
@@ -3315,7 +3315,7 @@ public:
 	/**
 	 * Copy buffer 'b' of ASCII DNA characters into DNA masks.
 	 */
-	virtual void installChars(const char* b, size_t sz) {
+	void installChars(const char* b, size_t sz) {
 		while(this->sz_ < sz) {
 			this->expandNoCopy((sz + S) * M);
 		}
@@ -3331,7 +3331,7 @@ public:
 	 * Copy C++ string of ASCII DNA characters into normal DNA
 	 * characters.
 	 */
-	virtual void installChars(const std::basic_string<char>& str) {
+	void installChars(const std::basic_string<char>& str) {
 		installChars(str.c_str(), str.length());
 	}
 
@@ -3490,7 +3490,7 @@ public:
 	 * Put a terminator in the 'len_'th element and then return a
 	 * pointer to the buffer.  Useful for printing.
 	 */
-	virtual const char* toZBuf() const { return this->toZBufXForm(iupacs); }
+	const char* toZBuf() const { return this->toZBufXForm(iupacs); }
 };
 
 typedef SStringExpandable<char, 1024, 2> BTString;
