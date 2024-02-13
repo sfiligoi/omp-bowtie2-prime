@@ -1714,6 +1714,7 @@ public:
 	int off;
 	bool ltr;
 	bool done;
+	bool need_reporting;
 public:
 	SeedAlignerSearchState()
 	: tp{0,0,0,0}, bp{0,0,0,0}
@@ -1724,6 +1725,7 @@ public:
 	, off(0)
 	, ltr(false)
 	, done(false)
+	, need_reporting(false)
 	{}
 
 	void setOff(

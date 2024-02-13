@@ -1768,6 +1768,7 @@ SeedAligner::searchSeedBi(const size_t nparams, SeedAligner::SeedAlignerSearchPa
 		const bool done = startSearchSeedBi(p);
 
 		SeedAlignerSearchState& sstate = sstateVec[n];
+		sstate.need_reporting = false;
 		sstate.done = done;
 		if(done) {
 			nleft--;
@@ -1927,9 +1928,8 @@ SeedAligner::searchSeedBi(const size_t nparams, SeedAligner::SeedAlignerSearchPa
 		}
 		p.bwt.set(sstate.tf[c], sstate.bf[c], sstate.tb[c], sstate.bb[c]);
 		if(i+1 == seed.steps.size()) {
-			// Finished aligning seed
 			p.checkCV();
-			reportHit(cache, p.bwt, seq.length(), p.prevEdit);
+			sstate.need_reporting = true;
 			sstate.done = true;
 			nleft--;
 			continue;
@@ -1937,6 +1937,16 @@ SeedAligner::searchSeedBi(const size_t nparams, SeedAligner::SeedAlignerSearchPa
 		nextLocsBi(seed, p.tloc, p.bloc, p.bwt, i+1);
 	   } // for n
 	} // while
+	for (size_t n=0; n<nparams; n++) {
+		SeedAlignerSearchState& sstate = sstateVec[n];
+		if (sstate.need_reporting) {
+			SeedAlignerSearchParams& p= paramVec[n];
+			SeedSearchCache &cache = p.get_cache();
+			// Finished aligning seed
+			reportHit(cache, p.bwt, cache.getSeq().length(), p.prevEdit);
+			sstate.need_reporting = false;
+		}
+	}
 	return;
 }
 
