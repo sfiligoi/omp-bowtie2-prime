@@ -1938,7 +1938,7 @@ public:
 	: AlignmentCacheIface(new AlignmentCache(seedCacheCurrentMB * 1024 * 1024))
 	{}
 
-	virtual ~AlignmentCacheIfaceBT2() {delete current_;}
+	~AlignmentCacheIfaceBT2() {delete current_;}
 
 	AlignmentCacheIfaceBT2(const AlignmentCacheIfaceBT2& other) = delete;
 	AlignmentCacheIfaceBT2& operator=(const AlignmentCacheIfaceBT2& other) = delete;

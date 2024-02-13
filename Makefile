@@ -33,7 +33,7 @@ BOWTIE_SHARED_MEM :=
 #CXXFLAGS += -std=c++17 
 CXXFLAGS += -std=c++17 -stdpar=multicore -DUSE_ACC_STDPAR
 #CXXFLAGS += -std=c++17 -acc -gpu=cc86,unified -stdpar=gpu -Minfo=accel -DUSE_ACC_STDPAR
-#CXXFLAGS += -std=c++17 -acc -gpu=cc86,unified,managed -stdpar=gpu -Minfo=accel,inline
+#CXXFLAGS += -std=c++17 -acc -gpu=cc86,unified,managed -stdpar=gpu -Minfo=accel
 
 NGS_VER ?= 2.10.2
 VDB_VER ?= 2.10.2

@@ -688,7 +688,7 @@ public:
 		assert(current_ != NULL);
 	}
 
-	virtual ~AlignmentCacheIface() {}
+	~AlignmentCacheIface() {}
 
 	AlignmentCacheIface(const AlignmentCacheIface& other) = delete;
 	AlignmentCacheIface& operator=(const AlignmentCacheIface& other) = delete;
