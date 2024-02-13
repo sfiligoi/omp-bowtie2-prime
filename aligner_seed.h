@@ -1941,19 +1941,35 @@ protected:
 		DoublyLinkedList<Edit> *prevEdit)  // previous edit
 	{ reportHit(cache, bwt.topf, bwt.botf, bwt.topb, bwt.botb, len, prevEdit); }
 
+	void reportHit(
+		SeedSearchCache &cache,  // local seed alignment cache
+		const BwtTopBot &bwt,  // The 4 BWT idxs
+		DoublyLinkedList<Edit> *prevEdit)  // previous edit
+	{ reportHit(cache, bwt, cache.getSeq().length(), prevEdit); }
+
 	/**
 	 * Main, recursive implementation of the seed search.
 	 * Given a vector of instantiated seeds, search
 	 */
-	void searchSeedBi(const size_t nparams, SeedAlignerSearchParams paramVec[]);
+	static void searchSeedBi(
+		        const Ebwt* ebwtFw,       // forward index (BWT)
+		        const Ebwt* ebwtBw,       // backward/mirror index (BWT')
+			SeedAlignerSearchState* sstateVec,
+        		uint64_t& bwops_,         // Burrows-Wheeler operations
+			const uint32_t nparams, SeedAlignerSearchParams paramVec[]);
 
 	// helper function
-	bool startSearchSeedBi(SeedAlignerSearchParams &p);
+	static bool startSearchSeedBi(
+		        const Ebwt* ebwtFw,       // forward index (BWT)
+		        const Ebwt* ebwtBw,       // backward/mirror index (BWT')
+			SeedAlignerSearchParams &p);
 
 	/**
 	 * Get tloc and bloc ready for the next step.
 	 */
-	void nextLocsBi(
+	static void nextLocsBi(
+	        const Ebwt* ebwtFw,           // forward index (BWT)
+        	const Ebwt* ebwtBw,           // backward/mirror index (BWT')
 		const InstantiatedSeed& seed, // current instantiated seed
 		SideLocus& tloc,            // top locus
 		SideLocus& bloc,            // bot locus
@@ -1963,13 +1979,15 @@ protected:
 		TIndexOffU botb,              // bot in BWT'
 		int step);                  // step to get ready for
 	
-	void nextLocsBi(
+	static void nextLocsBi(
+	        const Ebwt* ebwtFw,           // forward index (BWT)
+        	const Ebwt* ebwtBw,           // backward/mirror index (BWT')
 		const InstantiatedSeed& seed, // current instantiated seed
 		SideLocus& tloc,            // top locus
 		SideLocus& bloc,            // bot locus
 		const BwtTopBot &bwt,       // The 4 BWT idxs
 		int step)                   // step to get ready for
-	{ nextLocsBi(seed, tloc, bloc, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
+	{ nextLocsBi(ebwtFw, ebwtBw, seed, tloc, bloc, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
 
 	void prefetchNextLocsBi(
 		const InstantiatedSeed& seed, // current instantiated seed
