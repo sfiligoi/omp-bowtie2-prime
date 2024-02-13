@@ -795,6 +795,15 @@ public:
 
 	/**
 	 * Add an element to the back.  No intialization is done.
+	 * Throw if there is not enoutg space.
+	 */
+	void expand_noresize() {
+		if(cur_ >= sz_) throw "Unexpected resize";
+		cur_++;
+	}
+
+	/**
+	 * Add an element to the back.  No intialization is done.
 	 */
 	void fill(size_t begin, size_t end, const T& v) {
 		assert_leq(begin, end);

@@ -1635,8 +1635,25 @@ public:
 		cacheVec.back().reset(seq, qual, seedoffidx, fw);
 	}
 
+	void emplace_back_noresize( 
+		const BTDnaString& seq,  // sequence of current seed
+		const BTString& qual,    // quality string for current seed
+		int seedoffidx,          // seed index
+		bool fw                  // is it fw?
+		)
+	{
+		cacheVec.expand_noresize();
+		cacheVec.back().reset(seq, qual, seedoffidx, fw);
+	}
+
 	// Same semantics as std::vector
-	void reserve(size_t new_cap) { cacheVec.reserve(new_cap); }
+	void reserve(size_t new_cap) {
+		cacheVec.reserve(new_cap);
+		// force allocation (lazy, else)
+		cacheVec.expand();
+		cacheVec.clear();
+	}
+
 	size_t size() const {return cacheVec.size(); }
 	void clear() { cacheVec.clear(); }
 	void pop_back() { cacheVec.pop_back(); }
@@ -1776,12 +1793,17 @@ public:
 		mcache_.set_alloc(alloc, propagate_alloc);
 		paramVec_.set_alloc(alloc, propagate_alloc);
 		sstateVec_.set_alloc(alloc, propagate_alloc);
+
 		// this is a good time to reserve the space
                 mcache_.reserve(ibatch_size);
                 paramVec_.reserve(ibatch_maxVec);
                 sstateVec_.reserve(ibatch_maxVec);
+
+		// force memory allocation(lazy, else)
+		paramVec_.expand(); paramVec_.clear();
 		// set it to the right size immediately, no dynamic growing
 		while (sstateVec_.size()<ibatch_maxVec) sstateVec_.expand();
+		// mcache_.reserve is not lazy
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
