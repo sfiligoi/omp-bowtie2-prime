@@ -425,6 +425,17 @@ Seed::zeroMmSeeds(int ln, EList<Seed>& pols, Constraint& oall) {
 	pols.back().overall = &oall;
 }
 
+void
+Seed::zeroMmSeed(int ln, Seed& pol, Constraint& oall) {
+	oall.init();
+	pol.len = ln;
+	pol.type = SEED_TYPE_EXACT;
+	pol.zones[0] = Constraint::exact();
+	pol.zones[1] = Constraint::exact();
+	pol.zones[2] = Constraint::exact();
+	pol.overall = &oall;
+}
+
 /**
  * Return a set of 2 seeds encapsulating a half-and-half 1mm strategy.
  */
@@ -547,7 +558,8 @@ SeedAligner::instantiateSeq(
  * For each seed, instantiate the seed, retracting if necessary.
  */
 pair<int, int> SeedAligner::instantiateSeeds(
-	const EList<Seed>& seeds,  // search seeds
+        const unsigned int seeds_size,
+	const Seed*        seeds,  // search seeds
 	size_t off,                // offset into read to start extracting
 	int per,                   // interval between seeds
 	const Read& read,          // read to align
@@ -558,12 +570,12 @@ pair<int, int> SeedAligner::instantiateSeeds(
 	pair<int, int>& instFw,
 	pair<int, int>& instRc)
 {
-	assert(!seeds.empty());
+	assert(seeds_size>0);
 	assert_gt(read.length(), 0);
 	// Check whether read has too many Ns
 	int len = seeds[0].len; // assume they're all the same length
 #ifndef NDEBUG
-	for(size_t i = 1; i < seeds.size(); i++) {
+	for(unsigned int i = 1; i < seeds_size; i++) {
 		assert_eq(len, seeds[i].len);
 	}
 #endif
@@ -600,7 +612,7 @@ pair<int, int> SeedAligner::instantiateSeeds(
 			QKey qk(sr.seqs(fw)[i] ASSERT_ONLY(, tmpdnastr_));
 			// For each search strategy
 			EList<InstantiatedSeed>& iss = sr.instantiatedSeeds(fw, i);
-			for(int j = 0; j < (int)seeds.size(); j++) {
+			for(int j = 0; j < (int) seeds_size; j++) {
 				iss.expand();
 				assert_eq(seedlen, seeds[j].len);
 				InstantiatedSeed* is = &iss.back();
@@ -638,23 +650,19 @@ pair<int, int> SeedAligner::instantiateSeeds(
  * 2. Calculate zone boundaries for each seed
  */
 void SeedAligner::searchAllSeeds(
-	const EList<Seed>& seeds,    // search seeds
 	const Ebwt* ebwtFw,          // BWT index
 	const Ebwt* ebwtBw,          // BWT' index
-	const Read& read,            // read to align
 	const Scoring& pens,         // scoring scheme
 	AlignmentCacheIface& cache,  // local cache for seed alignments
 	SeedResults& sr,             // holds all the seed hits
 	PerReadMetrics& prm)         // per-read metrics
 {
-	assert(!seeds.empty());
 	assert(ebwtFw != NULL);
 	assert(ebwtFw->isInMemory());
 	assert(sr.repOk(&cache.current()));
 	ebwtFw_ = ebwtFw;
 	ebwtBw_ = ebwtBw;
 	sc_ = &pens;
-	read_ = &read;
 	bwops_ = bwedits_ = 0;
 	uint64_t possearches = 0, seedsearches = 0, ooms = 0;
 
@@ -1410,143 +1418,6 @@ SeedAligner::nextLocsBi(
 #endif
 	assert(botf - topf == 1 ||  bloc.valid());
 	assert(botf - topf > 1  || !bloc.valid());
-}
-
-/**
- * Report a seed hit found by searchSeedBi(), but first try to extend it out in
- * either direction as far as possible without hitting any edits.  This will
- * allow us to prioritize the seed hits better later on.  Call reportHit() when
- * we're done, which actually adds the hit to the cache.  Returns result from
- * calling reportHit().
- */
-void
-SeedAligner::extendAndReportHit(
-	SeedSearchCache &cache,              // local seed alignment cache
-	size_t off,                          // offset of seed currently being searched
-	bool fw,                             // orientation of seed currently being searched
-	TIndexOffU topf,                     // top in BWT
-	TIndexOffU botf,                     // bot in BWT
-	TIndexOffU topb,                     // top in BWT'
-	TIndexOffU botb,                     // bot in BWT'
-	uint16_t len,                      // length of hit
-	DoublyLinkedList<Edit> *prevEdit)  // previous edit
-{
-	size_t nlex = 0, nrex = 0;
-	TIndexOffU t[4], b[4];
-	TIndexOffU tp[4], bp[4];
-	SideLocus tloc, bloc;
-	if(off > 0) {
-		const Ebwt *ebwt = ebwtFw_;
-		assert(ebwt != NULL);
-		// Extend left using forward index
-		const BTDnaString& seq = fw ? read_->patFw : read_->patRc;
-		// See what we get by extending 
-		TIndexOffU top = topf, bot = botf;
-		t[0] = t[1] = t[2] = t[3] = 0;
-		b[0] = b[1] = b[2] = b[3] = 0;
-		tp[0] = tp[1] = tp[2] = tp[3] = topb;
-		bp[0] = bp[1] = bp[2] = bp[3] = botb;
-		SideLocus tloc, bloc;
-		INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-		for(size_t ii = off; ii > 0; ii--) {
-			size_t i = ii-1;
-			// Get char from read
-			int rdc = seq.get(i);
-			// See what we get by extending 
-			if(bloc.valid()) {
-				bwops_++;
-				t[0] = t[1] = t[2] = t[3] =
-				b[0] = b[1] = b[2] = b[3] = 0;
-				ebwt->mapBiLFEx(tloc, bloc, t, b, tp, bp);
-				SANITY_CHECK_4TUP(t, b, tp, bp);
-				int nonz = -1;
-				bool abort = false;
-				for(int j = 0; j < 4; j++) {
-					if(b[i] > t[i]) {
-						if(nonz >= 0) {
-							abort = true;
-							break;
-						}
-						nonz = j;
-						top = t[i]; bot = b[i];
-					}
-				}
-				if(abort || nonz != rdc) {
-					break;
-				}
-			} else {
-				assert_eq(bot, top+1);
-				bwops_++;
-				int c = ebwt->mapLF1(top, tloc);
-				if(c != rdc) {
-					break;
-				}
-				bot = top + 1;
-			}
-			if(++nlex == 255) {
-				break;
-			}
-			INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-		}
-	}
-	size_t rdlen = read_->length();
-	size_t nright = rdlen - off - len;
-	if(nright > 0 && ebwtBw_ != NULL) {
-		const Ebwt *ebwt = ebwtBw_;
-		assert(ebwt != NULL);
-		// Extend right using backward index
-		const BTDnaString& seq = fw ? read_->patFw : read_->patRc;
-		// See what we get by extending 
-		TIndexOffU top = topb, bot = botb;
-		t[0] = t[1] = t[2] = t[3] = 0;
-		b[0] = b[1] = b[2] = b[3] = 0;
-		tp[0] = tp[1] = tp[2] = tp[3] = topb;
-		bp[0] = bp[1] = bp[2] = bp[3] = botb;
-		INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-		for(size_t i = off + len; i < rdlen; i++) {
-			// Get char from read
-			int rdc = seq.get(i);
-			// See what we get by extending 
-			if(bloc.valid()) {
-				bwops_++;
-				t[0] = t[1] = t[2] = t[3] =
-				b[0] = b[1] = b[2] = b[3] = 0;
-				ebwt->mapBiLFEx(tloc, bloc, t, b, tp, bp);
-				SANITY_CHECK_4TUP(t, b, tp, bp);
-				int nonz = -1;
-				bool abort = false;
-				for(int j = 0; j < 4; j++) {
-					if(b[i] > t[i]) {
-						if(nonz >= 0) {
-							abort = true;
-							break;
-						}
-						nonz = j;
-						top = t[i]; bot = b[i];
-					}
-				}
-				if(abort || nonz != rdc) {
-					break;
-				}
-			} else {
-				assert_eq(bot, top+1);
-				bwops_++;
-				int c = ebwt->mapLF1(top, tloc);
-				if(c != rdc) {
-					break;
-				}
-				bot = top + 1;
-			}
-			if(++nrex == 255) {
-				break;
-			}
-			INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-		}
-	}
-	assert_lt(nlex, rdlen);
-	assert_leq(nlex, off);
-	assert_lt(nrex, rdlen);
-	reportHit(cache, topf, botf, topb, botb, len, prevEdit);
 }
 
 /**

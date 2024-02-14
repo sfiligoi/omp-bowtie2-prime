@@ -2147,7 +2147,6 @@ public:
 		sd.set_alloc(alloc,propagate_alloc);
 		sw.set_alloc(alloc,propagate_alloc);
 		shs.set_alloc(alloc,propagate_alloc);
-		seed.set_alloc(alloc,propagate_alloc);
 	}
 
 	// Interfaces for alignment and seed caches
@@ -2158,7 +2157,6 @@ public:
 	SwAligner sw;
 	SeedResults shs;
 	RandomSource rnd;
-	EList<Seed> seed;
 };
 
 class msWorkerConsts {
@@ -2510,11 +2508,11 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					const uint32_t offset = (interval * roundi) / nrounds;
 					assert(roundi == 0 || offset > 0);
 					// Set up seeds
-					msobj.seed.clear();
-					Seed::mmSeeds(
-						multiseedMms,    // max # mms per seed
+					Seed seed;
+					assert(multiseedMms==0);
+					Seed::zeroMmSeed(
 						multiseedLen,    // length of a multiseed seed
-						msobj.seed,      // seeds
+						seed,            // seed
 						gc);             // global constraint
 					// Check whether the offset would drive the first seed
 					// off the end
@@ -2527,7 +2525,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 							std::pair<int, int> instFw, instRc;
 							// Instantiate the seeds
 							std::pair<int, int> inst = SeedAligner::instantiateSeeds(
-								msobj.seed,     // search seeds
+								1, &seed,           // search seed
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds
 								*rds[mate],     // read to align
@@ -2565,10 +2563,8 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 						msobj.ca.nextRead(); // Clear cache in preparation for new search
 							// Align seeds
 							msobj.al.searchAllSeeds(
-								msobj.seed,       // search seeds
 								&msconsts->ebwtFw,          // BWT index
 								msconsts->ebwtBw,           // BWT' index
-								*rds[mate],       // read
 								msconsts->sc,               // scoring scheme
 								msobj.ca,         // alignment cache
 								msobj.shs,        // store seed hits here

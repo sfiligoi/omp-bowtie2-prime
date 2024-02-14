@@ -399,6 +399,7 @@ struct Seed {
 		} else throw 1;
 	}
 	
+	static void zeroMmSeed(int ln, Seed&, Constraint&);
 	static void zeroMmSeeds(int ln, EList<Seed>&, Constraint&);
 	static void oneMmSeeds (int ln, EList<Seed>&, Constraint&);
 	static void twoMmSeeds (int ln, EList<Seed>&, Constraint&);
@@ -1830,7 +1831,8 @@ public:
 	 * search for each seed.
 	 */
 	static std::pair<int, int> instantiateSeeds(
-		const EList<Seed>& seeds,   // search seeds
+        	const unsigned int seeds_size,
+		const Seed*        seeds,  // search seeds
 		size_t off,                 // offset into read to start extracting
 		int per,                    // interval between seeds
 		const Read& read,           // read to align
@@ -1846,10 +1848,8 @@ public:
 	 * search for each seed.
 	 */
 	void searchAllSeeds(
-		const EList<Seed>& seeds,   // search seeds
 		const Ebwt* ebwtFw,         // BWT index
 		const Ebwt* ebwtBw,         // BWT' index
-		const Read& read,           // read to align
 		const Scoring& pens,        // scoring scheme
 		AlignmentCacheIface& cache, // local seed alignment cache
 		SeedResults& hits,          // holds all the seed hits
@@ -1903,24 +1903,6 @@ public:
 
 protected:
 	class SeedAlignerSearchParams;
-
-	/**
-	 * Report a seed hit found by searchSeedBi(), but first try to extend it out in
-	 * either direction as far as possible without hitting any edits.  This will
-	 * allow us to prioritize the seed hits better later on.  Call reportHit() when
-	 * we're done, which actually adds the hit to the cache.  Returns result from
-	 * calling reportHit().
-	 */
-	void extendAndReportHit(
-		SeedSearchCache &cache,              // local seed alignment cache
-		size_t off,                          // offset of seed currently being searched
-		bool fw,                             // orientation of seed currently being searched
-		TIndexOffU topf,                     // top in BWT
-		TIndexOffU botf,                     // bot in BWT
-		TIndexOffU topb,                     // top in BWT'
-		TIndexOffU botb,                     // bot in BWT'
-		uint16_t len,                      // length of hit
-		DoublyLinkedList<Edit> *prevEdit); // previous edit
 
 	/**
 	 * Report a seed hit found by searchSeedBi() by adding it to the cache.
@@ -2008,8 +1990,6 @@ protected:
 	const Ebwt* ebwtFw_;       // forward index (BWT)
 	const Ebwt* ebwtBw_;       // backward/mirror index (BWT')
 	const Scoring* sc_;        // scoring scheme
-	
-	const Read* read_;         // read whose seeds are currently being aligned
 	
 	EList<Edit> edits_;        // temporary place to sort edits
 	uint64_t bwops_;           // Burrows-Wheeler operations
