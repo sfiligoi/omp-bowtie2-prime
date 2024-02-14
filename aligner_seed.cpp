@@ -705,8 +705,11 @@ void SeedAligner::searchAllSeeds(
 				SeedAlignerSearchState& sstate = sstateVec_[n];
 				if (sstate.need_reporting) {
 					SeedAlignerSearchParams& p= paramVec[n];
+					assert(p.prevEdit==NULL);
 					// Finished aligning seed
-					reportHit(p.get_cache(), p.bwt, p.prevEdit);
+					auto& cache = p.get_cache();
+					auto& bwt = p.bwt;
+					cache.addOnTheFly(cache.getSeq(), bwt.topf, bwt.botf, bwt.topb, bwt.botb);
 				}
 			}
 		   }
