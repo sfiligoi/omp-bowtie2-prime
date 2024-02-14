@@ -1991,6 +1991,17 @@ public:
 		return nfilt_ && scfilt_ && lenfilt_ && qcfilt_;
 	}
 
+	void updatePRM(const SeedResults& sr) {
+		prm.nSeedRanges = sr.numRanges();
+		prm.nSeedElts = sr.numElts();
+		prm.nSeedRangesFw = sr.numRangesFw();
+		prm.nSeedRangesRc = sr.numRangesRc();
+		prm.nSeedEltsFw = sr.numEltsFw();
+		prm.nSeedEltsRc = sr.numEltsRc();
+		prm.seedMedian = (uint64_t)(sr.medianHitsPerSeed() + 0.5);
+		prm.seedMean = (uint64_t)sr.averageHitsPerSeed();
+	}
+
 	void updateSHSCounters(const SeedResults& shs) {
 		// shs contain what we need to know to update our seed
 		// summaries for this seeding
@@ -2562,6 +2573,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 								msobj.ca,         // alignment cache
 								msobj.shs,        // store seed hits here
 								msinkwrap.prm);   // per-read metrics
+							msinkwrap.updatePRM(msobj.shs);
 							assert(msobj.shs.repOk(&msobj.ca.current()));
 							if(msobj.shs.empty()) {
 								// No seed alignments!  Done with this mate.
