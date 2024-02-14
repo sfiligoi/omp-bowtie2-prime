@@ -2143,22 +2143,13 @@ public:
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true)
 	{
-		al.set_alloc(alloc,propagate_alloc);
 		sd.set_alloc(alloc,propagate_alloc);
 		sw.set_alloc(alloc,propagate_alloc);
-		shs.set_alloc(alloc,propagate_alloc);
-		seed.set_alloc(alloc,propagate_alloc);
 	}
 
-	// Interfaces for alignment and seed caches
-	AlignmentCacheIfaceBT2 ca;
-
-	SeedAligner al;
 	SwDriverBT2 sd;
 	SwAligner sw;
-	SeedResults shs;
 	RandomSource rnd;
-	EList<Seed> seed;
 };
 
 class msWorkerConsts {
@@ -2278,7 +2269,8 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 
 	// allocate to heap to make it GPU accessible
 	const msWorkerConsts *msconsts = new msWorkerConsts;
- 
+
+	uint64_t bwops = 0; 
 	MyTimer tmr; 
 	{
 		// Sinks: these are so that we can print tables encoding counts for
@@ -2320,6 +2312,16 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		msWorkerObjs* g_msobjs = new msWorkerObjs[num_parallel_tasks];
 		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) g_msobjs[mate].set_alloc(&(mate_allocs[mate]));
 
+		// Interfaces for alignment and seed caches
+		AlignmentCacheIfaceBT2* caches = new AlignmentCacheIfaceBT2[num_parallel_tasks];
+		//for (uint32_t mate=0; mate<num_parallel_tasks; mate++) caches[mate].set_alloc(&(mate_allocs[mate]));
+
+		EList<Seed>* seeds = new EList<Seed>[num_parallel_tasks];
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) seeds[mate].set_alloc(&(mate_allocs[mate]));
+
+		SeedResults* shs = new SeedResults[num_parallel_tasks];
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) shs[mate].set_alloc(&(mate_allocs[mate]));
+
 		// These arrays move between CPU and GPU often
 		// Keep them together
 
@@ -2353,6 +2355,11 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
+
+		SeedMultiAligner al(&msconsts->ebwtFw,        // bowtie index
+				    msconsts->ebwtBw,         // expect it to be NULL
+				    &msconsts->sc,             // scoring scheme
+				    num_parallel_tasks);
 
                 uint64_t repcnt = 0;
 		while (true) { // will exit with a break
@@ -2410,8 +2417,8 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					msinkwrap.prm.reset(); // per-read metrics
 					msinkwrap.prm.doFmString = false;
 
-					msobj.ca.nextRead(); // clear the cache
-					assert(!msobj.ca.aligning());
+					caches[mate].nextRead(); // clear the cache
+					assert(!caches[mate].aligning());
 					const size_t rdlen = rds[mate]->length();
 					msinkwrap.nextRead(
 						rds[mate],
@@ -2457,14 +2464,14 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 
 					msinkwrap.prm.maxDPFails = msconsts->streak;
 					assert_gt(msconsts->streak, 0);
-					msobj.shs.clear();
+					shs[mate].clear();
 
 					// Whether we're done with mate
 					// done[mate] = !filt;
 					// Increment counters according to what got filtered
 					if(filt) { // done[mate] == false
-						msobj.shs.nextRead(*rds[mate]);
-						assert(msobj.shs.empty());
+						shs[mate].nextRead(*rds[mate]);
+						assert(shs[mate].empty());
 
 						// Calculate interval length for both mates
 						const int interval = max((int)msIval.f<int>((double)rdlen), 1);
@@ -2481,7 +2488,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 						msinkwrap.finalizePRM(0);
 
 						msinkwrap.finishReadOne(
-							&msobj.shs,           // seed results for mate 1
+							&shs[mate],           // seed results for mate 1
 							exhaustive[mate],     // exhausted seed hits for mate 1?
 							msobj.rnd,            // pseudo-random generator
 							msconsts->sc,                   // scoring scheme
@@ -2510,38 +2517,39 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					const uint32_t offset = (interval * roundi) / nrounds;
 					assert(roundi == 0 || offset > 0);
 					// Set up seeds
-					msobj.seed.clear();
+					seeds[mate].clear();
 					Seed::mmSeeds(
 						multiseedMms,    // max # mms per seed
 						multiseedLen,    // length of a multiseed seed
-						msobj.seed,      // seeds
+						seeds[mate],      // seeds
 						gc);             // global constraint
 					// Check whether the offset would drive the first seed
 					// off the end
 					if(offset > 0 && multiseedLen + offset > rds[mate]->length()) {
 						mate_idx[mate] = MATE_DONE;
 					} else {
-						msobj.shs.clearSeeds();
-						assert(msobj.shs.empty());
-						assert(msobj.shs.repOk(&msobj.ca.current()));
+						shs[mate].clearSeeds();
+						assert(shs[mate].empty());
+						assert(shs[mate].repOk(&caches[mate].current()));
 							std::pair<int, int> instFw, instRc;
 							// Instantiate the seeds
-							std::pair<int, int> inst = SeedAligner::instantiateSeeds(
-								msobj.seed,     // search seeds
+							std::pair<int, int> inst = SeedOneAligner::instantiateSeeds(
+								seeds[mate],     // search seeds
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds
 								*rds[mate],     // read to align
 								msconsts->sc,             // scoring scheme
 								msconsts->nofw,          // don't align forward read
 								msconsts->norc,          // don't align revcomp read
-								msobj.shs,      // holds all the seed hits
+								shs[mate],      // holds all the seed hits
 								instFw,
 								instRc);
 							if(inst.first + inst.second == 0) {
 								// No seed hits!  Done with this mate.
-								assert(msobj.shs.empty());
+								assert(shs[mate].empty());
 								mate_idx[mate] = MATE_DONE;
 							} else {
+								caches[mate].nextRead(); // Clear cache in preparation for new search
 								msinkwrap.seedsTried += (inst.first + inst.second);
 								msinkwrap.seedsTriedMS[0] = instFw.first + instFw.second;
 								msinkwrap.seedsTriedMS[1] = instRc.first + instRc.second;
@@ -2557,34 +2565,29 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		 	mate_allocs.ensure_spare();
 
 		   	// we can do all of the "mates" in parallel
-#pragma omp parallel for default(shared) schedule(dynamic,8)
+			al.searchAllSeeds(num_parallel_tasks, mate_idx,
+					  seeds,    // search seeds
+        				  caches ,  // local caches for seed alignments
+        				  shs,      // holds all the seed hits
+        				  bwops);
+ 
+			// could do in parallel,but no point
 			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-						msobj.ca.nextRead(); // Clear cache in preparation for new search
-							// Align seeds
-							msobj.al.searchAllSeeds(
-								msobj.seed,       // search seeds
-								&msconsts->ebwtFw,          // BWT index
-								msconsts->ebwtBw,           // BWT' index
-								*rds[mate],       // read
-								msconsts->sc,               // scoring scheme
-								msobj.ca,         // alignment cache
-								msobj.shs,        // store seed hits here
-								msinkwrap.prm);   // per-read metrics
-							msinkwrap.updatePRM(msobj.shs);
-							assert(msobj.shs.repOk(&msobj.ca.current()));
-							if(msobj.shs.empty()) {
+							msinkwrap.updatePRM(shs[mate]);
+							if(shs[mate].empty()) {
 								// No seed alignments!  Done with this mate.
 								mate_idx[mate] = MATE_DONE;
 							} else {
 								// shs contain what we need to know to update our seed
 								// summaries for this seeding
-								msinkwrap.updateSHSCounters(msobj.shs);
+								msinkwrap.updateSHSCounters(shs[mate]);
 							}
 				} // if
 			} // for mate
+
 		   tmr.next("searchAllSeeds");
 
 			// always call ensure_spare from main CPU thread
@@ -2598,14 +2601,14 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 					const uint16_t interval = intervals[mate];
 								// Sort seed hits into ranks
-								msobj.shs.rankSeedHits(msobj.rnd, msinkwrap.allHits());
+								shs[mate].rankSeedHits(msobj.rnd, msinkwrap.allHits());
 								int ret = 0;
                                                                 {
 									// Unpaired dynamic programming driver
 									ret = msobj.sd.extendSeeds(
 										*rds[mate],     // read
 										true,           // mate #1?
-										msobj.shs,      // seed hits
+										shs[mate],      // seed hits
 										msconsts->ebwtFw,         // bowtie index
 										msconsts->ebwtBw,         // rev bowtie index
 										msconsts->ref,            // packed reference strings
@@ -2628,7 +2631,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 										msconsts->cPow2,          // checkpointer interval, log2
 										msconsts->tri,          // triangular mini-fills?
 										msconsts->doTighten,        // -M score tightening mode
-										msobj.ca,       // seed alignment cache
+										caches[mate],       // seed alignment cache
 										msobj.rnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
 										&msinkwrap,     // for organizing hits
@@ -2644,7 +2647,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 									// We don't necessarily have to continue investigating both
 									// mates.  We continue on a mate only if its average
 									// interval length is high (> 1000)
-									if(msobj.shs.averageHitsPerSeed() < seedBoostThresh) {
+									if(shs[mate].averageHitsPerSeed() < seedBoostThresh) {
 										mate_idx[mate] = MATE_DONE;
 									} else if(msinkwrap.state().doneWithMate(true)) {
 										mate_idx[mate] = MATE_DONE;
@@ -2688,7 +2691,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 				//uint32_t sd = rds[0]->seed ^ rds[1]->seed;
 				//rnd.init(ROTL(sd, 20));
 				msinkwrap.finishReadOne(
-					&msobj.shs,           // seed results for mate 1
+					&shs[mate],           // seed results for mate 1
 					exhaustive[mate],     // exhausted seed hits for mate 1?
 					msobj.rnd,            // pseudo-random generator
 					msconsts->sc,                   // scoring scheme
@@ -2713,6 +2716,10 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 
 		v_msinkwrap.clear();
 		delete rp;
+
+		delete[] shs;
+		delete[] seeds;
+		delete[] caches;
 
 		delete[] minsc;
 		delete[] g_msobjs;

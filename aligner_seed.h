@@ -1625,25 +1625,25 @@ public:
 	}
 
 	void emplace_back( 
-		const BTDnaString& seq,  // sequence of current seed
-		const BTString& qual,    // quality string for current seed
+		SeedResults&         sr,
+		AlignmentCacheIface& cache,
 		int seedoffidx,          // seed index
 		bool fw                  // is it fw?
 		)
 	{
 		cacheVec.expand();
-		cacheVec.back().reset(seq, qual, seedoffidx, fw);
+		cacheVec.back().reset(sr, cache, seedoffidx, fw);
 	}
 
 	void emplace_back_noresize( 
-		const BTDnaString& seq,  // sequence of current seed
-		const BTString& qual,    // quality string for current seed
+		SeedResults&         sr,
+		AlignmentCacheIface& cache,
 		int seedoffidx,          // seed index
 		bool fw                  // is it fw?
 		)
 	{
 		cacheVec.expand_noresize();
-		cacheVec.back().reset(seq, qual, seedoffidx, fw);
+		cacheVec.back().reset(sr, cache, seedoffidx, fw);
 	}
 
 	// Same semantics as std::vector
@@ -1662,6 +1662,10 @@ public:
 	const SeedSearchCache& operator[](size_t idx) const { return cacheVec[idx].srcache; }
 	SeedSearchCache& operator[](size_t idx) { return cacheVec[idx].srcache; }
 
+	int addAllCached(size_t idx) {
+		return cacheVec[idx].addAllCached();
+	}
+
 	int getSeedOffIdx(size_t idx) const { return cacheVec[idx].seedoffidx; }
 	bool getFw(size_t idx) const { return cacheVec[idx].fw; }
 
@@ -1676,28 +1680,57 @@ protected:
 			)
 			: srcache(_seq, _qual)
 			, seedoffidx(_seedoffidx)
-			, fw(_fw) {}
+			, fw(_fw)
+			, psr(NULL), pcache(NULL)  {}
 		
 		CacheEl()
 			: srcache()
 			, seedoffidx(0), fw(true) // just to have a default
-			{}
+			, psr(NULL), pcache(NULL) {}
 
 		void reset(
-			const BTDnaString& _seq,  // sequence of current seed
-			const BTString& _qual,    // quality string for current seed
+			SeedResults&         _sr,
+			AlignmentCacheIface& _cache,
 			int _seedoffidx,          // seed index
 			bool _fw                  // is it fw?
 			) {
-			srcache.reset(_seq, _qual);
 			seedoffidx = _seedoffidx;
 			fw = _fw;
+			srcache.reset(_sr.seqs(_fw)[_seedoffidx], _sr.quals(_fw)[_seedoffidx]);
+			psr = &_sr;
+			pcache = &_cache;
+		}
+	
+		int addAllCached() {
+			// Tell the cache that we've started aligning, so the cache can
+			// expect a series of on-the-fly updates
+			int ret = srcache.beginAlign(*pcache);
+			if(ret == -1) {
+				// Out of memory when we tried to add key to map
+				return 1;
 			}
-		
+			assert(srcache.aligning());
+			if(!srcache.addAllCached()){
+				// Memory exhausted during copy
+				return 1;
+			}
+			srcache.finishAlign();
+			assert(!srcache.aligning());
+			if(srcache.qvValid()) {
+				psr->add(
+					srcache.getQv(),   // range of ranges in cache
+					pcache->current(), // cache
+					seedoffidx,        // seed index (from 5' end)
+					fw);               // whether seed is from forward read
+			}
+			return 0;
+		}
 
-		SeedSearchCache     srcache;   // search wrapper
-		int                 seedoffidx; // seed index
-		bool                fw;      // is it fw?
+		SeedSearchCache      srcache;   // search wrapper
+		int                  seedoffidx; // seed index
+		bool                 fw;      // is it fw?
+		SeedResults*         psr;
+		AlignmentCacheIface* pcache;
 	};
 
 	EList<CacheEl> cacheVec;
@@ -1773,6 +1806,7 @@ public:
 
 };
 
+#if 0 // not used anymore
 /**
  * Given an index and a seeding scheme, searches for seed hits.
  */
@@ -1812,49 +1846,6 @@ public:
 		set_alloc(arg.first,arg.second);
 	}
 	
-	/**
-	 * Given a read and a few coordinates that describe a substring of the
-	 * read (or its reverse complement), fill in 'seq' and 'qual' objects
-	 * with the seed sequence and qualities.
-	 */
-	static void instantiateSeq(
-		const Read& read, // input read
-		BTDnaString& seq, // output sequence
-		BTString& qual,   // output qualities
-		int len,          // seed length
-		int depth,        // seed's 0-based offset from 5' end
-		bool fw);         // seed's orientation
-
-	/**
-	 * Iterate through the seeds that cover the read and initiate a
-	 * search for each seed.
-	 */
-	static std::pair<int, int> instantiateSeeds(
-		const EList<Seed>& seeds,   // search seeds
-		size_t off,                 // offset into read to start extracting
-		int per,                    // interval between seeds
-		const Read& read,           // read to align
-		const Scoring& pens,        // scoring scheme
-		bool nofw,                  // don't align forward read
-		bool norc,                  // don't align revcomp read
-		SeedResults& sr,            // holds all the seed hits
-		std::pair<int, int>& instFw,
-		std::pair<int, int>& instRc);
-
-	/**
-	 * Iterate through the seeds that cover the read and initiate a
-	 * search for each seed.
-	 */
-	void searchAllSeeds(
-		const EList<Seed>& seeds,   // search seeds
-		const Ebwt* ebwtFw,         // BWT index
-		const Ebwt* ebwtBw,         // BWT' index
-		const Read& read,           // read to align
-		const Scoring& pens,        // scoring scheme
-		AlignmentCacheIface& cache, // local seed alignment cache
-		SeedResults& hits,          // holds all the seed hits
-		PerReadMetrics& prm);       // per-read metrics
-
 	/**
 	 * Sanity-check a partial alignment produced during oneMmSearch.
 	 */
@@ -1902,8 +1893,6 @@ public:
 		SeedResults&       hits);  // holds all the seed hits (and exact hit)
 
 protected:
-	class SeedAlignerSearchParams;
-
 	/**
 	 * Report a seed hit found by searchSeedBi(), but first try to extend it out in
 	 * either direction as far as possible without hitting any edits.  This will
@@ -1947,8 +1936,121 @@ protected:
 		DoublyLinkedList<Edit> *prevEdit)  // previous edit
 	{ reportHit(cache, bwt, cache.getSeq().length(), prevEdit); }
 
+	void prefetchNextLocsBi(
+		const InstantiatedSeed& seed, // current instantiated seed
+		TIndexOffU topf,              // top in BWT
+		TIndexOffU botf,              // bot in BWT
+		TIndexOffU topb,              // top in BWT'
+		TIndexOffU botb,              // bot in BWT'
+		int step);                  // step to get ready for
+
+	void prefetchNextLocsBi(
+		const InstantiatedSeed& seed, // current instantiated seed
+		const BwtTopBot &bwt,       // The 4 BWT idxs
+		int step)                   // step to get ready for
+	{ prefetchNextLocsBi(seed, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
+
+	// Following are set in searchAllSeeds then used by searchSeed()
+	// and other protected members.
+	const Ebwt* ebwtFw_;       // forward index (BWT)
+	const Ebwt* ebwtBw_;       // backward/mirror index (BWT')
+	const Scoring* sc_;        // scoring scheme
+	
+	const Read* read_;         // read whose seeds are currently being aligned
+	
+	EList<Edit> edits_;        // temporary place to sort edits
+	uint64_t bwops_;           // Burrows-Wheeler operations
+	uint64_t bwedits_;         // Burrows-Wheeler edits
+	BTDnaString tmprfdnastr_;  // used in reportHit
+
+
+	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
+	BTDnaString tmpdnastr_;
+};
+#endif //disabled
+
+class SeedOneAligner {
+
+public:
 	/**
-	 * Main, recursive implementation of the seed search.
+	 * Iterate through the seeds that cover the read and initiate a
+	 * search for each seed.
+	 */
+	static std::pair<int, int> instantiateSeeds(
+		const EList<Seed>& seeds,   // search seeds
+		size_t off,                 // offset into read to start extracting
+		int per,                    // interval between seeds
+		const Read& read,           // read to align
+		const Scoring& pens,        // scoring scheme
+		bool nofw,                  // don't align forward read
+		bool norc,                  // don't align revcomp read
+		SeedResults& sr,            // holds all the seed hits
+		std::pair<int, int>& instFw,
+		std::pair<int, int>& instRc);
+
+protected:
+	/**
+	 * Given a read and a few coordinates that describe a substring of the
+	 * read (or its reverse complement), fill in 'seq' and 'qual' objects
+	 * with the seed sequence and qualities.
+	 */
+	static void instantiateSeq(
+		const Read& read, // input read
+		BTDnaString& seq, // output sequence
+		BTString& qual,   // output qualities
+		int len,          // seed length
+		int depth,        // seed's 0-based offset from 5' end
+		bool fw);         // seed's orientation
+
+};
+
+/**
+ * Given an index and a seeding scheme, searches for seed hits.
+ */
+class SeedMultiAligner {
+
+public:
+	
+	/**
+	 * Initialize with index.
+	 */
+	SeedMultiAligner(
+		const Ebwt* ebwtFw,       // forward index (BWT)
+		const Ebwt* ebwtBw,       // backward/mirror index (BWT')
+		const Scoring* sc,        // scoring scheme
+		const uint32_t maxEls
+	)
+	: ebwtFw_(ebwtFw), ebwtBw_(ebwtBw), sc_(sc)
+	, maxEls_(maxEls)
+        { 
+                mcache_.reserve(maxEls_*ibatch_size);
+                paramVec_.reserve(maxEls_*ibatch_maxVec);
+                sstateVec_.reserve(maxEls_*ibatch_maxVec);
+
+		// force memory allocation(lazy, else)
+		paramVec_.expand(); paramVec_.clear();
+		// set it to the right size immediately, no dynamic growing
+		while (sstateVec_.size()<(maxEls_*ibatch_maxVec)) sstateVec_.expand();
+		// mcache_.reserve is not lazy
+	}
+
+	/**
+	 * Iterate through the seeds that cover the read and initiate a
+	 * search for each seed.
+	 */
+	void searchAllSeeds(
+		const uint32_t       nidxs,      // number of indexes
+		int32_t              idxs[],     // inexes in the other arrays
+		const EList<Seed>    seeds[],    // search seeds
+		AlignmentCacheIface  caches[],  // local cache for seed alignments
+		SeedResults          shs[],      // holds all the seed hits
+		uint64_t&            bwops_);
+
+protected:
+	class SeedAlignerSearchParams;
+
+	/**
+	 * Main implementation of the seed search.
 	 * Given a vector of instantiated seeds, search
 	 */
 	static void searchSeedBi(
@@ -1989,33 +2091,16 @@ protected:
 		int step)                   // step to get ready for
 	{ nextLocsBi(ebwtFw, ebwtBw, seed, tloc, bloc, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
 
-	void prefetchNextLocsBi(
-		const InstantiatedSeed& seed, // current instantiated seed
-		TIndexOffU topf,              // top in BWT
-		TIndexOffU botf,              // bot in BWT
-		TIndexOffU topb,              // top in BWT'
-		TIndexOffU botb,              // bot in BWT'
-		int step);                  // step to get ready for
-
-	void prefetchNextLocsBi(
-		const InstantiatedSeed& seed, // current instantiated seed
-		const BwtTopBot &bwt,       // The 4 BWT idxs
-		int step)                   // step to get ready for
-	{ prefetchNextLocsBi(seed, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
-
-	// Following are set in searchAllSeeds then used by searchSeed()
-	// and other protected members.
 	const Ebwt* ebwtFw_;       // forward index (BWT)
 	const Ebwt* ebwtBw_;       // backward/mirror index (BWT')
 	const Scoring* sc_;        // scoring scheme
-	
-	const Read* read_;         // read whose seeds are currently being aligned
-	
-	EList<Edit> edits_;        // temporary place to sort edits
-	uint64_t bwops_;           // Burrows-Wheeler operations
-	uint64_t bwedits_;         // Burrows-Wheeler edits
-	BTDnaString tmprfdnastr_;  // used in reportHit
+	const uint32_t maxEls_;    // max els we we ever handle in a single call
 
+	/*
+ 	 * Work buffers
+ 	 * Created in advance, so we do not re-allocate at each iteration
+ 	 */
+ 
 	/**
  	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.
  	*       2 is too small for prefetch to be fully effective, 4 seems already OK, 
@@ -2027,11 +2112,8 @@ protected:
 	SeedSearchMultiCache mcache_;
 	EList<SeedAlignerSearchParams,int(ibatch_maxVec)> paramVec_;
 	EList<SeedAlignerSearchState, int(ibatch_maxVec)> sstateVec_;
-
-	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
-	BTDnaString tmpdnastr_;
 };
-
+	
 #define INIT_LOCS(top, bot, tloc, bloc, e) { \
 	if(bot - top == 1) { \
 		tloc.initFromRow(top, (e).eh(), (e).ebwt()); \
