@@ -1714,17 +1714,7 @@ SeedAligner::searchSeedBi(
 		}
 		int c = seq[sstate.off];  assert_range(0, 4, c);
 		//
-		bool leaveZone = seed.zones[i].first < 0;
-		//bool leaveZoneIns = zones_[i].second < 0;
-		Constraint& cons    = p.cv[abs(seed.zones[i].first)];
 		if(c == 4) { // couldn't handle the N
-			sstate.done = true;
-			ncompleted++;
-			continue;
-		}
-		if(leaveZone && (!cons.acceptable() || !p.overall.acceptable())) {
-			// Not enough edits to make this path non-redundant with
-			// other seeds
 			sstate.done = true;
 			ncompleted++;
 			continue;
