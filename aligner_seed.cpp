@@ -1309,6 +1309,7 @@ bool SeedAligner::oneMmSearch(
 	return results;
 }
 
+#if 0
 inline void
 SeedAligner::prefetchNextLocsBi(
 	const InstantiatedSeed& seed, // current instantiated seed
@@ -1343,6 +1344,7 @@ SeedAligner::prefetchNextLocsBi(
 		}
 	}
 }
+#endif
 
 /**
  * Get tloc, bloc ready for the next step.  If the new range is under
@@ -1352,27 +1354,20 @@ inline void
 SeedAligner::nextLocsBi(
         const Ebwt* ebwtFw,           // forward index (BWT)
         const Ebwt* ebwtBw,           // backward/mirror index (BWT')
-	const InstantiatedSeed& seed, // current instantiated seed
+	const int seed_step,          // current instantiated seed step
 	SideLocus& tloc,              // top locus
 	SideLocus& bloc,              // bot locus
 	TIndexOffU topf,              // top in BWT
 	TIndexOffU botf,              // bot in BWT
 	TIndexOffU topb,              // top in BWT'
-	TIndexOffU botb,              // bot in BWT'
-	int step                    // step to get ready for
-#if 0
-	, const SABWOffTrack* prevOt, // previous tracker
-	SABWOffTrack& ot            // current tracker
-#endif
+	TIndexOffU botb               // bot in BWT'
 	)
 {
 	assert_gt(botf, 0);
 	assert(ebwtBw == NULL || botb > 0);
-	assert_geq(step, 0); // next step can't be first one
 	assert(ebwtBw == NULL || botf-topf == botb-topb);
-	if(step == (int)seed.steps.size()) return; // no more steps!
 	// Which direction are we going in next?
-	if(seed.steps[step] > 0) {
+	if(seed_step > 0) {
 		// Left to right; use BWT'
 		if(botb - topb == 1) {
 			// Already down to 1 row; just init top locus
@@ -1395,27 +1390,6 @@ SeedAligner::nextLocsBi(
 			assert(bloc.valid());
 		}
 	}
-	// Check if we should update the tracker with this refinement
-#if 0
-	if(botf-topf <= BW_OFF_TRACK_CEIL) {
-		if(ot.size() == 0 && prevOt != NULL && prevOt->size() > 0) {
-			// Inherit state from the predecessor
-			ot = *prevOt;
-		}
-		bool ltr = seed.steps[step-1] > 0;
-		int adj = abs(seed.steps[step-1])-1;
-		const Ebwt* ebwt = ltr ? ebwtBw_ : ebwtFw_;
-		ot.update(
-			ltr ? topb : topf,    // top
-			ltr ? botb : botf,    // bot
-			adj,                  // adj (to be subtracted from offset)
-			ebwt->offs(),         // offs array
-			ebwt->eh().offRate(), // offrate (sample = every 1 << offrate elts)
-			NULL                  // dead
-		);
-		assert_gt(ot.size(), 0);
-	}
-#endif
 	assert(botf - topf == 1 ||  bloc.valid());
 	assert(botf - topf > 1  || !bloc.valid());
 }
@@ -1551,7 +1525,7 @@ SeedAligner::startSearchSeedBi(
 		if(p.step == (int)seed.steps.size()) {
 			return true;
 		}
-		nextLocsBi(ebwtFw,ebwtBw, seed, p.tloc, p.bloc, p.bwt, p.step);
+		nextLocsBi(ebwtFw,ebwtBw, seed.steps[p.step], p.tloc, p.bloc, p.bwt);
 		assert(p.tloc.valid());
 	} else assert(p.prevEdit != NULL);
 	assert(p.tloc.valid());
@@ -1751,7 +1725,7 @@ SeedAligner::searchSeedBi(
 			ncompleted++;
 			continue;
 		}
-		nextLocsBi(ebwtFw,ebwtBw, seed, p.tloc, p.bloc, p.bwt, i+1);
+		nextLocsBi(ebwtFw,ebwtBw, seed.steps[i+1], p.tloc, p.bloc, p.bwt);
 	   } // for n
 	   nleft -= ncompleted;
 	   bwops_ += bwops;

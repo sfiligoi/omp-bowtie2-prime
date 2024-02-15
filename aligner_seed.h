@@ -1952,25 +1952,24 @@ protected:
 	static void nextLocsBi(
 	        const Ebwt* ebwtFw,           // forward index (BWT)
         	const Ebwt* ebwtBw,           // backward/mirror index (BWT')
-		const InstantiatedSeed& seed, // current instantiated seed
+	        const int seed_step,         // current instantiated seed step
 		SideLocus& tloc,            // top locus
 		SideLocus& bloc,            // bot locus
 		TIndexOffU topf,              // top in BWT
 		TIndexOffU botf,              // bot in BWT
 		TIndexOffU topb,              // top in BWT'
-		TIndexOffU botb,              // bot in BWT'
-		int step);                  // step to get ready for
+		TIndexOffU botb);             // bot in BWT'
 	
 	static void nextLocsBi(
 	        const Ebwt* ebwtFw,           // forward index (BWT)
         	const Ebwt* ebwtBw,           // backward/mirror index (BWT')
-		const InstantiatedSeed& seed, // current instantiated seed
+	        const int seed_step,          // current instantiated seed step
 		SideLocus& tloc,            // top locus
 		SideLocus& bloc,            // bot locus
-		const BwtTopBot &bwt,       // The 4 BWT idxs
-		int step)                   // step to get ready for
-	{ nextLocsBi(ebwtFw, ebwtBw, seed, tloc, bloc, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
+		const BwtTopBot &bwt)       // The 4 BWT idxs
+	{ nextLocsBi(ebwtFw, ebwtBw, seed_step, tloc, bloc, bwt.topf, bwt.botf, bwt.topb, bwt.botb); }
 
+#if 0
 	void prefetchNextLocsBi(
 		const InstantiatedSeed& seed, // current instantiated seed
 		TIndexOffU topf,              // top in BWT
@@ -1984,6 +1983,7 @@ protected:
 		const BwtTopBot &bwt,       // The 4 BWT idxs
 		int step)                   // step to get ready for
 	{ prefetchNextLocsBi(seed, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
+#endif
 
 	// Following are set in searchAllSeeds then used by searchSeed()
 	// and other protected members.
