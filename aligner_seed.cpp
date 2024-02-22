@@ -1664,7 +1664,6 @@ SeedAligner::searchSeedBi(
 
 		SeedSearchCache &cache = p.get_cache();
 		const BTDnaString& seq = cache.getSeq();
-		const BTString& qual = cache.getQual();
 
 		assert_gt(p.bwt.botf, p.bwt.topf);
 		assert(p.bwt.botf - p.bwt.topf == 1 ||  p.bloc.valid());
@@ -1673,7 +1672,6 @@ SeedAligner::searchSeedBi(
 		assert(p.tloc.valid());
 		sstate.setOff(seed.steps[i], p.bwt, ebwtFw, ebwtBw);
 		__builtin_prefetch(&(seq[sstate.off]));
-		__builtin_prefetch(&(qual[sstate.off]));
 		if(p.bloc.valid()) {
 			// Range delimited by tloc/bloc has size >1.  If size == 1,
 			// we use a simpler query (see if(!bloc.valid()) blocks below)
