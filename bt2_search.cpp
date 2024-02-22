@@ -2504,21 +2504,21 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					const uint16_t interval = intervals[mate];
 					// Calculate # seed rounds for each mate
 					const uint32_t nrounds = min<uint16_t>(nSeedRounds, interval);
-					Constraint gc = Constraint::penaltyFuncBased(scoreMin);
 					const uint32_t offset = (interval * roundi) / nrounds;
 					assert(roundi == 0 || offset > 0);
 					// Set up seeds
-					Seed seed;
-					assert(multiseedMms==0);
-					Seed::zeroMmSeed(
-						multiseedLen,    // length of a multiseed seed
-						seed,            // seed
-						gc);             // global constraint
 					// Check whether the offset would drive the first seed
 					// off the end
 					if(offset > 0 && multiseedLen + offset > rds[mate]->length()) {
 						mate_idx[mate] = MATE_DONE;
 					} else {
+						Constraint gc = Constraint::penaltyFuncBased(scoreMin);
+						Seed seed;
+						assert(multiseedMms==0);
+						Seed::zeroMmSeed(
+							multiseedLen,    // length of a multiseed seed
+							seed,            // seed
+							gc);             // global constraint
 						msobj.shs.clearSeeds();
 						assert(msobj.shs.empty());
 						assert(msobj.shs.repOk(&msobj.ca.current()));
