@@ -1455,12 +1455,10 @@ class SeedSearchCache {
 
 public:
 	SeedSearchCache(
-		const BTDnaString& _seq,  // sequence of current seed
-		const BTString& _qual     // quality string for current seed
+		const BTDnaString& _seq  // sequence of current seed
 		)
 		: qv()
 		, pseq(&_seq)
-		, pqual(&_qual)
 		, cachedEls()
 		, cachep(NULL)
 	{
@@ -1470,7 +1468,6 @@ public:
 	SeedSearchCache()
 		: qv()
 		, pseq(NULL)
-		, pqual(NULL)
 		, cachedEls()
 		, cachep(NULL)
 	{
@@ -1480,12 +1477,10 @@ public:
 	SeedSearchCache& operator=(const SeedSearchCache& other) = default;
 
 	void reset(
-		const BTDnaString& _seq,  // sequence of current seed
-		const BTString& _qual     // quality string for current seed
+		const BTDnaString& _seq  // sequence of current seed
 		)
 	{
 		pseq = &_seq;
-		pqual = &_qual;
 	}
 
 	/**
@@ -1496,7 +1491,7 @@ public:
 	 */
 	int beginAlign(AlignmentCacheIface& cache) 
 	{ 
-		int ret = cache.beginAlign(*pseq, *pqual, qv);
+		int ret = cache.beginAlign(*pseq, qv);
 		if (ret>=0) {
 			cachep = &cache;
 		}
@@ -1561,7 +1556,6 @@ public:
 
 	const QVal&          getQv() const {return qv;}
 	const BTDnaString&   getSeq() const {return *pseq;}
-	const BTString&      getQual() const {return *pqual;}
 
 protected:
 	class AddEl {
@@ -1604,7 +1598,6 @@ protected:
 
 	QVal                 qv;
 	const BTDnaString*   pseq;   // sequence of current seed
-	const BTString*      pqual;  // quality string for current seed
 
 	EList<AddEl>          cachedEls; // tmp storage of values that will go in the cache
 	AlignmentCacheIface*  cachep; // local alignment cache for seed alignment, set at beginAliginings
@@ -1627,24 +1620,22 @@ public:
 
 	void emplace_back( 
 		const BTDnaString& seq,  // sequence of current seed
-		const BTString& qual,    // quality string for current seed
 		int seedoffidx,          // seed index
 		bool fw                  // is it fw?
 		)
 	{
 		cacheVec.expand();
-		cacheVec.back().reset(seq, qual, seedoffidx, fw);
+		cacheVec.back().reset(seq, seedoffidx, fw);
 	}
 
 	void emplace_back_noresize( 
 		const BTDnaString& seq,  // sequence of current seed
-		const BTString& qual,    // quality string for current seed
 		int seedoffidx,          // seed index
 		bool fw                  // is it fw?
 		)
 	{
 		cacheVec.expand_noresize();
-		cacheVec.back().reset(seq, qual, seedoffidx, fw);
+		cacheVec.back().reset(seq, seedoffidx, fw);
 	}
 
 	// Same semantics as std::vector
@@ -1671,11 +1662,10 @@ protected:
 	public:
 		CacheEl(
 			const BTDnaString& _seq,  // sequence of current seed
-			const BTString& _qual,    // quality string for current seed
 			int _seedoffidx,          // seed index
 			bool _fw                  // is it fw?
 			)
-			: srcache(_seq, _qual)
+			: srcache(_seq)
 			, seedoffidx(_seedoffidx)
 			, fw(_fw) {}
 		
@@ -1686,11 +1676,10 @@ protected:
 
 		void reset(
 			const BTDnaString& _seq,  // sequence of current seed
-			const BTString& _qual,    // quality string for current seed
 			int _seedoffidx,          // seed index
 			bool _fw                  // is it fw?
 			) {
-			srcache.reset(_seq, _qual);
+			srcache.reset(_seq);
 			seedoffidx = _seedoffidx;
 			fw = _fw;
 			}

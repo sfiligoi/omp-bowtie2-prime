@@ -706,7 +706,6 @@ public:
 	 */
 	int beginAlign(
 		const BTDnaString& seq,
-		const BTString& qual,
 		QVal& qv,              // out: filled in if we find it in the cache
 		bool getLock = true)
 	{
