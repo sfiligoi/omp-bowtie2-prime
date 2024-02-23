@@ -372,7 +372,7 @@ struct Seed {
 	 */
 	bool instantiate(
 		const Read& read,
-		const BTDnaString& seq, // already-extracted seed sequence
+		const char * seq, // already-extracted seed sequence
 		const Scoring& pens,
 		int depth,
 		int seedoffidx,

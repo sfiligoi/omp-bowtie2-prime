@@ -216,7 +216,7 @@ public:
 bool
 Seed::instantiate(
 	const Read& read,
-	const BTDnaString& seq, // seed read sequence
+	const char *seq, // seed read sequence
 	const Scoring& pens,
 	int depth,
 	int seedoffidx,
@@ -559,7 +559,7 @@ pair<int, int> SeedAligner::instantiateSeeds(
 				InstantiatedSeed* is = &iss.back();
 				if(seeds[j].instantiate(
 					read,
-					sr.seqs(fw)[i],
+					sr.seqs(fw)[i].buf(),
 					pens,
 					depth,
 					i,
