@@ -1356,13 +1356,12 @@ public:
 	 * used to index into the ftab array.
 	 */
 	TIndexOffU ftabSeqToInt(
-		const BTDnaString& seq,
+		const char *seq,
 		size_t off,
 		bool rev) const
 		{
 			int fc = _eh._ftabChars;
 			size_t lo = off, hi = lo + fc;
-			assert_leq(hi, seq.length());
 			TIndexOffU ftabOff = 0;
 			for(int i = 0; i < fc; i++) {
 				bool fwex = fw();
@@ -1476,14 +1475,14 @@ public:
 	/**
 	 * Get low bound of ftab range.
 	 */
-	TIndexOffU ftabLo(const BTDnaString& seq, size_t off) const {
+	TIndexOffU ftabLo(const char * seq, size_t off) const {
 		return ftabLo(ftabSeqToInt(seq, off, false));
 	}
 
 	/**
 	 * Get high bound of ftab range.
 	 */
-	TIndexOffU ftabHi(const BTDnaString& seq, size_t off) const {
+	TIndexOffU ftabHi(const char * seq, size_t off) const {
 		return ftabHi(ftabSeqToInt(seq, off, false));
 	}
 
@@ -1496,7 +1495,7 @@ public:
 	 */
 	bool
 	ftabLoHi(
-		const BTDnaString& seq, // sequence to extract from
+		const char * seq, // sequence to extract from
 		size_t off,             // offset into seq to begin extracting
 		bool rev,               // reverse while extracting
 		TIndexOffU& top,

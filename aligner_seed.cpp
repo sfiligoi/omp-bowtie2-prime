@@ -704,7 +704,7 @@ void SeedAligner::searchAllSeeds(
 					// Finished aligning seed
 					auto& cache = p.get_cache();
 					auto& bwt = p.bwt;
-					cache.addOnTheFly(cache.getSeq(), bwt.topf, bwt.botf, bwt.topb, bwt.botb);
+					cache.addOnTheFly(cache.getSeq(), cache.getSeqLen(), bwt.topf, bwt.botf, bwt.topb, bwt.botb);
 				}
 			}
 		   }
@@ -798,7 +798,7 @@ inline void exactSweepInit(
 	}
 	if(doFtab) {
 		// Use ftab
-		ebwt.ftabLoHi(seq, left - ftabLen, false, top, bot);
+		ebwt.ftabLoHi(seq.buf(), left - ftabLen, false, top, bot);
 		dep += (size_t)ftabLen;
 	} else {
 		// Use fchr
@@ -1077,9 +1077,9 @@ bool SeedAligner::oneMmSearch(
 			if(ftabLen > 1 && (size_t)ftabLen <= nea) {
 				// Use ftab to jump partway into near half
 				bool rev = !ebwtfw;
-				ebwt->ftabLoHi(seq, len - ftabLen, rev, top, bot);
+				ebwt->ftabLoHi(seq.buf(), len - ftabLen, rev, top, bot);
 				if(rep1mm) {
-					ebwtp->ftabLoHi(seq, len - ftabLen, rev, topp, botp);
+					ebwtp->ftabLoHi(seq.buf(), len - ftabLen, rev, topp, botp);
 					assert_eq(bot - top, botp - topp);
 				}
 				if(bot - top == 0) {
@@ -1381,67 +1381,6 @@ SeedAligner::nextLocsBi(
 	assert(botf - topf > 1  || !bloc.valid());
 }
 
-/**
- * Report a seed hit found by searchSeedBi() by adding it to the cache.  Return
- * false if the hit could not be reported because of, e.g., cache exhaustion.
- */
-void
-SeedAligner::reportHit(
-	SeedSearchCache &cache,              // local seed alignment cache
-	TIndexOffU topf,                     // top in BWT
-	TIndexOffU botf,                     // bot in BWT
-	TIndexOffU topb,                     // top in BWT'
-	TIndexOffU botb,                     // bot in BWT'
-	uint16_t len,                      // length of hit
-	DoublyLinkedList<Edit> *prevEdit)  // previous edit
-{
-	const BTDnaString& seq = cache.getSeq();
-
-	// Add information about the seed hit to AlignmentCache.  This
-	// information eventually makes its way back to the SeedResults
-	// object when we call finishAlign(...).
-	BTDnaString& rf = tmprfdnastr_;
-	rf.clear();
-	edits_.clear();
-	if(prevEdit != NULL) {
-		prevEdit->toList(edits_);
-		Edit::sort(edits_);
-		assert(Edit::repOk(edits_, seq));
-		Edit::toRef(seq, edits_, rf);
-	} else {
-		rf = seq;
-	}
-	// Note: Disabled, as we now use memory cache
-	// Sanity check: shouldn't add the same hit twice.  If this
-	// happens, it may be because our zone Constraints are not set up
-	// properly and erroneously return true from acceptable() when they
-	// should return false in some cases.
-	//assert_eq(hits_.size(), cache.curNumRanges());
-	//assert(hits_.insert(rf));
-	cache.addOnTheFly(rf, topf, botf, topb, botb);
-	//assert_eq(hits_.size(), cache.curNumRanges());
-#ifndef NDEBUG
-	// Sanity check that the topf/botf and topb/botb ranges really
-	// correspond to the reference sequence aligned to
-	{
-		BTDnaString rfr;
-		TIndexOffU tpf, btf, tpb, btb;
-		tpf = btf = tpb = btb = 0;
-		assert(ebwtFw_->contains(rf, &tpf, &btf));
-		if(ebwtBw_ != NULL) {
-			rfr = rf;
-			rfr.reverse();
-			assert(ebwtBw_->contains(rfr, &tpb, &btb));
-			assert_eq(tpf, topf);
-			assert_eq(btf, botf);
-			assert_eq(tpb, topb);
-			assert_eq(btb, botb);
-		}
-	}
-#endif
-	return;
-}
-
 // return true, if we are already done
 bool
 SeedAligner::startSearchSeedBi(
@@ -1451,7 +1390,7 @@ SeedAligner::startSearchSeedBi(
 {
 	SeedSearchCache &cache = p.get_cache();
 	const InstantiatedSeed& seed = p.get_seed();
-	const BTDnaString& seq = cache.getSeq();
+	const char *seq = cache.getSeq();
 
 	assert_gt(seed.steps.size(), 0);
 	assert(ebwtBw == NULL || ebwtBw->eh().ftabChars() == ebwtFw->eh().ftabChars());
@@ -1650,7 +1589,7 @@ SeedAligner::searchSeedBi(
 		p.step++; // get ready for the next iteration
 
 		SeedSearchCache &cache = p.get_cache();
-		const BTDnaString& seq = cache.getSeq();
+		const char *seq = cache.getSeq();
 
 		assert_gt(p.bwt.botf, p.bwt.topf);
 		assert(p.bwt.botf - p.bwt.topf == 1 ||  p.bloc.valid());

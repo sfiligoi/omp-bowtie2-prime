@@ -117,36 +117,48 @@ struct QKey {
 		init(s ASSERT_ONLY(, tmp));
 	}
 
+	QKey(const char * s, const uint32_t l ASSERT_ONLY(, BTDnaString& tmp)) {
+		init(s, l ASSERT_ONLY(, tmp));
+	}
+
 	/**
 	 * Initialize QKey from DNA string.  Rightmost character is placed in the
 	 * least significant bitpair.
 	 */
 	bool init(
-		const BTDnaString& s
+		const char *   s,
+		const uint32_t l
 		ASSERT_ONLY(, BTDnaString& tmp))
 	{
 		seq = 0;
-		len = (uint32_t)s.length();
+		len = l;
 		ASSERT_ONLY(tmp.clear());
 		if(len > 32) {
 			len = 0xffffffff;
 			return false; // wasn't cacheable
 		} else {
 			// Rightmost char of 's' goes in the least significant bitpair
-			for(size_t i = 0; i < 32 && i < s.length(); i++) {
-				int c = (int)s.get(i);
+			for(uint32_t i = 0; i < 32 && i < l; i++) {
+				int c = (int)s[i];
 				assert_range(0, 4, c);
 				if(c == 4) {
 					len = 0xffffffff;
 					return false;
 				}
-				seq = (seq << 2) | s.get(i);
+				seq = (seq << 2) | s[i];
 			}
 			ASSERT_ONLY(toString(tmp));
 			assert(sstr_eq(tmp, s));
 			assert_leq(len, 32);
 			return true; // was cacheable
 		}
+	}
+
+	bool init(
+		const BTDnaString& s
+		ASSERT_ONLY(, BTDnaString& tmp))
+	{
+		init(s.buf(), (uint32_t)s.length() ASSERT_ONLY(, tmp));
 	}
 
 	/**
@@ -815,6 +827,21 @@ public:
 
 		ASSERT_ONLY(BTDnaString tmp);
 		SAKey sak(rfseq ASSERT_ONLY(, tmp));
+		return addOnTheFly(sak, topf, botf, topb, botb, getLock);
+	}
+
+	bool addOnTheFly(
+		const char *   rfseq,       // reference sequence close to read seq - content
+		const uint32_t rfseq_len,   // reference sequence close to read seq - length
+		TIndexOffU topf,            // top in BWT index
+		TIndexOffU botf,            // bot in BWT index
+		TIndexOffU topb,            // top in BWT' index
+		TIndexOffU botb,            // bot in BWT' index
+		bool getLock = true)      // true -> lock is not held by caller
+	{
+
+		ASSERT_ONLY(BTDnaString tmp);
+		SAKey sak(rfseq, rfseq_len ASSERT_ONLY(, tmp));
 		return addOnTheFly(sak, topf, botf, topb, botb, getLock);
 	}
 

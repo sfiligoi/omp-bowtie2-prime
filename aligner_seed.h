@@ -1513,14 +1513,15 @@ public:
          * compiled for the current read in the local memory buffer.
          */
         void addOnTheFly(
-                const BTDnaString& rfseq, // reference sequence close to read seq
+                const char *   rfseq,     // reference sequence close to read seq - content
+                const uint32_t rfseq_len, // reference sequence close to read seq - length
                 TIndexOffU topf,            // top in BWT index
                 TIndexOffU botf,            // bot in BWT index
                 TIndexOffU topb,            // top in BWT' index
                 TIndexOffU botb)            // bot in BWT' index
 	{
 		cachedEls.expand();
-		cachedEls.back().reset(rfseq, topf, botf, topb, botb);
+		cachedEls.back().reset(rfseq, rfseq_len, topf, botf, topb, botb);
 	}
 
 	/**
@@ -1531,34 +1532,37 @@ public:
 	bool qvValid() const { return qv.valid();}
 
 	const QVal&          getQv() const {return qv;}
-	const BTDnaString&   getSeq() const {return *pseq;}
+	const char *         getSeq() const {return pseq->buf();}
+	const uint32_t       getSeqLen() const {return pseq->length();}
 
 protected:
 	class AddEl {
 	public:
         	AddEl(
-                	const BTDnaString& rfseq, // reference sequence close to read seq
+	                const char *   rfseq,     // reference sequence close to read seq - content
+        	        const uint32_t rfseq_len, // reference sequence close to read seq - length
                 	TIndexOffU _topf,            // top in BWT index
                 	TIndexOffU _botf,            // bot in BWT index
                 	TIndexOffU _topb,            // top in BWT' index
                 	TIndexOffU _botb             // bot in BWT' index
 			) :
 			ASSERT_ONLY(tmp(), )
-			sak(rfseq ASSERT_ONLY(, tmp)),
+			sak(rfseq, rfseq_len ASSERT_ONLY(, tmp)),
 			topf(_topf), botf(_botf), topb(_topb), botb(_botb) 
 		{}
 
 		AddEl() {}
 
 		void reset(
-                        const BTDnaString& rfseq, // reference sequence close to read seq
+                	const char *   rfseq,     // reference sequence close to read seq - content
+	                const uint32_t rfseq_len, // reference sequence close to read seq - length
                         TIndexOffU _topf,            // top in BWT index
                         TIndexOffU _botf,            // bot in BWT index
                         TIndexOffU _topb,            // top in BWT' index
                         TIndexOffU _botb             // bot in BWT' index
                         )
 		{
-			sak.init(rfseq ASSERT_ONLY(, tmp));
+			sak.init(rfseq, rfseq_len ASSERT_ONLY(, tmp));
 			topf = _topf; botf = _botf; topb = _topb;  botb = _botb;
 		}
 
@@ -1867,31 +1871,6 @@ public:
 
 protected:
 	class SeedAlignerSearchParams;
-
-	/**
-	 * Report a seed hit found by searchSeedBi() by adding it to the cache.
-	 */
-	void reportHit(
-		SeedSearchCache &cache,  // local seed alignment cache
-		TIndexOffU topf,         // top in BWT
-		TIndexOffU botf,         // bot in BWT
-		TIndexOffU topb,         // top in BWT'
-		TIndexOffU botb,         // bot in BWT'
-		uint16_t len,          // length of hit
-		DoublyLinkedList<Edit> *prevEdit);  // previous edit
-
-	void reportHit(
-		SeedSearchCache &cache,  // local seed alignment cache
-		const BwtTopBot &bwt,  // The 4 BWT idxs
-		uint16_t len,          // length of hit
-		DoublyLinkedList<Edit> *prevEdit)  // previous edit
-	{ reportHit(cache, bwt.topf, bwt.botf, bwt.topb, bwt.botb, len, prevEdit); }
-
-	void reportHit(
-		SeedSearchCache &cache,  // local seed alignment cache
-		const BwtTopBot &bwt,  // The 4 BWT idxs
-		DoublyLinkedList<Edit> *prevEdit)  // previous edit
-	{ reportHit(cache, bwt, cache.getSeq().length(), prevEdit); }
 
 	/**
 	 * Main, recursive implementation of the seed search.

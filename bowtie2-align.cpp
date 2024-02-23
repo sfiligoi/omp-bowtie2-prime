@@ -38,8 +38,6 @@
 #include "aligner_swsse.cpp"
 #include "aligner_sw.cpp"
 #include "aligner_sw_driver.cpp"
-#include "aligner_driver.cpp"
 #include "aligner_seed.cpp"
-#include "aligner_seed2.cpp"
 #include "bt2_search.cpp"
 #include "bowtie_main.cpp"
