@@ -1223,15 +1223,6 @@ public:
 	}
 
 	/**
-	 * Return an EList of seed hits of the given rank.
-	 */
-	const BTDnaString& seqByRank(size_t r) {
-		assert(sorted_);
-		assert_lt(r, nonzTot_);
-		return rankFws_[r] ? seqFw_[rankOffs_[r]] : seqRc_[rankOffs_[r]];
-	}
-
-	/**
 	 * Return the list of extracted seed sequences for seeds on either
 	 * the forward or reverse strand.
 	 */
