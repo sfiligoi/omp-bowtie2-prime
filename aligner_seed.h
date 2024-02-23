@@ -373,7 +373,6 @@ struct Seed {
 	bool instantiate(
 		const Read& read,
 		const BTDnaString& seq, // already-extracted seed sequence
-		const BTString& qual,   // already-extracted seed quality sequence
 		const Scoring& pens,
 		int depth,
 		int seedoffidx,
@@ -626,8 +625,6 @@ public:
 	SeedResults() :
 		seqFw_(AL_CAT),
 		seqRc_(AL_CAT),
-		qualFw_(AL_CAT),
-		qualRc_(AL_CAT),
 		hitsFw_(AL_CAT),
 		hitsRc_(AL_CAT),
 		isFw_(AL_CAT),
@@ -648,8 +645,6 @@ public:
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		seqFw_.set_alloc(alloc, propagate_alloc);
 		seqRc_.set_alloc(alloc, propagate_alloc);
-		qualFw_.set_alloc(alloc, propagate_alloc);
-		qualRc_.set_alloc(alloc, propagate_alloc);
 		hitsFw_.set_alloc(alloc, propagate_alloc);
 		hitsRc_.set_alloc(alloc, propagate_alloc);
 		isFw_.set_alloc(alloc, propagate_alloc);
@@ -732,8 +727,6 @@ protected:
 		numOffs_ = numOffs;
 		seqFw_.resize(numOffs);
 		seqRc_.resize(numOffs);
-		qualFw_.resize(numOffs);
-		qualRc_.resize(numOffs);
 		hitsFw_.resize(numOffs);
 		hitsRc_.resize(numOffs);
 		isFw_.resize(numOffs);
@@ -1239,25 +1232,10 @@ public:
 	}
 
 	/**
-	 * Return an EList of seed hits of the given rank.
-	 */
-	const BTString& qualByRank(size_t r) {
-		assert(sorted_);
-		assert_lt(r, nonzTot_);
-		return rankFws_[r] ? qualFw_[rankOffs_[r]] : qualRc_[rankOffs_[r]];
-	}
-	
-	/**
 	 * Return the list of extracted seed sequences for seeds on either
 	 * the forward or reverse strand.
 	 */
 	EList<BTDnaString>& seqs(bool fw) { return fw ? seqFw_ : seqRc_; }
-
-	/**
-	 * Return the list of extracted quality sequences for seeds on
-	 * either the forward or reverse strand.
-	 */
-	EList<BTString>& quals(bool fw) { return fw ? qualFw_ : qualRc_; }
 
 	/**
 	 * Return exact end-to-end alignment of fw read.
@@ -1397,8 +1375,6 @@ protected:
 	// containers
 	EList<BTDnaString>  seqFw_;       // seqs for seeds from forward read
 	EList<BTDnaString>  seqRc_;       // seqs for seeds from revcomp read
-	EList<BTString>     qualFw_;      // quals for seeds from forward read
-	EList<BTString>     qualRc_;      // quals for seeds from revcomp read
 	EList<QVal>         hitsFw_;      // hits for forward read
 	EList<QVal>         hitsRc_;      // hits for revcomp read
 	EList<EList<InstantiatedSeed> > isFw_; // hits for forward read
@@ -1810,7 +1786,6 @@ public:
 	static void instantiateSeq(
 		const Read& read, // input read
 		BTDnaString& seq, // output sequence
-		BTString& qual,   // output qualities
 		int len,          // seed length
 		int depth,        // seed's 0-based offset from 5' end
 		bool fw);         // seed's orientation

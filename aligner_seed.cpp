@@ -265,7 +265,6 @@ bool
 Seed::instantiate(
 	const Read& read,
 	const BTDnaString& seq, // seed read sequence
-	const BTString& qual,   // seed quality sequence
 	const Scoring& pens,
 	int depth,
 	int seedoffidx,
@@ -381,9 +380,7 @@ Seed::instantiate(
 		assert_neq(0, is.steps[i]);
 		int off = is.steps[i];
 		off = abs(off)-1;
-		Constraint& cons = is.cons[abs(is.zones[i].first)];
 		int c = seq[off];  assert_range(0, 4, c);
-		int q = qual[off];
 		if(ltr != (is.steps[i] > 0) || // changed direction
 		   is.zones[i].first != 0 ||   // changed zone
 		   is.zones[i].second != 0)    // changed zone
@@ -391,13 +388,9 @@ Seed::instantiate(
 			streak = false;
 		}
 		if(c == 4) {
-			// Induced mismatch
-			if(cons.canN(q, pens)) {
-				cons.chargeN(q, pens);
-			} else {
-				// Seed disqualified due to arrangement of Ns
-				return false;
-			}
+			// cons.canN always false since mms and edit both ==0
+			// Seed disqualified due to arrangement of Ns
+			return false;
 		}
 		if(streak) is.maxjump++;
 	}
@@ -534,7 +527,6 @@ void
 SeedAligner::instantiateSeq(
 	const Read& read, // input read
 	BTDnaString& seq, // output sequence
-	BTString& qual,   // output qualities
 	int len,          // seed length
 	int depth,        // seed's 0-based offset from 5' end
 	bool fw)         // seed's orientation
@@ -543,12 +535,10 @@ SeedAligner::instantiateSeq(
 	int seedlen = len;
 	if((int)read.length() < seedlen) seedlen = (int)read.length();
 	seq.resize(len);
-	qual.resize(len);
 	// If fw is false, we take characters starting at the 3' end of the
 	// reverse complement of the read.
 	for(int i = 0; i < len; i++) {
 		seq.set(read.patFw.windowGetDna(i, fw, depth, len), i);
-		qual.set(read.qual.windowGet(i, fw, depth, len), i);
 	}
 }
 
@@ -605,7 +595,6 @@ pair<int, int> SeedAligner::instantiateSeeds(
 			instantiateSeq(
 				read,
 				sr.seqs(fw)[i],
-				sr.quals(fw)[i],
 				std::min<int>((int)seedlen, (int)read.length()),
 				depth,
 				fw);
@@ -619,7 +608,6 @@ pair<int, int> SeedAligner::instantiateSeeds(
 				if(seeds[j].instantiate(
 					read,
 					sr.seqs(fw)[i],
-					sr.quals(fw)[i],
 					pens,
 					depth,
 					i,
