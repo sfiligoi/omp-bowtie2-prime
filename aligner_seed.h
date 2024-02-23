@@ -623,8 +623,7 @@ class SeedResults {
 
 public:
 	SeedResults() :
-		seqFw_(AL_CAT),
-		seqRc_(AL_CAT),
+		seqBuf_(AL_CAT),
 		hitsFw_(AL_CAT),
 		hitsRc_(AL_CAT),
 		isFw_(AL_CAT),
@@ -643,8 +642,7 @@ public:
 	SeedResults& operator=(const SeedResults& other) = delete;
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		seqFw_.set_alloc(alloc, propagate_alloc);
-		seqRc_.set_alloc(alloc, propagate_alloc);
+		seqBuf_.set_alloc(alloc, propagate_alloc);
 		hitsFw_.set_alloc(alloc, propagate_alloc);
 		hitsRc_.set_alloc(alloc, propagate_alloc);
 		isFw_.set_alloc(alloc, propagate_alloc);
@@ -720,13 +718,14 @@ public:
 protected:
 	void resetNoOff(
 		const Read& read,
-		const size_t numOffs)
+		const size_t numOffs,
+		const uint32_t seqLen)
 	{
 		assert_gt(numOffs, 0);
 		clearSeeds();
 		numOffs_ = numOffs;
-		seqFw_.resize(numOffs);
-		seqRc_.resize(numOffs);
+		seqLen_ = seqLen;
+		seqBuf_.resize(2*numOffs*seqLen);
 		hitsFw_.resize(numOffs);
 		hitsRc_.resize(numOffs);
 		isFw_.resize(numOffs);
@@ -748,9 +747,10 @@ public:
 	void reset(
 		const Read& read,
 		const EList<uint32_t>& offIdx2off,
-		size_t numOffs)
+		size_t numOffs,   
+                const uint32_t seqLen)
 	{
-		resetNoOff(read,numOffs);
+		resetNoOff(read,numOffs,seqLen);
 		offIdx2off_ = offIdx2off;
 	}
 
@@ -758,9 +758,10 @@ public:
 		const Read& read,
 		const size_t off,                // offset into read to start extracting
 		const int per,                   // interval between seeds
-		size_t numOffs)
+		size_t numOffs,   
+                const uint32_t seqLen)
 	{
-		resetNoOff(read,numOffs);
+		resetNoOff(read,numOffs,seqLen);
 		offIdx2off_.clear();
 		for(int i = 0; i < numOffs; i++) {
 			offIdx2off_.push_back(per * i + (int)off);
@@ -780,8 +781,7 @@ public:
 		hitsRc_.clear();
 		isFw_.clear();
 		isRc_.clear();
-		seqFw_.clear();
-		seqRc_.clear();
+		seqBuf_.clear();
 		nonzTot_ = 0;
 		uniTot_ = uniTotS_[0] = uniTotS_[1] = 0;
 		repTot_ = repTotS_[0] = repTotS_[1] = 0;
@@ -1210,14 +1210,14 @@ public:
 			offidx = rankOffs_[r];
 			assert_lt(offidx, offIdx2off_.size());
 			off = offIdx2off_[offidx];
-			seedlen = (uint32_t)seqFw_[rankOffs_[r]].length();
+			seedlen = seqLen_;
 			return hitsFw_[rankOffs_[r]];
 		} else {
 			fw = false;
 			offidx = rankOffs_[r];
 			assert_lt(offidx, offIdx2off_.size());
 			off = offIdx2off_[offidx];
-			seedlen = (uint32_t)seqRc_[rankOffs_[r]].length();
+			seedlen = seqLen_;
 			return hitsRc_[rankOffs_[r]];
 		}
 	}
@@ -1226,7 +1226,19 @@ public:
 	 * Return the list of extracted seed sequences for seeds on either
 	 * the forward or reverse strand.
 	 */
-	EList<BTDnaString>& seqs(bool fw) { return fw ? seqFw_ : seqRc_; }
+	char * seqs(bool fw, size_t i) { 
+		char * base = seqBuf_.ptr();
+		if (!fw) base += seqLen_*numOffs_;
+		return base + (i*seqLen_);
+	}
+
+	const char * seqs(bool fw, size_t i) const { 
+		const char * base = seqBuf_.ptr();
+		if (!fw) base += seqLen_*numOffs_;
+		return base + (i*seqLen_);
+	}
+
+	uint32_t seqs_len() const { return seqLen_; }
 
 	/**
 	 * Return exact end-to-end alignment of fw read.
@@ -1364,8 +1376,7 @@ protected:
 
 	// As seed hits and edits are added they're sorted into these
 	// containers
-	EList<BTDnaString>  seqFw_;       // seqs for seeds from forward read
-	EList<BTDnaString>  seqRc_;       // seqs for seeds from revcomp read
+	EList<char>         seqBuf_;      // content of all the seqs, no separators
 	EList<QVal>         hitsFw_;      // hits for forward read
 	EList<QVal>         hitsRc_;      // hits for revcomp read
 	EList<EList<InstantiatedSeed> > isFw_; // hits for forward read
@@ -1399,6 +1410,7 @@ protected:
 	
 	// These fields set once per read
 	size_t              numOffs_;   // # different seed offsets possible
+	uint32_t            seqLen_;    // # length of each seq
 	const Read*         read_;      // read from which seeds were extracted
 	
 	EEHit               exactFwHit_; // end-to-end exact hit for fw read
@@ -1790,7 +1802,7 @@ public:
 	 */
 	static void instantiateSeq(
 		const Read& read, // input read
-		BTDnaString& seq, // output sequence
+		char        seq[], // output sequence
 		int len,          // seed length
 		int depth,        // seed's 0-based offset from 5' end
 		bool fw);         // seed's orientation

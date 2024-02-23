@@ -478,19 +478,16 @@ enum {
 void
 SeedAligner::instantiateSeq(
 	const Read& read, // input read
-	BTDnaString& seq, // output sequence
+	char        seq[], // output sequence
 	int len,          // seed length
 	int depth,        // seed's 0-based offset from 5' end
 	bool fw)         // seed's orientation
 {
-	// Fill in 'seq' and 'qual'
-	int seedlen = len;
-	if((int)read.length() < seedlen) seedlen = (int)read.length();
-	seq.resize(len);
+	// Fill in 'seq'
 	// If fw is false, we take characters starting at the 3' end of the
 	// reverse complement of the read.
 	for(int i = 0; i < len; i++) {
-		seq.set(read.patFw.windowGetDna(i, fw, depth, len), i);
+		seq[i] = read.patFw.windowGetDna(i, fw, depth, len);
 	}
 }
 
@@ -529,7 +526,10 @@ pair<int, int> SeedAligner::instantiateSeeds(
 	pair<int, int> ret;
 	ret.first = 0;  // # seeds that require alignment
 	ret.second = 0; // # seeds that hit in cache with non-empty results
-	sr.reset(read, off, per, nseeds);
+
+	const int min_len = std::min<int>(len, (int)read.length());
+	sr.reset(read, off, per, nseeds, min_len);
+
 	// For each seed position
 	for(int fwi = 0; fwi < 2; fwi++) {
 		bool fw = (fwi == 0);
@@ -540,26 +540,23 @@ pair<int, int> SeedAligner::instantiateSeeds(
 		// For each seed position
 		for(int i = 0; i < nseeds; i++) {
 			int depth = i * per + (int)off;
-			int seedlen = seeds[0].len;
 			// Extract the seed sequence at this offset
 			// If fw == true, we extract the characters from i*per to
 			// i*(per-1) (exclusive).  If fw == false, 
 			instantiateSeq(
 				read,
-				sr.seqs(fw)[i],
-				std::min<int>((int)seedlen, (int)read.length()),
+				sr.seqs(fw,i),
+				min_len,
 				depth,
 				fw);
-			QKey qk(sr.seqs(fw)[i] ASSERT_ONLY(, tmpdnastr_));
 			// For each search strategy
 			EList<InstantiatedSeed>& iss = sr.instantiatedSeeds(fw, i);
 			for(int j = 0; j < (int) seeds_size; j++) {
 				iss.expand();
-				assert_eq(seedlen, seeds[j].len);
 				InstantiatedSeed* is = &iss.back();
 				if(seeds[j].instantiate(
 					read,
-					sr.seqs(fw)[i].buf(),
+					sr.seqs(fw,i),
 					pens,
 					depth,
 					i,
@@ -625,8 +622,7 @@ void SeedAligner::searchAllSeeds(
 				// Cache hit in an across-read cache
 				continue;
 			}
-			const BTDnaString& seq  = sr.seqs(fw)[i];  // seed sequence
-			mcache.emplace_back_noresize(seq.buf(), seq.length(), i, fw);
+			mcache.emplace_back_noresize(sr.seqs(fw,i), sr.seqs_len(), i, fw);
 			const size_t mnr = mcache.size()-1;
 			SeedSearchCache &srcache = mcache[mnr];
 			{
