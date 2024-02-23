@@ -717,12 +717,13 @@ public:
 	 *  0 if key was found in cache
 	 */
 	int beginAlign(
-		const BTDnaString& seq,
+                const char *   seq,     // reference sequence close to read seq - content
+                const uint32_t seq_len, // reference sequence close to read seq - length
 		QVal& qv,              // out: filled in if we find it in the cache
 		bool getLock = true)
 	{
 		assert(repOk());
-		qk_.init(seq ASSERT_ONLY(, tmpdnastr_));
+		qk_.init(seq, seq_len ASSERT_ONLY(, tmpdnastr_));
 		if(qk_.cacheable()) {
 			// Make a QNode for this key and possibly add the QNode to the
 			// Red-Black map; but if 'seq' isn't cacheable, just create the

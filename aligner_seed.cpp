@@ -674,7 +674,7 @@ void SeedAligner::searchAllSeeds(
 				continue;
 			}
 			const BTDnaString& seq  = sr.seqs(fw)[i];  // seed sequence
-			mcache.emplace_back_noresize(seq, i, fw);
+			mcache.emplace_back_noresize(seq.buf(), seq.length(), i, fw);
 			const size_t mnr = mcache.size()-1;
 			SeedSearchCache &srcache = mcache[mnr];
 			{

@@ -1431,10 +1431,12 @@ class SeedSearchCache {
 
 public:
 	SeedSearchCache(
-		const BTDnaString& _seq  // sequence of current seed
+                const char *   rfseq,     // reference sequence close to read seq - content
+                const uint32_t rfseq_len // reference sequence close to read seq - length
 		)
 		: qv()
-		, pseq(&_seq)
+		, seq(rfseq)
+		, seq_len(rfseq_len)
 		, cachedEls()
 		, cachep(NULL)
 	{
@@ -1443,7 +1445,8 @@ public:
 
 	SeedSearchCache()
 		: qv()
-		, pseq(NULL)
+		, seq(NULL)
+		, seq_len(0)
 		, cachedEls()
 		, cachep(NULL)
 	{
@@ -1453,10 +1456,12 @@ public:
 	SeedSearchCache& operator=(const SeedSearchCache& other) = default;
 
 	void reset(
-		const BTDnaString& _seq  // sequence of current seed
+                const char *   rfseq,     // reference sequence close to read seq - content
+                const uint32_t rfseq_len // reference sequence close to read seq - length
 		)
 	{
-		pseq = &_seq;
+		seq = rfseq;
+		seq_len = rfseq_len;
 	}
 
 	/**
@@ -1467,7 +1472,7 @@ public:
 	 */
 	int beginAlign(AlignmentCacheIface& cache) 
 	{ 
-		int ret = cache.beginAlign(*pseq, qv);
+		int ret = cache.beginAlign(seq, seq_len, qv);
 		if (ret>=0) {
 			cachep = &cache;
 		}
@@ -1532,8 +1537,8 @@ public:
 	bool qvValid() const { return qv.valid();}
 
 	const QVal&          getQv() const {return qv;}
-	const char *         getSeq() const {return pseq->buf();}
-	const uint32_t       getSeqLen() const {return pseq->length();}
+	const char *         getSeq() const {return seq;}
+	const uint32_t       getSeqLen() const {return seq_len;}
 
 protected:
 	class AddEl {
@@ -1577,7 +1582,8 @@ protected:
 	};
 
 	QVal                 qv;
-	const BTDnaString*   pseq;   // sequence of current seed
+	const char*          seq;       // sequence of current seed - content
+	uint32_t             seq_len;   // sequence of current seed - content
 
 	EList<AddEl>          cachedEls; // tmp storage of values that will go in the cache
 	AlignmentCacheIface*  cachep; // local alignment cache for seed alignment, set at beginAliginings
@@ -1599,23 +1605,25 @@ public:
 	}
 
 	void emplace_back( 
-		const BTDnaString& seq,  // sequence of current seed
+               	const char *   seq,     // reference sequence close to read seq - content
+                const uint32_t seq_len, // reference sequence close to read seq - length
 		int seedoffidx,          // seed index
 		bool fw                  // is it fw?
 		)
 	{
 		cacheVec.expand();
-		cacheVec.back().reset(seq, seedoffidx, fw);
+		cacheVec.back().reset(seq, seq_len, seedoffidx, fw);
 	}
 
 	void emplace_back_noresize( 
-		const BTDnaString& seq,  // sequence of current seed
+               	const char *   seq,     // reference sequence close to read seq - content
+                const uint32_t seq_len, // reference sequence close to read seq - length
 		int seedoffidx,          // seed index
 		bool fw                  // is it fw?
 		)
 	{
 		cacheVec.expand_noresize();
-		cacheVec.back().reset(seq, seedoffidx, fw);
+		cacheVec.back().reset(seq, seq_len, seedoffidx, fw);
 	}
 
 	// Same semantics as std::vector
@@ -1641,11 +1649,12 @@ protected:
 	class CacheEl {
 	public:
 		CacheEl(
-			const BTDnaString& _seq,  // sequence of current seed
+                	const char *   rfseq,     // reference sequence close to read seq - content
+	                const uint32_t rfseq_len, // reference sequence close to read seq - length
 			int _seedoffidx,          // seed index
 			bool _fw                  // is it fw?
 			)
-			: srcache(_seq)
+			: srcache(rfseq,rfseq_len)
 			, seedoffidx(_seedoffidx)
 			, fw(_fw) {}
 		
@@ -1655,11 +1664,12 @@ protected:
 			{}
 
 		void reset(
-			const BTDnaString& _seq,  // sequence of current seed
+                	const char *   rfseq,     // reference sequence close to read seq - content
+	                const uint32_t rfseq_len, // reference sequence close to read seq - length
 			int _seedoffidx,          // seed index
 			bool _fw                  // is it fw?
 			) {
-			srcache.reset(_seq);
+			srcache.reset(rfseq,rfseq_len);
 			seedoffidx = _seedoffidx;
 			fw = _fw;
 			}
