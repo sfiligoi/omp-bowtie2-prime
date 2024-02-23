@@ -137,50 +137,6 @@ public:
 		TIndexOffU bwi0;                // Idx of bw ftab
 	};
 
-	SeedAlignerSearchParams(
-		CacheAndSeed &_cs,
-		const int _step,              // depth into steps[] array
-		const int _depth,             // recursion depth
-		const BwtTopBot &_bwt,        // The 4 BWT idxs
-		const SideLocus &_tloc,       // locus for top (perhaps unititialized)
-		const SideLocus &_bloc,       // locus for bot (perhaps unititialized)
-		const std::array<Constraint,3> _cv,        // constraints to enforce in seed zones
-		const Constraint &_overall,   // overall constraints to enforce
-		DoublyLinkedList<Edit> *_prevEdit)  // previous edit
-	: cs(_cs)
-	, step(_step)
-	, depth(_depth)
-	, bwt(_bwt)
-	, tloc(_tloc)
-	, bloc(_bloc)
-	, cv(_cv)
-	, overall(_overall)
-	, prevEdit(_prevEdit)
-	{}
-
-	SeedAlignerSearchParams(
-		CacheAndSeed &_cs,
-		const int _step,              // depth into steps[] array
-		const int _depth,             // recursion depth
-		const BwtTopBot &_bwt,        // The 4 BWT idxs
-		const SideLocus &_tloc,       // locus for top (perhaps unititialized)
-		const SideLocus &_bloc,       // locus for bot (perhaps unititialized)
-		const Constraint &_c0,        // constraints to enforce in seed zone 0
-		const Constraint &_c1,        // constraints to enforce in seed zone 1
-		const Constraint &_c2,        // constraints to enforce in seed zone 2
-		const Constraint &_overall,   // overall constraints to enforce
-		DoublyLinkedList<Edit> *_prevEdit)  // previous edit
-	: cs(_cs)
-	, step(_step)
-	, depth(_depth)
-	, bwt(_bwt)
-	, tloc(_tloc)
-	, bloc(_bloc)
-	, cv{ _c0, _c1, _c2 }
-	, overall(_overall)
-	, prevEdit(_prevEdit)
-	{}
-
 	// create an empty bwt, tloc and bloc, with step=0
 	// and constratins from seed, for initial searchSeedBi invocation
 	SeedAlignerSearchParams(
@@ -196,7 +152,6 @@ public:
 	, bloc()
 	, cv{ seed.cons[0], seed.cons[1], seed.cons[2]  }
 	, overall(seed.overall)
-	, prevEdit(NULL)
 	{}
 
 	// create an empty bwt, tloc and bloc, with step=0
@@ -208,7 +163,6 @@ public:
 	, bwt()
 	, tloc()
 	, bloc()
-	, prevEdit(NULL)
 	{}
 
 	SeedAlignerSearchParams& operator=(const SeedAlignerSearchParams& other) = default;
@@ -227,7 +181,6 @@ public:
 	  bloc.invalidate();
 	  cv = { seed.cons[0], seed.cons[1], seed.cons[2]  };
 	  overall = seed.overall;
-	  prevEdit = NULL;
 	}
 
 	void checkCV() const {
@@ -248,7 +201,6 @@ public:
 	SideLocus bloc;       // locus for bot (perhaps unititialized)
 	std::array<Constraint,3> cv;        // constraints to enforce in seed zones
 	Constraint overall;   // overall constraints to enforce
-	DoublyLinkedList<Edit> *prevEdit;  // previous edit
 };
 
 
