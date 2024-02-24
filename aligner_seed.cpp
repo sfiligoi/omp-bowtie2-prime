@@ -622,7 +622,7 @@ void SeedAligner::searchAllSeeds(
 				// Cache hit in an across-read cache
 				continue;
 			}
-			mcache.emplace_back_noresize(sr.seqs(fw,i), sr.seqs_len(), i, fw);
+			mcache.emplace_back_noresize(sr.seqs(fw,i), i, fw);
 			const size_t mnr = mcache.size()-1;
 			SeedSearchCache &srcache = mcache[mnr];
 			{
@@ -652,7 +652,7 @@ void SeedAligner::searchAllSeeds(
 					// Finished aligning seed
 					auto& cache = p.get_cache();
 					auto& bwt = p.bwt;
-					cache.addOnTheFly(cache.getSeq(), cache.getSeqLen(), bwt.topf, bwt.botf, bwt.topb, bwt.botb);
+					cache.addOnTheFly(cache.getSeq(), sr.seqs_len(), bwt.topf, bwt.botf, bwt.topb, bwt.botb);
 				}
 			}
 		   }
@@ -662,7 +662,7 @@ void SeedAligner::searchAllSeeds(
 			SeedSearchCache &srcache = mcache[mnr];
 			// Tell the cache that we've started aligning, so the cache can
 			// expect a series of on-the-fly updates
-			int ret = srcache.beginAlign(cache);
+			int ret = srcache.beginAlign(cache, sr.seqs_len());
 			if(ret == -1) {
 				// Out of memory when we tried to add key to map
 				ooms++;

@@ -1434,12 +1434,10 @@ class SeedSearchCache {
 
 public:
 	SeedSearchCache(
-                const char *   rfseq,     // reference sequence close to read seq - content
-                const uint32_t rfseq_len // reference sequence close to read seq - length
+                const char *   rfseq     // reference sequence close to read seq - content
 		)
 		: qv()
 		, seq(rfseq)
-		, seq_len(rfseq_len)
 		, cachedEls()
 		, cachep(NULL)
 	{
@@ -1449,7 +1447,6 @@ public:
 	SeedSearchCache()
 		: qv()
 		, seq(NULL)
-		, seq_len(0)
 		, cachedEls()
 		, cachep(NULL)
 	{
@@ -1459,12 +1456,10 @@ public:
 	SeedSearchCache& operator=(const SeedSearchCache& other) = default;
 
 	void reset(
-                const char *   rfseq,     // reference sequence close to read seq - content
-                const uint32_t rfseq_len // reference sequence close to read seq - length
+                const char *   rfseq     // reference sequence close to read seq - content
 		)
 	{
 		seq = rfseq;
-		seq_len = rfseq_len;
 	}
 
 	/**
@@ -1473,7 +1468,7 @@ public:
 	 *
 	 * See AlignmentCacheIface::beginAlign for details
 	 */
-	int beginAlign(AlignmentCacheIface& cache) 
+	int beginAlign(AlignmentCacheIface& cache, const uint32_t seq_len) 
 	{ 
 		int ret = cache.beginAlign(seq, seq_len, qv);
 		if (ret>=0) {
@@ -1541,7 +1536,6 @@ public:
 
 	const QVal&          getQv() const {return qv;}
 	const char *         getSeq() const {return seq;}
-	const uint32_t       getSeqLen() const {return seq_len;}
 
 protected:
 	class AddEl {
@@ -1586,7 +1580,6 @@ protected:
 
 	QVal                 qv;
 	const char*          seq;       // sequence of current seed - content
-	uint32_t             seq_len;   // sequence of current seed - content
 
 	EList<AddEl>          cachedEls; // tmp storage of values that will go in the cache
 	AlignmentCacheIface*  cachep; // local alignment cache for seed alignment, set at beginAliginings
@@ -1609,24 +1602,22 @@ public:
 
 	void emplace_back( 
                	const char *   seq,     // reference sequence close to read seq - content
-                const uint32_t seq_len, // reference sequence close to read seq - length
 		int seedoffidx,          // seed index
 		bool fw                  // is it fw?
 		)
 	{
 		cacheVec.expand();
-		cacheVec.back().reset(seq, seq_len, seedoffidx, fw);
+		cacheVec.back().reset(seq, seedoffidx, fw);
 	}
 
 	void emplace_back_noresize( 
                	const char *   seq,     // reference sequence close to read seq - content
-                const uint32_t seq_len, // reference sequence close to read seq - length
 		int seedoffidx,          // seed index
 		bool fw                  // is it fw?
 		)
 	{
 		cacheVec.expand_noresize();
-		cacheVec.back().reset(seq, seq_len, seedoffidx, fw);
+		cacheVec.back().reset(seq, seedoffidx, fw);
 	}
 
 	// Same semantics as std::vector
@@ -1652,12 +1643,11 @@ protected:
 	class CacheEl {
 	public:
 		CacheEl(
-                	const char *   rfseq,     // reference sequence close to read seq - content
-	                const uint32_t rfseq_len, // reference sequence close to read seq - length
+                	const char *   seq,     // reference sequence close to read seq - content
 			int _seedoffidx,          // seed index
 			bool _fw                  // is it fw?
 			)
-			: srcache(rfseq,rfseq_len)
+			: srcache(seq)
 			, seedoffidx(_seedoffidx)
 			, fw(_fw) {}
 		
@@ -1667,12 +1657,11 @@ protected:
 			{}
 
 		void reset(
-                	const char *   rfseq,     // reference sequence close to read seq - content
-	                const uint32_t rfseq_len, // reference sequence close to read seq - length
+                	const char *   seq,     // reference sequence close to read seq - content
 			int _seedoffidx,          // seed index
 			bool _fw                  // is it fw?
 			) {
-			srcache.reset(rfseq,rfseq_len);
+			srcache.reset(seq);
 			seedoffidx = _seedoffidx;
 			fw = _fw;
 			}
