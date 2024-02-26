@@ -104,7 +104,7 @@ public:
 		{
 			pcache = &_cache;
 			pseed = &_seed;
-	                int off = pseed->steps[0];
+	                int off = pseed->step_min;
 	                bool ltr = off > 0;
         	        off = abs(off)-1;
 			int ftabLen = ebwtFw->eh().ftabChars();
@@ -194,7 +194,7 @@ public:
 	const InstantiatedSeed& get_seed() const {return *(cs.pseed);}
 
 	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
-	int step;             // depth into steps[] array
+	int step;             // depth into steps[] array, i.e. step_min+step
 	int depth;            // recursion depth
 	BwtTopBot bwt;        // The 4 BWT idxs
 	SideLocus tloc;       // locus for top (perhaps unititialized)
@@ -231,7 +231,7 @@ Seed::instantiate(
 		seedlen = (int)read.length();
 	}
 	assert_gt(seedlen, 0);
-	is.steps.resize(seedlen);
+	is.n_steps = seedlen;
 	is.zones.resize(seedlen);
 	// Fill in 'steps' and 'zones'
 	//
@@ -256,16 +256,16 @@ Seed::instantiate(
 	//
 	switch(type) {
 		case SEED_TYPE_EXACT: {
+			is.step_min = -seedlen;
 			for(int k = 0; k < seedlen; k++) {
-				is.steps[k] = -(seedlen - k);
 				// Zone 0 all the way
 				is.zones[k].first = is.zones[k].second = 0;
 			}
 			break;
 		}
 		case SEED_TYPE_LEFT_TO_RIGHT: {
+			is.step_min = 1;
 			for(int k = 0; k < seedlen; k++) {
-				is.steps[k] = k+1;
 				// Zone 0 from 0 up to ceil(len/2), then 1
 				is.zones[k].first = is.zones[k].second = ((k < (seedlen+1)/2) ? 0 : 1);
 			}
@@ -274,8 +274,8 @@ Seed::instantiate(
 			break;
 		}
 		case SEED_TYPE_RIGHT_TO_LEFT: {
+			is.step_min = -seedlen;
 			for(int k = 0; k < seedlen; k++) {
-				is.steps[k] = -(seedlen - k);
 				// Zone 0 from 0 up to floor(len/2), then 1
 				is.zones[k].first  = ((k < seedlen/2) ? 0 : 1);
 				// Inserts: Zone 0 from 0 up to ceil(len/2)-1, then 1
@@ -285,29 +285,8 @@ Seed::instantiate(
 			break;
 		}
 		case SEED_TYPE_INSIDE_OUT: {
-			// Zone 0 from ceil(N/4) up to N-floor(N/4)
-			int step = 0;
-			for(int k = (seedlen+3)/4; k < seedlen - (seedlen/4); k++) {
-				is.zones[step].first = is.zones[step].second = 0;
-				is.steps[step++] = k+1;
-			}
-			// Zone 1 from N-floor(N/4) up
-			for(int k = seedlen - (seedlen/4); k < seedlen; k++) {
-				is.zones[step].first = is.zones[step].second = 1;
-				is.steps[step++] = k+1;
-			}
-			// No Zone 1 if seedlen is short (like 2)
-			//assert_eq(1, is.zones[step-1].first);
-			is.zones[step-1].first = is.zones[step-1].second = -1;
-			// Zone 2 from ((seedlen+3)/4)-1 down to 0
-			for(int k = ((seedlen+3)/4)-1; k >= 0; k--) {
-				is.zones[step].first = is.zones[step].second = 2;
-				is.steps[step++] = -(k+1);
-			}
-			assert_eq(2, is.zones[step-1].first);
-			is.zones[step-1].first = is.zones[step-1].second = -2;
-			assert_eq(seedlen, step);
-			break;
+			fprintf(stderr,"Unsupported SEED_TYPE_INSIDE_OUT\n");
+			throw 1;
 		}
 		default:
 			throw 1;
@@ -327,13 +306,13 @@ Seed::instantiate(
 	bool streak = true;
 	is.maxjump = 0;
 	bool ret = true;
-	bool ltr = (is.steps[0] > 0); // true -> left-to-right
-	for(size_t i = 0; i < is.steps.size(); i++) {
-		assert_neq(0, is.steps[i]);
-		int off = is.steps[i];
-		off = abs(off)-1;
+	bool ltr = (is.step_min > 0); // true -> left-to-right
+	for(size_t i = 0; i < seedlen; i++) {
+		const int stepi = is.step_min+i;
+		assert_neq(0, stepi);
+		int off = abs(stepi)-1;
 		int c = seq[off];  assert_range(0, 4, c);
-		if(ltr != (is.steps[i] > 0) || // changed direction
+		if(ltr != (stepi > 0) || // changed direction
 		   is.zones[i].first != 0 ||   // changed zone
 		   is.zones[i].second != 0)    // changed zone
 		{
@@ -1244,43 +1223,6 @@ bool SeedAligner::oneMmSearch(
 	return results;
 }
 
-#if 0
-inline void
-SeedAligner::prefetchNextLocsBi(
-	const InstantiatedSeed& seed, // current instantiated seed
-        TIndexOffU topf,              // top in BWT
-        TIndexOffU botf,              // bot in BWT
-        TIndexOffU topb,              // top in BWT'
-        TIndexOffU botb,              // bot in BWT'
-        int step                    // step to get ready for
-        )
-{
-	if(step == (int)seed.steps.size()) return; // no more steps!
-	// Which direction are we going in next?
-	if(seed.steps[step] > 0) {
-		// Left to right; use BWT'
-		if(botb - topb == 1) {
-			// Already down to 1 row; just init top locus
-			SideLocus::prefetchFromRow(
-				topb, ebwtBw_->eh(), ebwtBw_->ebwt());
-		} else {
-			SideLocus::prefetchFromTopBot(
-				topb, botb, ebwtBw_->eh(), ebwtBw_->ebwt());
-		}
-	} else {
-		// Right to left; use BWT
-		if(botf - topf == 1) {
-			// Already down to 1 row; just init top locus
-			SideLocus::prefetchFromRow(
-				topf, ebwtFw_->eh(), ebwtFw_->ebwt());
-		} else {
-			SideLocus::prefetchFromTopBot(
-				topf, botf, ebwtFw_->eh(), ebwtFw_->ebwt());
-		}
-	}
-}
-#endif
-
 /**
  * Get tloc, bloc ready for the next step.  If the new range is under
  * the ceiling.
@@ -1340,14 +1282,14 @@ SeedAligner::startSearchSeedBi(
 	const InstantiatedSeed& seed = p.get_seed();
 	const char *seq = cache.getSeq();
 
-	assert_gt(seed.steps.size(), 0);
+	assert_gt(seed.n_steps, 0);
 	assert(ebwtBw == NULL || ebwtBw->eh().ftabChars() == ebwtFw->eh().ftabChars());
 #ifndef NDEBUG
 	for(int i = 0; i < 4; i++) {
 		assert(ebwtBw == NULL || ebwtBw->fchr()[i] == ebwtFw->fchr()[i]);
 	}
 #endif
-	if(p.step == (int)seed.steps.size()) {
+	if(p.step == seed.n_steps) {
 		return true;
 	}
 #ifndef NDEBUG
@@ -1361,7 +1303,7 @@ SeedAligner::startSearchSeedBi(
 		assert(p.prevEdit == NULL);
 		assert(!p.tloc.valid());
 		assert(!p.bloc.valid());
-		int off = seed.steps[0];
+		int off = seed.step_min;
 		off = abs(off)-1;
 		// Check whether/how far we can jump using ftab or fchr
 		int ftabLen = ebwtFw->eh().ftabChars();
@@ -1396,10 +1338,10 @@ SeedAligner::startSearchSeedBi(
 			p.bwt.topf = p.bwt.topb = 0;
 			p.bwt.botf = p.bwt.botb = ebwtFw->fchr()[4];
 		}
-		if(p.step == (int)seed.steps.size()) {
+		if(p.step == (int)seed.n_steps) {
 			return true;
 		}
-		nextLocsBi(ebwtFw,ebwtBw, seed.steps[p.step], p.tloc, p.bloc, p.bwt);
+		nextLocsBi(ebwtFw,ebwtBw, seed.step_min+p.step, p.tloc, p.bloc, p.bwt);
 		assert(p.tloc.valid());
 	} else assert(p.prevEdit != NULL);
 	assert(p.tloc.valid());
@@ -1501,7 +1443,7 @@ SeedAligner::searchSeedBi(
 		sstate.need_reporting = false;
 		if(done) {
 			const InstantiatedSeed& seed = p.get_seed();
-		        if(p.step == (int)seed.steps.size()) {
+		        if(p.step == (int)seed.n_steps) {
                 		// Finished aligning seed
 				p.checkCV();
 				sstate.need_reporting = true;
@@ -1528,7 +1470,7 @@ SeedAligner::searchSeedBi(
 
 		SeedAlignerSearchParams& p= paramVec[n];
 		const InstantiatedSeed& seed = p.get_seed();
-		if (p.step >= (int) seed.steps.size()) {
+		if (p.step >= (int) seed.n_steps) {
 			sstate.done = true;
 			ncompleted++;
 			continue;
@@ -1544,7 +1486,7 @@ SeedAligner::searchSeedBi(
 		assert(p.bwt.botf - p.bwt.topf > 1  || !p.bloc.valid());
 		assert(ebwtBw == NULL || p.bwt.botf-p.bwt.topf == p.bwt.botb-p.bwt.topb);
 		assert(p.tloc.valid());
-		sstate.setOff(seed.steps[i], p.bwt, ebwtFw, ebwtBw);
+		sstate.setOff(seed.step_min+i, p.bwt, ebwtFw, ebwtBw);
 		__builtin_prefetch(&(seq[sstate.off]));
 		if(p.bloc.valid()) {
 			// Range delimited by tloc/bloc has size >1.  If size == 1,
@@ -1590,14 +1532,14 @@ SeedAligner::searchSeedBi(
 			continue;
 		}
 		p.bwt.set(sstate.tf[c], sstate.bf[c], sstate.tb[c], sstate.bb[c]);
-		if(i+1 == seed.steps.size()) {
+		if(i+1 == seed.n_steps) {
 			p.checkCV();
 			sstate.need_reporting = true;
 			sstate.done = true;
 			ncompleted++;
 			continue;
 		}
-		nextLocsBi(ebwtFw,ebwtBw, seed.steps[i+1], p.tloc, p.bloc, p.bwt);
+		nextLocsBi(ebwtFw,ebwtBw, seed.step_min+i+1, p.tloc, p.bloc, p.bwt);
 	   } // for n
 	   nleft -= ncompleted;
 	   bwops_ += bwops;

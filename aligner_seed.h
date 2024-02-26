@@ -410,15 +410,13 @@ struct Seed {
  */
 struct InstantiatedSeed {
 
-	InstantiatedSeed() : steps(AL_CAT), zones(AL_CAT) { }
+	InstantiatedSeed() : zones(AL_CAT) { }
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		steps.set_alloc(alloc, propagate_alloc);
 		zones.set_alloc(alloc, propagate_alloc);
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		steps.set_alloc(arg);
 		zones.set_alloc(arg);
 	}
 
@@ -426,7 +424,8 @@ struct InstantiatedSeed {
 	// the seed.  The map is a helpful abstraction because we sometimes
 	// visit seed positions in an irregular order (e.g. inside-out
 	// search).
-	EList<int> steps;
+	int n_steps;
+	int step_min;
 
 	// Zones map.  For each step, records what constraint to charge an
 	// edit to.  The first entry in each pair gives the constraint for
