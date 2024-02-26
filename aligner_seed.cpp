@@ -156,8 +156,6 @@ public:
 	, bwt()
 	, tloc()
 	, bloc()
-	, cv{ seed.cons[0], seed.cons[1], seed.cons[2]  }
-	, overall(seed.overall)
 	{}
 
 	// create an empty bwt, tloc and bloc, with step=0
@@ -185,14 +183,9 @@ public:
 	  bwt.set(0,0,0,0);
 	  tloc.invalidate();
 	  bloc.invalidate();
-	  cv = { seed.cons[0], seed.cons[1], seed.cons[2]  };
-	  overall = seed.overall;
 	}
 
 	void checkCV() const {
-			assert(cv[0].acceptable());
-			assert(cv[1].acceptable());
-			assert(cv[2].acceptable());
 	}
 
 	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
@@ -201,8 +194,6 @@ public:
 	BwtTopBot bwt;        // The 4 BWT idxs
 	SideLocus tloc;       // locus for top (perhaps unititialized)
 	SideLocus bloc;       // locus for bot (perhaps unititialized)
-	std::array<Constraint,3> cv;        // constraints to enforce in seed zones
-	Constraint overall;   // overall constraints to enforce
 };
 
 
