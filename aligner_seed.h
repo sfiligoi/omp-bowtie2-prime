@@ -427,6 +427,11 @@ struct InstantiatedSeed {
 	int n_steps;
 	int step_min;
 
+	// Maximum number of positions that the aligner may advance before
+	// its first step.  This lets the aligner know whether it can use
+	// the ftab or not.
+	int maxjump;
+	
 	// Zones map.  For each step, records what constraint to charge an
 	// edit to.  The first entry in each pair gives the constraint for
 	// non-insert edits and the second entry in each pair gives the
@@ -447,11 +452,6 @@ struct InstantiatedSeed {
 	
 	// Overall constraint, tailored to the read length.
 	Constraint overall;
-	
-	// Maximum number of positions that the aligner may advance before
-	// its first step.  This lets the aligner know whether it can use
-	// the ftab or not.
-	int maxjump;
 	
 	// Offset of seed from 5' end of read
 	int seedoff;

@@ -82,8 +82,8 @@ public:
 	class CacheAndSeed {
 	public:
 		CacheAndSeed()
-		: pcache(NULL), pseed(NULL)
-		, hasi0(false), fwi0(0), bwi0(0) {}
+		: seq(NULL), n_seed_steps(0)
+		, hasi0(false), fwi0(0), bwi0(0), pcache(NULL) {}
 
 		CacheAndSeed(
 			SeedSearchCache &_cache,         // local seed alignment cache
@@ -91,8 +91,8 @@ public:
 		        const Ebwt* ebwtFw, 	         // forward index (BWT)
 			const Ebwt* ebwtBw               // backward/mirror index (BWT')
 
-		) : pcache(NULL), pseed(NULL)
-		, hasi0(false), fwi0(0), bwi0(0) // just set a default
+		) : seq(NULL), n_seed_steps(0)
+		, hasi0(false), fwi0(0), bwi0(0), pcache(NULL) // just set a default
 		{ reset(_cache,_seed,ebwtFw,ebwtBw); }
 
 		void reset(
@@ -102,26 +102,29 @@ public:
 			const Ebwt* ebwtBw               // backward/mirror index (BWT')
 		)
 		{
-			pcache = &_cache;
-			pseed = &_seed;
-	                int off = pseed->step_min;
-	                bool ltr = off > 0;
-        	        off = abs(off)-1;
+			seq = _cache.getSeq();
+			n_seed_steps = _seed.n_steps;
+			seed_step_min = _seed.step_min;
+			maxjump = _seed.maxjump;
+
+	                bool ltr = seed_step_min > 0;
+        	        int off = abs(seed_step_min)-1;
 			int ftabLen = ebwtFw->eh().ftabChars();
-			hasi0 = (ftabLen > 1 && ftabLen <= pseed->maxjump);
+			hasi0 = (ftabLen > 1 && ftabLen <= maxjump);
 			if(hasi0) {
 				if(!ltr) {
 					assert_geq(off+1, ftabLen-1);
 					off = off - ftabLen + 1;
 				}
 				// startSearchSeedBi will need them, start prefetching now
-				fwi0 = ebwtFw->ftabSeqToInt( pcache->getSeq(), off, false);
+				fwi0 = ebwtFw->ftabSeqToInt( seq, off, false);
 				ebwtFw->ftabLoHiPrefetch(fwi0);
 				if(ebwtBw!=NULL) {
-					bwi0 = ebwtBw->ftabSeqToInt( pcache->getSeq(), off, false);
+					bwi0 = ebwtBw->ftabSeqToInt( seq, off, false);
 					ebwtBw->ftabLoHiPrefetch(bwi0);
 				}
 			}
+			pcache = &_cache; //  keep track of the big object
 		}
 
 		CacheAndSeed(CacheAndSeed &other) = default;
@@ -130,11 +133,14 @@ public:
 		CacheAndSeed& operator=(const CacheAndSeed& other) = default;
 
 		// Use pointers, so they can be changed 
-		SeedSearchCache *pcache;        // local seed alignment cache
-		const InstantiatedSeed* pseed;  // current instantiated seed
+		const char *seq;                // sequence os the local seed alignment cache
+		int n_seed_steps;               // steps in the current instantiated seed
+		int seed_step_min;              // min step val in current instantiated seed
+		int maxjump;			// maxjump val in current instantiated seed
 		bool hasi0;
 		TIndexOffU fwi0;                // Idx of fw ftab
 		TIndexOffU bwi0;                // Idx of bw ftab
+		SeedSearchCache *pcache; //  keep track of the big object
 	};
 
 	// create an empty bwt, tloc and bloc, with step=0
@@ -188,10 +194,6 @@ public:
 			assert(cv[1].acceptable());
 			assert(cv[2].acceptable());
 	}
-
-	// Assumes that the pointers are properly initialized to !=NULL
-	SeedSearchCache& get_cache() {return *(cs.pcache);}
-	const InstantiatedSeed& get_seed() const {return *(cs.pseed);}
 
 	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
 	int step;             // depth into steps[] array, i.e. step_min+step
@@ -629,9 +631,10 @@ void SeedAligner::searchAllSeeds(
 					SeedAlignerSearchParams& p= paramVec[n];
 					assert(p.prevEdit==NULL);
 					// Finished aligning seed
-					auto& cache = p.get_cache();
+					const char *seq = p.cs.seq;
 					auto& bwt = p.bwt;
-					cache.addOnTheFly(cache.getSeq(), sr.seqs_len(), bwt.topf, bwt.botf, bwt.topb, bwt.botb);
+					p.cs.pcache->addOnTheFly(seq, sr.seqs_len(), bwt.topf, bwt.botf, bwt.topb, bwt.botb);
+					
 				}
 			}
 		   }
@@ -1278,18 +1281,17 @@ SeedAligner::startSearchSeedBi(
                         const Ebwt* ebwtBw,       // backward/mirror index (BWT')
 			SeedAligner::SeedAlignerSearchParams &p)
 {
-	SeedSearchCache &cache = p.get_cache();
-	const InstantiatedSeed& seed = p.get_seed();
-	const char *seq = cache.getSeq();
+	const char *seq = p.cs.seq;
+	const int n_seed_steps = p.cs.n_seed_steps;
 
-	assert_gt(seed.n_steps, 0);
+	assert_gt(n_seed_steps, 0);
 	assert(ebwtBw == NULL || ebwtBw->eh().ftabChars() == ebwtFw->eh().ftabChars());
 #ifndef NDEBUG
 	for(int i = 0; i < 4; i++) {
 		assert(ebwtBw == NULL || ebwtBw->fchr()[i] == ebwtFw->fchr()[i]);
 	}
 #endif
-	if(p.step == seed.n_steps) {
+	if(p.step == n_seed_steps) {
 		return true;
 	}
 #ifndef NDEBUG
@@ -1303,11 +1305,11 @@ SeedAligner::startSearchSeedBi(
 		assert(p.prevEdit == NULL);
 		assert(!p.tloc.valid());
 		assert(!p.bloc.valid());
-		int off = seed.step_min;
-		off = abs(off)-1;
+		const int seed_step_min = p.cs.seed_step_min;
+		int off = abs(seed_step_min)-1;
 		// Check whether/how far we can jump using ftab or fchr
 		int ftabLen = ebwtFw->eh().ftabChars();
-		if(p.cs.hasi0) { //if(ftabLen > 1 && ftabLen <= seed.maxjump)
+		if(p.cs.hasi0) { //if(ftabLen > 1 && ftabLen <= p.cs.maxjump)
 			ebwtFw->ftabLoHi(p.cs.fwi0, p.bwt.topf, p.bwt.botf);
 			#ifdef NDEBUG
 			if(p.bwt.botf - p.bwt.topf == 0) return true;
@@ -1325,7 +1327,7 @@ SeedAligner::startSearchSeedBi(
 			if(p.bwt.botf - p.bwt.topf == 0) return true;
 			#endif
 			p.step += ftabLen;
-		} else if(seed.maxjump > 0) {
+		} else if(p.cs.maxjump > 0) {
 			// Use fchr
 			int c = seq[off];
 			assert_range(0, 3, c);
@@ -1334,14 +1336,14 @@ SeedAligner::startSearchSeedBi(
 			if(p.bwt.botf - p.bwt.topf == 0) return true;
 			p.step++;
 		} else {
-			assert_eq(0, seed.maxjump);
+			assert_eq(0, p.cs.maxjump);
 			p.bwt.topf = p.bwt.topb = 0;
 			p.bwt.botf = p.bwt.botb = ebwtFw->fchr()[4];
 		}
-		if(p.step == (int)seed.n_steps) {
+		if(p.step == n_seed_steps) {
 			return true;
 		}
-		nextLocsBi(ebwtFw,ebwtBw, seed.step_min+p.step, p.tloc, p.bloc, p.bwt);
+		nextLocsBi(ebwtFw,ebwtBw, seed_step_min+p.step, p.tloc, p.bloc, p.bwt);
 		assert(p.tloc.valid());
 	} else assert(p.prevEdit != NULL);
 	assert(p.tloc.valid());
@@ -1442,8 +1444,7 @@ SeedAligner::searchSeedBi(
 		sstate.done = done;
 		sstate.need_reporting = false;
 		if(done) {
-			const InstantiatedSeed& seed = p.get_seed();
-		        if(p.step == (int)seed.n_steps) {
+		        if(p.step == (int)p.cs.n_seed_steps) {
                 		// Finished aligning seed
 				p.checkCV();
 				sstate.need_reporting = true;
@@ -1469,24 +1470,24 @@ SeedAligner::searchSeedBi(
 		if (sstate.done) continue;
 
 		SeedAlignerSearchParams& p= paramVec[n];
-		const InstantiatedSeed& seed = p.get_seed();
-		if (p.step >= (int) seed.n_steps) {
+		const int n_seed_steps = p.cs.n_seed_steps;
+		if (p.step >= (int) n_seed_steps) {
 			sstate.done = true;
 			ncompleted++;
 			continue;
 		}
+		const int seed_step_min = p.cs.seed_step_min;
 		size_t i = p.step; // call the stepIdx i for historical reasons
 		p.step++; // get ready for the next iteration
 
-		SeedSearchCache &cache = p.get_cache();
-		const char *seq = cache.getSeq();
+		const char *seq = p.cs.seq;
 
 		assert_gt(p.bwt.botf, p.bwt.topf);
 		assert(p.bwt.botf - p.bwt.topf == 1 ||  p.bloc.valid());
 		assert(p.bwt.botf - p.bwt.topf > 1  || !p.bloc.valid());
 		assert(ebwtBw == NULL || p.bwt.botf-p.bwt.topf == p.bwt.botb-p.bwt.topb);
 		assert(p.tloc.valid());
-		sstate.setOff(seed.step_min+i, p.bwt, ebwtFw, ebwtBw);
+		sstate.setOff(seed_step_min+i, p.bwt, ebwtFw, ebwtBw);
 		__builtin_prefetch(&(seq[sstate.off]));
 		if(p.bloc.valid()) {
 			// Range delimited by tloc/bloc has size >1.  If size == 1,
@@ -1532,14 +1533,14 @@ SeedAligner::searchSeedBi(
 			continue;
 		}
 		p.bwt.set(sstate.tf[c], sstate.bf[c], sstate.tb[c], sstate.bb[c]);
-		if(i+1 == seed.n_steps) {
+		if(i+1 == n_seed_steps) {
 			p.checkCV();
 			sstate.need_reporting = true;
 			sstate.done = true;
 			ncompleted++;
 			continue;
 		}
-		nextLocsBi(ebwtFw,ebwtBw, seed.step_min+i+1, p.tloc, p.bloc, p.bwt);
+		nextLocsBi(ebwtFw,ebwtBw, seed_step_min+i+1, p.tloc, p.bloc, p.bwt);
 	   } // for n
 	   nleft -= ncompleted;
 	   bwops_ += bwops;
