@@ -225,7 +225,6 @@ Seed::instantiate(
 	}
 	assert_gt(seedlen, 0);
 	is.n_steps = seedlen;
-	is.zones.resize(seedlen);
 	// Fill in 'steps' and 'zones'
 	//
 	// The 'steps' list indicates which read character should be
@@ -250,31 +249,14 @@ Seed::instantiate(
 	switch(type) {
 		case SEED_TYPE_EXACT: {
 			is.step_min = -seedlen;
-			for(int k = 0; k < seedlen; k++) {
-				// Zone 0 all the way
-				is.zones[k].first = is.zones[k].second = 0;
-			}
 			break;
 		}
 		case SEED_TYPE_LEFT_TO_RIGHT: {
 			is.step_min = 1;
-			for(int k = 0; k < seedlen; k++) {
-				// Zone 0 from 0 up to ceil(len/2), then 1
-				is.zones[k].first = is.zones[k].second = ((k < (seedlen+1)/2) ? 0 : 1);
-			}
-			// Zone 1 ends at the RHS
-			is.zones[seedlen-1].first = is.zones[seedlen-1].second = -1;
 			break;
 		}
 		case SEED_TYPE_RIGHT_TO_LEFT: {
 			is.step_min = -seedlen;
-			for(int k = 0; k < seedlen; k++) {
-				// Zone 0 from 0 up to floor(len/2), then 1
-				is.zones[k].first  = ((k < seedlen/2) ? 0 : 1);
-				// Inserts: Zone 0 from 0 up to ceil(len/2)-1, then 1
-				is.zones[k].second = ((k < (seedlen+1)/2+1) ? 0 : 1);
-			}
-			is.zones[seedlen-1].first = is.zones[seedlen-1].second = -1;
 			break;
 		}
 		case SEED_TYPE_INSIDE_OUT: {
@@ -284,13 +266,6 @@ Seed::instantiate(
 		default:
 			throw 1;
 	}
-	// Instantiate constraints
-	for(int i = 0; i < 3; i++) {
-		is.cons[i] = zones[i];
-		is.cons[i].instantiate(read.length());
-	}
-	is.overall = *overall;
-	is.overall.instantiate(read.length());
 	// Take a sweep through the seed sequence.  Consider where the Ns
 	// occur and how zones are laid out.  Calculate the maximum number
 	// of positions we can jump over initially (e.g. with the ftab) and
@@ -305,9 +280,7 @@ Seed::instantiate(
 		assert_neq(0, stepi);
 		int off = abs(stepi)-1;
 		int c = seq[off];  assert_range(0, 4, c);
-		if(ltr != (stepi > 0) || // changed direction
-		   is.zones[i].first != 0 ||   // changed zone
-		   is.zones[i].second != 0)    // changed zone
+		if(ltr != (stepi > 0)) // changed direction
 		{
 			streak = false;
 		}
@@ -330,29 +303,21 @@ Seed::instantiate(
  * strategy.
  */
 void
-Seed::zeroMmSeeds(int ln, EList<Seed>& pols, Constraint& oall) {
-	oall.init();
+Seed::zeroMmSeeds(int ln, EList<Seed>& pols) {
 	// Seed policy 1: left-to-right search
 	pols.expand();
 	pols.back().len = ln;
 	pols.back().type = SEED_TYPE_EXACT;
-	pols.back().zones[0] = Constraint::exact();
-	pols.back().zones[1] = Constraint::exact();
-	pols.back().zones[2] = Constraint::exact();
-	pols.back().overall = &oall;
 }
+
 
 void
-Seed::zeroMmSeed(int ln, Seed& pol, Constraint& oall) {
-	oall.init();
+Seed::zeroMmSeed(int ln, Seed& pol) {
 	pol.len = ln;
 	pol.type = SEED_TYPE_EXACT;
-	pol.zones[0] = Constraint::exact();
-	pol.zones[1] = Constraint::exact();
-	pol.zones[2] = Constraint::exact();
-	pol.overall = &oall;
 }
 
+#if 0
 /**
  * Return a set of 2 seeds encapsulating a half-and-half 1mm strategy.
  */
@@ -425,6 +390,7 @@ Seed::twoMmSeeds(int ln, EList<Seed>& pols, Constraint& oall) {
 	pols.back().zones[2].mmsCeil = 0; // Must have used at least 1 mismatch
 	pols.back().overall = &oall;
 }
+#endif
 
 /**
  * Types of actions that can be taken by the SeedAligner.
@@ -910,6 +876,7 @@ size_t SeedAligner::exactSweep(
 	return nelt;
 }
 
+#if 0
 /**
  * Search for end-to-end exact hit for read.  Return true iff one is found.
  */
@@ -1216,6 +1183,7 @@ bool SeedAligner::oneMmSearch(
 	} // for(int fw = 0; fw < 2; fw++)
 	return results;
 }
+#endif
 
 /**
  * Get tloc, bloc ready for the next step.  If the new range is under

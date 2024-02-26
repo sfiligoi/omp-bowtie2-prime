@@ -323,33 +323,24 @@ struct Seed {
 
 	int len;             // length of a seed
 	int type;            // dictates anchor portion, direction of search
-	Constraint *overall; // for the overall alignment
 
-	Seed() { init(0, 0, NULL); }
+	Seed() { init(0, 0); }
 
 	/**
 	 * Construct and initialize this seed with given length and type.
 	 */
-	Seed(int ln, int ty, Constraint* oc) {
-		init(ln, ty, oc);
+	Seed(int ln, int ty) {
+		init(ln, ty);
 	}
 
 	/**
 	 * Initialize this seed with given length and type.
 	 */
-	void init(int ln, int ty, Constraint* oc) {
+	void init(int ln, int ty) {
 		len = ln;
 		type = ty;
-		overall = oc;
 	}
 	
-	// If the seed is split into halves, we just use zones[0] and
-	// zones[1]; 0 is the near half and 1 is the far half.  If the seed
-	// is split into thirds (i.e. inside-out) then 0 is the center, 1
-	// is the far portion on the left, and 2 is the far portion on the
-	// right.
-	Constraint zones[3];
-
 	/**
 	 * Once the constrained seed is completely explored, call this
 	 * function to check whether there were *at least* as many
@@ -357,13 +348,7 @@ struct Seed {
 	 * are helpful to resolve instances where two search roots would
 	 * otherwise overlap in what alignments they can find.
 	 */
-	bool acceptable() {
-		assert(overall != NULL);
-		return zones[0].acceptable() &&
-		       zones[1].acceptable() &&
-		       zones[2].acceptable() &&
-		       overall->acceptable();
-	}
+	bool acceptable() { return true; }
 
 	/**
 	 * Given a read, depth and orientation, extract a seed data structure
@@ -386,22 +371,25 @@ struct Seed {
 	static void mmSeeds(
 		int mms,
 		int ln,
-		EList<Seed>& pols,
-		Constraint& oall)
+		EList<Seed>& pols)
 	{
 		if(mms == 0) {
-			zeroMmSeeds(ln, pols, oall);
+			zeroMmSeeds(ln, pols);
+#if 0
 		} else if(mms == 1) {
 			oneMmSeeds(ln, pols, oall);
 		} else if(mms == 2) {
 			twoMmSeeds(ln, pols, oall);
+#endif
 		} else throw 1;
 	}
 	
-	static void zeroMmSeed(int ln, Seed&, Constraint&);
-	static void zeroMmSeeds(int ln, EList<Seed>&, Constraint&);
+	static void zeroMmSeed(int ln, Seed&);
+	static void zeroMmSeeds(int ln, EList<Seed>&);
+#if 0
 	static void oneMmSeeds (int ln, EList<Seed>&, Constraint&);
 	static void twoMmSeeds (int ln, EList<Seed>&, Constraint&);
+#endif
 };
 
 /**
@@ -410,14 +398,12 @@ struct Seed {
  */
 struct InstantiatedSeed {
 
-	InstantiatedSeed() : zones(AL_CAT) { }
+	InstantiatedSeed() { }
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		zones.set_alloc(alloc, propagate_alloc);
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		zones.set_alloc(arg);
 	}
 
 	// Steps map.  There are as many steps as there are positions in
@@ -432,26 +418,8 @@ struct InstantiatedSeed {
 	// the ftab or not.
 	int maxjump;
 	
-	// Zones map.  For each step, records what constraint to charge an
-	// edit to.  The first entry in each pair gives the constraint for
-	// non-insert edits and the second entry in each pair gives the
-	// constraint for insert edits.  If the value stored is negative,
-	// this indicates that the zone is "closed out" after this
-	// position, so zone acceptility should be checked.
-	EList<pair<int, int> > zones;
-
 	// Nucleotide sequence covering the seed, extracted from read
 	BTDnaString *seq;
-	
-	// Quality sequence covering the seed, extracted from read
-	BTString *qual;
-	
-	// Initial constraints governing zones 0, 1, 2.  We precalculate
-	// the effect of Ns on these.
-	Constraint cons[3];
-	
-	// Overall constraint, tailored to the read length.
-	Constraint overall;
 	
 	// Offset of seed from 5' end of read
 	int seedoff;
@@ -1855,6 +1823,7 @@ public:
 		bool               repex,   // report 0mm hits?
 		SeedResults&       hits);   // holds all the seed hits (and exact hit)
 
+#if 0
 	/**
 	 * Search for end-to-end alignments with up to 1 mismatch.
 	 */
@@ -1869,6 +1838,7 @@ public:
 		bool               repex,  // report 0mm hits?
 		bool               rep1mm, // report 1mm hits?
 		SeedResults&       hits);  // holds all the seed hits (and exact hit)
+#endif
 
 protected:
 	class SeedAlignerSearchParams;
