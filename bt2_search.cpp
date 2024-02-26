@@ -2523,7 +2523,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 							std::pair<int, int> instFw, instRc;
 							// Instantiate the seeds
 							std::pair<int, int> inst = SeedAligner::instantiateSeeds(
-								1, &seed,           // search seed
+								seed,           // search seed
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds
 								*rds[mate],     // read to align

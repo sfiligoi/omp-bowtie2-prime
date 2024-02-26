@@ -361,7 +361,6 @@ struct Seed {
 		const Scoring& pens,
 		int depth,
 		int seedoffidx,
-		int seedtypeidx,
 		bool fw,
 		InstantiatedSeed& si) const;
 
@@ -398,13 +397,17 @@ struct Seed {
  */
 struct InstantiatedSeed {
 
-	InstantiatedSeed() { }
+	InstantiatedSeed() : n_steps(-1) { }
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
 	}
+
+	void invalidate() {n_steps=-1;}
+
+	bool isValid() const {return n_steps>=0;}
 
 	// Steps map.  There are as many steps as there are positions in
 	// the seed.  The map is a helpful abstraction because we sometimes
@@ -428,9 +431,6 @@ struct InstantiatedSeed {
 	// closest to the 5' end and consecutive ids are adjacent (i.e.
 	// there are no intervening offsets with seeds)
 	int seedoffidx;
-	
-	// Type of seed (left-to-right, etc)
-	int seedtypeidx;
 	
 	// Seed comes from forward-oriented read?
 	bool fw;
@@ -591,10 +591,9 @@ class SeedResults {
 public:
 	SeedResults() :
 		seqBuf_(AL_CAT),
+		seedsBuf_(AL_CAT),
 		hitsFw_(AL_CAT),
 		hitsRc_(AL_CAT),
-		isFw_(AL_CAT),
-		isRc_(AL_CAT),
 		sortedFw_(AL_CAT),
 		sortedRc_(AL_CAT),
 		offIdx2off_(AL_CAT),
@@ -610,10 +609,9 @@ public:
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		seqBuf_.set_alloc(alloc, propagate_alloc);
+		seedsBuf_.set_alloc(alloc, propagate_alloc);
 		hitsFw_.set_alloc(alloc, propagate_alloc);
 		hitsRc_.set_alloc(alloc, propagate_alloc);
-		isFw_.set_alloc(alloc, propagate_alloc);
-		isRc_.set_alloc(alloc, propagate_alloc);
 		sortedFw_.set_alloc(alloc, propagate_alloc);
 		sortedRc_.set_alloc(alloc, propagate_alloc);
 		offIdx2off_.set_alloc(alloc, propagate_alloc);
@@ -693,19 +691,21 @@ protected:
 		numOffs_ = numOffs;
 		seqLen_ = seqLen;
 		seqBuf_.resize(2*numOffs*seqLen);
+		seedsBuf_.resize(2*numOffs);
 		hitsFw_.resize(numOffs);
 		hitsRc_.resize(numOffs);
-		isFw_.resize(numOffs);
-		isRc_.resize(numOffs);
 		sortedFw_.resize(numOffs);
 		sortedRc_.resize(numOffs);
 		for(size_t i = 0; i < numOffs; i++) {
 			sortedFw_[i] = sortedRc_[i] = false;
 			hitsFw_[i].reset();
 			hitsRc_[i].reset();
-			isFw_[i].clear();
-			isRc_[i].clear();
 		}
+		/*
+		for(size_t i = 0; i < 2*numOffs; i++) {
+			seedsBuf_.invalidate();
+		}
+		*/
 		read_ = &read;
 		sorted_ = false;
 	}
@@ -739,6 +739,7 @@ public:
 	 * Clear seed-hit state.
 	 */
 	void clearSeeds() {
+		seedsBuf_.clear();
 		sortedFw_.clear();
 		sortedRc_.clear();
 		rankOffs_.clear();
@@ -746,8 +747,6 @@ public:
 		offIdx2off_.clear();
 		hitsFw_.clear();
 		hitsRc_.clear();
-		isFw_.clear();
-		isRc_.clear();
 		seqBuf_.clear();
 		nonzTot_ = 0;
 		uniTot_ = uniTotS_[0] = uniTotS_[1] = 0;
@@ -975,10 +974,10 @@ public:
 	/**
 	 * Get the Instantiated seeds for the given orientation and offset.
 	 */
-	EList<InstantiatedSeed>& instantiatedSeeds(bool fw, size_t seedoffidx) {
+	InstantiatedSeed& instantiatedSeed(bool fw, size_t seedoffidx) {
 		assert_lt(seedoffidx, numOffs_);
 		assert(repOk(NULL));
-		return fw ? isFw_[seedoffidx] : isRc_[seedoffidx];
+		return seedsBuf_[seedoffidx + (fw ? 0: numOffs_)];
 	}
 	
 	/**
@@ -1344,10 +1343,9 @@ protected:
 	// As seed hits and edits are added they're sorted into these
 	// containers
 	EList<char>         seqBuf_;      // content of all the seqs, no separators
+	EList<InstantiatedSeed> seedsBuf_; // all the instantiated seeds, both fw and rc
 	EList<QVal>         hitsFw_;      // hits for forward read
 	EList<QVal>         hitsRc_;      // hits for revcomp read
-	EList<EList<InstantiatedSeed> > isFw_; // hits for forward read
-	EList<EList<InstantiatedSeed> > isRc_; // hits for revcomp read
 	EList<bool>         sortedFw_;    // true iff fw QVal was sorted/ranked
 	EList<bool>         sortedRc_;    // true iff rc QVal was sorted/ranked
 	size_t              nonzTot_;     // # offsets with non-zero size
@@ -1768,8 +1766,7 @@ public:
 	 * search for each seed.
 	 */
 	static std::pair<int, int> instantiateSeeds(
-        	const unsigned int seeds_size,
-		const Seed*        seeds,  // search seeds
+		const Seed& seed,           // search seed
 		size_t off,                 // offset into read to start extracting
 		int per,                    // interval between seeds
 		const Read& read,           // read to align

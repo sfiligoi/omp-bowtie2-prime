@@ -213,7 +213,6 @@ Seed::instantiate(
 	const Scoring& pens,
 	int depth,
 	int seedoffidx,
-	int seedtypeidx,
 	bool fw,
 	InstantiatedSeed& is) const
 {
@@ -435,8 +434,7 @@ SeedAligner::instantiateSeq(
  * For each seed, instantiate the seed, retracting if necessary.
  */
 pair<int, int> SeedAligner::instantiateSeeds(
-        const unsigned int seeds_size,
-	const Seed*        seeds,  // search seeds
+	const Seed&        seed,  // search seeds
 	size_t off,                // offset into read to start extracting
 	int per,                   // interval between seeds
 	const Read& read,          // read to align
@@ -447,15 +445,9 @@ pair<int, int> SeedAligner::instantiateSeeds(
 	pair<int, int>& instFw,
 	pair<int, int>& instRc)
 {
-	assert(seeds_size>0);
 	assert_gt(read.length(), 0);
 	// Check whether read has too many Ns
-	int len = seeds[0].len; // assume they're all the same length
-#ifndef NDEBUG
-	for(unsigned int i = 1; i < seeds_size; i++) {
-		assert_eq(len, seeds[i].len);
-	}
-#endif
+	int len = seed.len; // assume they're all the same length
 	// Calc # seeds within read interval
 	int nseeds = 1;
 	if((int)read.length() - (int)off > len) {
@@ -488,19 +480,16 @@ pair<int, int> SeedAligner::instantiateSeeds(
 				depth,
 				fw);
 			// For each search strategy
-			EList<InstantiatedSeed>& iss = sr.instantiatedSeeds(fw, i);
-			for(int j = 0; j < (int) seeds_size; j++) {
-				iss.expand();
-				InstantiatedSeed* is = &iss.back();
-				if(seeds[j].instantiate(
+			InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
+			{
+				if(seed.instantiate(
 					read,
 					sr.seqs(fw,i),
 					pens,
 					depth,
 					i,
-					j,
 					fw,
-					*is))
+					is))
 				{
 					// Can we fill this seed hit in from the cache?
 					ret.first++;
@@ -508,7 +497,7 @@ pair<int, int> SeedAligner::instantiateSeeds(
 				} else {
 					// Seed may fail to instantiate if there are Ns
 					// that prevent it from matching
-					iss.pop_back();
+					is.invalidate();
 				}
 			}
 		}
@@ -555,8 +544,8 @@ void SeedAligner::searchAllSeeds(
 		   // start aligning and find list of seeds to search
 		   for(; i < ibatch_max; i++) {
 			assert(sr.repOk(&cache.current()));
-			EList<InstantiatedSeed>& iss = sr.instantiatedSeeds(fw, i);
-			if(iss.empty()) {
+			InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
+			if(!is.isValid()) {
 				// Cache hit in an across-read cache
 				continue;
 			}
@@ -565,13 +554,13 @@ void SeedAligner::searchAllSeeds(
 			SeedSearchCache &srcache = mcache[mnr];
 			{
 				possearches++;
-				for(size_t j = 0; j < iss.size(); j++) {
+				{
 					// Set seq and qual appropriately, using the seed sequences
 					// and qualities already installed in SeedResults
-					assert_eq(fw, iss[j].fw);
-					assert_eq(i, (int)iss[j].seedoffidx);
+					assert_eq(fw, is.fw);
+					assert_eq(i, (int)is.seedoffidx);
 					paramVec.expand_noresize();
-					paramVec.back().reset(srcache, iss[j], ebwtFw_, ebwtBw_);
+					paramVec.back().reset(srcache, is, ebwtFw_, ebwtBw_);
 					seedsearches++;
 				}
 			}
