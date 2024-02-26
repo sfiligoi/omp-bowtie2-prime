@@ -1765,7 +1765,7 @@ public:
 	 * Iterate through the seeds that cover the read and initiate a
 	 * search for each seed.
 	 */
-	static std::pair<int, int> instantiateSeeds(
+	static void instantiateSeeds(
 		const Seed& seed,           // search seed
 		size_t off,                 // offset into read to start extracting
 		int per,                    // interval between seeds
@@ -1774,8 +1774,7 @@ public:
 		bool nofw,                  // don't align forward read
 		bool norc,                  // don't align revcomp read
 		SeedResults& sr,            // holds all the seed hits
-		std::pair<int, int>& instFw,
-		std::pair<int, int>& instRc);
+		int insts[3]);              // counters
 
 	/**
 	 * Iterate through the seeds that cover the read and initiate a

@@ -433,7 +433,7 @@ SeedAligner::instantiateSeq(
  *
  * For each seed, instantiate the seed, retracting if necessary.
  */
-pair<int, int> SeedAligner::instantiateSeeds(
+void SeedAligner::instantiateSeeds(
 	const Seed&        seed,  // search seeds
 	size_t off,                // offset into read to start extracting
 	int per,                   // interval between seeds
@@ -442,9 +442,10 @@ pair<int, int> SeedAligner::instantiateSeeds(
 	bool nofw,                 // don't align forward read
 	bool norc,                 // don't align revcomp read
 	SeedResults& sr,           // holds all the seed hits
-	pair<int, int>& instFw,
-	pair<int, int>& instRc)
+	int insts[3])              // counters
 {
+	pair<int, int> instFw;
+	pair<int, int> instRc;
 	assert_gt(read.length(), 0);
 	// Check whether read has too many Ns
 	int len = seed.len; // assume they're all the same length
@@ -453,9 +454,7 @@ pair<int, int> SeedAligner::instantiateSeeds(
 	if((int)read.length() - (int)off > len) {
 		nseeds += ((int)read.length() - (int)off - len) / per;
 	}
-	pair<int, int> ret;
-	ret.first = 0;  // # seeds that require alignment
-	ret.second = 0; // # seeds that hit in cache with non-empty results
+	insts[0] = insts[1] = insts[2] = 0;
 
 	const int min_len = std::min<int>(len, (int)read.length());
 	sr.reset(read, off, per, nseeds, min_len);
@@ -492,8 +491,8 @@ pair<int, int> SeedAligner::instantiateSeeds(
 					is))
 				{
 					// Can we fill this seed hit in from the cache?
-					ret.first++;
-					if(fwi == 0) { instFw.first++; } else { instRc.first++; }
+					insts[0]++;
+					insts[fw ? 1 : 2]++;
 				} else {
 					// Seed may fail to instantiate if there are Ns
 					// that prevent it from matching
@@ -502,7 +501,6 @@ pair<int, int> SeedAligner::instantiateSeeds(
 			}
 		}
 	}
-	return ret;
 }
 
 /**

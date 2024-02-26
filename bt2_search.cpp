@@ -2520,9 +2520,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 						msobj.shs.clearSeeds();
 						assert(msobj.shs.empty());
 						assert(msobj.shs.repOk(&msobj.ca.current()));
-							std::pair<int, int> instFw, instRc;
+						int tries[3];
 							// Instantiate the seeds
-							std::pair<int, int> inst = SeedAligner::instantiateSeeds(
+						SeedAligner::instantiateSeeds(
 								seed,           // search seed
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds
@@ -2531,17 +2531,16 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 								msconsts->nofw,          // don't align forward read
 								msconsts->norc,          // don't align revcomp read
 								msobj.shs,      // holds all the seed hits
-								instFw,
-								instRc);
-							if(inst.first + inst.second == 0) {
+								tries);
+						if(tries[0] == 0) {
 								// No seed hits!  Done with this mate.
 								assert(msobj.shs.empty());
 								mate_idx[mate] = MATE_DONE;
-							} else {
-								msinkwrap.seedsTried += (inst.first + inst.second);
-								msinkwrap.seedsTriedMS[0] = instFw.first + instFw.second;
-								msinkwrap.seedsTriedMS[1] = instRc.first + instRc.second;
-							}
+						} else {
+								msinkwrap.seedsTried += tries[0];
+								msinkwrap.seedsTriedMS[0] = tries[1];
+								msinkwrap.seedsTriedMS[1] = tries[2];
+						}
 					} // if done
 			   } // if !done_reading[mate]
 			} // for mate - found_unread
