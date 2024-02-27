@@ -1413,7 +1413,7 @@ public:
 		bool success = true;
 		for(size_t i=0; i<nEls; i++) {
 			AddEl &el = cachedEls[i];
-			success &= cachep->addOnTheFly(el.sak, el.topf, el.botf, el.topb, el.botb, getLock);
+			success &= cachep->addOnTheFly(el.sak, el.topf, el.botf, getLock);
 		}
 		cachedEls.clear();
 		return success;
@@ -1444,12 +1444,10 @@ public:
                 const char *   rfseq,     // reference sequence close to read seq - content
                 const uint32_t rfseq_len, // reference sequence close to read seq - length
                 TIndexOffU topf,            // top in BWT index
-                TIndexOffU botf,            // bot in BWT index
-                TIndexOffU topb,            // top in BWT' index
-                TIndexOffU botb)            // bot in BWT' index
+                TIndexOffU botf)            // bot in BWT index
 	{
 		cachedEls.expand();
-		cachedEls.back().reset(rfseq, rfseq_len, topf, botf, topb, botb);
+		cachedEls.back().reset(rfseq, rfseq_len, topf, botf);
 	}
 
 	/**
@@ -1469,13 +1467,11 @@ protected:
 	                const char *   rfseq,     // reference sequence close to read seq - content
         	        const uint32_t rfseq_len, // reference sequence close to read seq - length
                 	TIndexOffU _topf,            // top in BWT index
-                	TIndexOffU _botf,            // bot in BWT index
-                	TIndexOffU _topb,            // top in BWT' index
-                	TIndexOffU _botb             // bot in BWT' index
+                	TIndexOffU _botf             // bot in BWT index
 			) :
 			ASSERT_ONLY(tmp(), )
 			sak(rfseq, rfseq_len ASSERT_ONLY(, tmp)),
-			topf(_topf), botf(_botf), topb(_topb), botb(_botb) 
+			topf(_topf), botf(_botf)
 		{}
 
 		AddEl() {}
@@ -1483,14 +1479,12 @@ protected:
 		void reset(
                 	const char *   rfseq,     // reference sequence close to read seq - content
 	                const uint32_t rfseq_len, // reference sequence close to read seq - length
-                        TIndexOffU _topf,            // top in BWT index
-                        TIndexOffU _botf,            // bot in BWT index
-                        TIndexOffU _topb,            // top in BWT' index
-                        TIndexOffU _botb             // bot in BWT' index
+                        TIndexOffU _topf,         // top in BWT index
+                        TIndexOffU _botf          // bot in BWT index
                         )
 		{
 			sak.init(rfseq, rfseq_len ASSERT_ONLY(, tmp));
-			topf = _topf; botf = _botf; topb = _topb;  botb = _botb;
+			topf = _topf; botf = _botf;
 		}
 
 		AddEl& operator=(const AddEl& other) = default;
@@ -1499,8 +1493,6 @@ protected:
                 SAKey      sak;
                 TIndexOffU topf;            // top in BWT index
                 TIndexOffU botf;            // bot in BWT index
-                TIndexOffU topb;            // top in BWT' index
-                TIndexOffU botb;            // bot in BWT' index
 	};
 
 	QVal                 qv;
@@ -1623,42 +1615,25 @@ private:
 
 class SeedAlignerSearchWorkState {
 public:
-	TIndexOffU tp[4], bp[4]; // dest BW ranges for "prime" index
 	TIndexOffU t[4], b[4];   // dest BW ranges
-	TIndexOffU *tf, *tb, *bf, *bb; // depend on ltr
 
-	TIndexOffU ntop;
 	int off;
 public:
 	SeedAlignerSearchWorkState()
-	: tp{0,0,0,0}, bp{0,0,0,0}
-	, t{0,0,0,0}, b{0,0,0,0}
-	, ntop(0)
+	: t{0,0,0,0}, b{0,0,0,0}
 	, off(0)
 	{}
 
-	SeedAlignerSearchWorkState(
-		int _off,
-		const BwtTopBot &bwt)      // The 4 BWT idxs
-	: tp{bwt.topb,bwt.topb,bwt.topb,bwt.topb}
-	, bp{bwt.botb,bwt.botb,bwt.botb,bwt.botb}
-	, t{0,0,0,0}, b{0,0,0,0}
-	, ntop(bwt.topf)
+	SeedAlignerSearchWorkState(int _off)
+	: t{0,0,0,0}, b{0,0,0,0}
 	, off(abs(_off)-1)
 	{}
 
-	void setOff(
-		int _off,
-		const BwtTopBot &bwt)      // The 4 BWT idxs
+	void setOff(int _off)
 	{
 		off = _off;
 		t[0] = t[1] = t[2] = t[3] = b[0] = b[1] = b[2] = b[3] = 0;
 		off = abs(off)-1;
-		{
-			tp[0] = tp[1] = tp[2] = tp[3] = bwt.topb;
-			bp[0] = bp[1] = bp[2] = bp[3] = bwt.botb;
-			ntop = bwt.topf;
-		}
 	}
 
 };
@@ -1814,18 +1789,16 @@ protected:
 	        const int seed_step,         // current instantiated seed step
 		SideLocus& tloc,            // top locus
 		SideLocus& bloc,            // bot locus
-		TIndexOffU topf,              // top in BWT
-		TIndexOffU botf,              // bot in BWT
-		TIndexOffU topb,              // top in BWT'
-		TIndexOffU botb);             // bot in BWT'
+		TIndexOffU topf,            // top in BWT
+		TIndexOffU botf);           // bot in BWT
 	
 	static void nextLocsBi(
 	        const Ebwt* ebwt,           // forward index (BWT)
 	        const int seed_step,          // current instantiated seed step
 		SideLocus& tloc,            // top locus
 		SideLocus& bloc,            // bot locus
-		const BwtTopBot &bwt)       // The 4 BWT idxs
-	{ nextLocsBi(ebwt, seed_step, tloc, bloc, bwt.topf, bwt.botf, bwt.topb, bwt.botb); }
+		const BwtTopBotFw &bwt)       // The 4 BWT idxs
+	{ nextLocsBi(ebwt, seed_step, tloc, bloc, bwt.topf, bwt.botf); }
 
 #if 0
 	void prefetchNextLocsBi(

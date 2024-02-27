@@ -2401,6 +2401,38 @@ public:
 			botsP[3] = topsP[3] + (bots[3] - tops[3]);
 		}
 
+	inline void mapBiLFEx(
+		const SideLocus& ltop,
+		const SideLocus& lbot,
+		TIndexOffU *tops,
+		TIndexOffU *bots
+		ASSERT_ONLY(, bool overrideSanity = false)
+		) const
+		{
+#ifndef NDEBUG
+			for(int i = 0; i < 4; i++) {
+				assert_eq(0, tops[0]);  assert_eq(0, bots[0]);
+			}
+#endif
+			countBt2SideEx(ltop, tops);
+			countBt2SideEx(lbot, bots);
+#ifndef NDEBUG
+			if(_sanity && !overrideSanity) {
+				// Make sure results match up with individual calls to mapLF;
+				// be sure to override sanity-checking in the callee, or we'll
+				// have infinite recursion
+				assert_eq(mapLF(ltop, 0, true), tops[0]);
+				assert_eq(mapLF(ltop, 1, true), tops[1]);
+				assert_eq(mapLF(ltop, 2, true), tops[2]);
+				assert_eq(mapLF(ltop, 3, true), tops[3]);
+				assert_eq(mapLF(lbot, 0, true), bots[0]);
+				assert_eq(mapLF(lbot, 1, true), bots[1]);
+				assert_eq(mapLF(lbot, 2, true), bots[2]);
+				assert_eq(mapLF(lbot, 3, true), bots[3]);
+			}
+#endif
+		}
+
 	/**
 	 * Given row and its locus information, proceed on the given character
 	 * and return the next row, or all-fs if we can't proceed on that

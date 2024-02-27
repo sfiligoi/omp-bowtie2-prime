@@ -54,9 +54,7 @@ bool AlignmentCache::addOnTheFlyImpl(
 	QVal& qv,         // qval that points to the range of reference substrings
 	const SAKey& sak, // the key holding the reference substring
 	TIndexOffU topf,    // top range elt in BWT index
-	TIndexOffU botf,    // bottom range elt in BWT index
-	TIndexOffU topb,    // top range elt in BWT' index
-	TIndexOffU botb)    // bottom range elt in BWT' index
+	TIndexOffU botf)    // bottom range elt in BWT index
 {
 	bool added = true;
 	// If this is the first reference sequence we're associating with
@@ -85,7 +83,7 @@ bool AlignmentCache::addOnTheFlyImpl(
 		s->payload.i = (TIndexOffU)salist_.size();
 		s->payload.len = botf - topf;
 		s->payload.topf = topf;
-		s->payload.topb = topb;
+		s->payload.topb = 0;  // TODO: remove topb
 		for(size_t j = 0; j < (botf-topf); j++) {
 			if(!salist_.add(pool(), OFF_MASK)) {
 				// Change the payload's len field
@@ -106,11 +104,9 @@ bool AlignmentCache::addOnTheFly(
 	const SAKey& sak, // the key holding the reference substring
 	TIndexOffU topf,    // top range elt in BWT index
 	TIndexOffU botf,    // bottom range elt in BWT index
-	TIndexOffU topb,    // top range elt in BWT' index
-	TIndexOffU botb,    // bottom range elt in BWT' index
 	bool getLock)
 {
-		return addOnTheFlyImpl(qv, sak, topf, botf, topb, botb);
+		return addOnTheFlyImpl(qv, sak, topf, botf);
 }
 
 #ifdef ALIGNER_CACHE_MAIN

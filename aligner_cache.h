@@ -98,6 +98,29 @@ public:
 	TIndexOffU botb;        // bot in BWT'
 };
 
+class BwtTopBotFw {
+public:
+	BwtTopBotFw() : topf(0), botf(0) {}
+
+	BwtTopBotFw(
+		TIndexOffU _topf,        // top in BWT
+		TIndexOffU _botf)        // bot in BWT
+	: topf(_topf)
+	, botf(_botf)
+	{}
+
+	void set(
+		TIndexOffU _topf,        // top in BWT
+		TIndexOffU _botf)        // bot in BWT
+	{
+		topf = _topf;
+		botf = _botf;
+	}
+
+	TIndexOffU topf;        // top in BWT
+	TIndexOffU botf;        // bot in BWT
+};
+
 typedef PListSlice<TIndexOffU, CACHE_PAGE_SZ> TSlice;
 
 /**
@@ -546,8 +569,6 @@ public:
 		const SAKey& sak, // the key holding the reference substring
 		TIndexOffU topf,    // top range elt in BWT index
 		TIndexOffU botf,    // bottom range elt in BWT index
-		TIndexOffU topb,    // top range elt in BWT' index
-		TIndexOffU botb,    // bottom range elt in BWT' index
 		bool getLock = true);
 
 	/**
@@ -655,9 +676,7 @@ private:
 		QVal& qv,         // qval that points to the range of reference substrings
 		const SAKey& sak, // the key holding the reference substring
 		TIndexOffU topf,    // top range elt in BWT index
-		TIndexOffU botf,    // bottom range elt in BWT index
-		TIndexOffU topb,    // top range elt in BWT' index
-		TIndexOffU botb);   // bottom range elt in BWT' index
+		TIndexOffU botf);    // bottom range elt in BWT index
 
 	/**
 	 * Add a new query key ('qk'), usually a 2-bit encoded substring of
@@ -801,15 +820,13 @@ public:
 		const SAKey& sak, // the key holding the reference substring
 		TIndexOffU topf,            // top in BWT index
 		TIndexOffU botf,            // bot in BWT index
-		TIndexOffU topb,            // top in BWT' index
-		TIndexOffU botb,            // bot in BWT' index
 		bool getLock = true)      // true -> lock is not held by caller
 	{
 
 		assert(aligning());
 		assert(repOk());
 		//assert(sak.cacheable());
-		if(current_->addOnTheFly((*qv_), sak, topf, botf, topb, botb, getLock)) {
+		if(current_->addOnTheFly((*qv_), sak, topf, botf, getLock)) {
 			rangen_++;
 			eltsn_ += (botf-topf);
 			return true;
@@ -821,14 +838,12 @@ public:
 		const BTDnaString& rfseq, // reference sequence close to read seq
 		TIndexOffU topf,            // top in BWT index
 		TIndexOffU botf,            // bot in BWT index
-		TIndexOffU topb,            // top in BWT' index
-		TIndexOffU botb,            // bot in BWT' index
 		bool getLock = true)      // true -> lock is not held by caller
 	{
 
 		ASSERT_ONLY(BTDnaString tmp);
 		SAKey sak(rfseq ASSERT_ONLY(, tmp));
-		return addOnTheFly(sak, topf, botf, topb, botb, getLock);
+		return addOnTheFly(sak, topf, botf, getLock);
 	}
 
 	bool addOnTheFly(
@@ -836,14 +851,12 @@ public:
 		const uint32_t rfseq_len,   // reference sequence close to read seq - length
 		TIndexOffU topf,            // top in BWT index
 		TIndexOffU botf,            // bot in BWT index
-		TIndexOffU topb,            // top in BWT' index
-		TIndexOffU botb,            // bot in BWT' index
 		bool getLock = true)      // true -> lock is not held by caller
 	{
 
 		ASSERT_ONLY(BTDnaString tmp);
 		SAKey sak(rfseq, rfseq_len ASSERT_ONLY(, tmp));
-		return addOnTheFly(sak, topf, botf, topb, botb, getLock);
+		return addOnTheFly(sak, topf, botf, getLock);
 	}
 
 	/**

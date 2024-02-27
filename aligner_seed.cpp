@@ -184,7 +184,7 @@ public:
 	  cs.reset(cache, seed, ebwtFw, ebwtBw);
 	  step = 0;
 	  depth = 0;
-	  bwt.set(0,0,0,0);
+	  bwt.set(0,0);
 	  tloc.invalidate();
 	  bloc.invalidate();
 	}
@@ -195,7 +195,7 @@ public:
 	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
 	int step;             // depth into steps[] array, i.e. step_min+step
 	int depth;            // recursion depth
-	BwtTopBot bwt;        // The 4 BWT idxs
+	BwtTopBotFw bwt;      // The 2 BWT idxs
 	SideLocus tloc;       // locus for top (perhaps unititialized)
 	SideLocus bloc;       // locus for bot (perhaps unititialized)
 };
@@ -608,7 +608,7 @@ void SeedAligner::searchAllSeeds(
 					// Finished aligning seed
 					const char *seq = p.cs.seq;
 					auto& bwt = p.bwt;
-					p.cs.pcache->addOnTheFly(seq, sr.seqs_len(), bwt.topf, bwt.botf, bwt.topb, bwt.botb);
+					p.cs.pcache->addOnTheFly(seq, sr.seqs_len(), bwt.topf, bwt.botf);
 					
 				}
 			}
@@ -1214,14 +1214,11 @@ SeedAligner::nextLocsBi(
 	SideLocus& tloc,              // top locus
 	SideLocus& bloc,              // bot locus
 	TIndexOffU topf,              // top in BWT
-	TIndexOffU botf,              // bot in BWT
-	TIndexOffU topb,              // top in BWT'
-	TIndexOffU botb               // bot in BWT'
+	TIndexOffU botf               // bot in BWT
 	)
 {
 	assert_gt(botf, 0);
 	assert(botb > 0);
-	assert(botf-topf == botb-topb);
 	{
 		if(botf - topf == 1) {
 			// Already down to 1 row; just init top locus
@@ -1273,14 +1270,14 @@ SeedAligner::startSearchSeedBi(
 			// Use fchr
 			int c = seq[off];
 			assert_range(0, 3, c);
-			p.bwt.topf = p.bwt.topb = ebwt->fchr()[c];
-			p.bwt.botf = p.bwt.botb = ebwt->fchr()[c+1];
+			p.bwt.topf = ebwt->fchr()[c];
+			p.bwt.botf = ebwt->fchr()[c+1];
 			if(p.bwt.botf - p.bwt.topf == 0) return true;
 			p.step++;
 		} else {
 			assert_eq(0, p.cs.maxjump());
-			p.bwt.topf = p.bwt.topb = 0;
-			p.bwt.botf = p.bwt.botb = ebwt->fchr()[4];
+			p.bwt.topf = 0;
+			p.bwt.botf = ebwt->fchr()[4];
 		}
 		if(p.step == n_seed_steps) {
 			return true;
@@ -1429,15 +1426,14 @@ SeedAligner::searchSeedBi(
 		assert_gt(p.bwt.botf, p.bwt.topf);
 		assert(p.bwt.botf - p.bwt.topf == 1 ||  p.bloc.valid());
 		assert(p.bwt.botf - p.bwt.topf > 1  || !p.bloc.valid());
-		assert(p.bwt.botf-p.bwt.topf == p.bwt.botb-p.bwt.topb);
 		assert(p.tloc.valid());
-		SeedAlignerSearchWorkState wstate(seed_step_min+i, p.bwt);
+		SeedAlignerSearchWorkState wstate(seed_step_min+i);
 		__builtin_prefetch(&(seq[wstate.off]));
 		if(p.bloc.valid()) {
 			// Range delimited by tloc/bloc has size >1.  If size == 1,
 			// we use a simpler query (see if(!bloc.valid()) blocks below)
 			bwops++;
-			ebwt->mapBiLFEx(p.tloc, p.bloc, wstate.t, wstate.b, wstate.tp, wstate.bp);
+			ebwt->mapBiLFEx(p.tloc, p.bloc, wstate.t, wstate.b);
 		}
 		int c = seq[wstate.off];  assert_range(0, 4, c);
 		//
@@ -1451,7 +1447,8 @@ SeedAligner::searchSeedBi(
 			assert(wstate.bp[c] == wstate.tp[c]+1);
 			// Range delimited by tloc/bloc has size 1
 			bwops++;
-			wstate.t[c] = ebwt->mapLF1(wstate.ntop, p.tloc, c);
+			const TIndexOffU ntop = p.bwt.topf;
+			wstate.t[c] = ebwt->mapLF1(ntop, p.tloc, c);
 			if(wstate.t[c] == OFF_MASK) {
 				// done with this, swap with last and reduce nleft
 				nleft-=1;
@@ -1463,14 +1460,13 @@ SeedAligner::searchSeedBi(
 			wstate.b[c] = wstate.t[c]+1;
 			assert_gt(wstate.b[c], 0);
 		}
-		assert(wstate.b[c]-wstate.t[c] == wstate.bp[c]-wstate.tp[c]);
 		if(wstate.b[c] == wstate.t[c]) {
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
 			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
 			continue;
 		}
-		p.bwt.set(wstate.t[c], wstate.b[c], wstate.tp[c], wstate.bp[c]);
+		p.bwt.set(wstate.t[c], wstate.b[c]);
 		if(i+1 == n_seed_steps) {
 			p.checkCV();
 			sstateVec[n].set_reporting();
