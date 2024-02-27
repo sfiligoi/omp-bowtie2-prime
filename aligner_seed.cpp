@@ -1458,13 +1458,13 @@ SeedAligner::searchSeedBi(
 			wstate.b[c] = wstate.t[c]+1;
 			assert_gt(wstate.b[c], 0);
 		}
-		assert(wstate.bf[c]-wstate.tf[c] == wstate.bb[c]-wstate.tb[c]);
+		assert(wstate.b[c]-wstate.t[c] == wstate.bp[c]-wstate.tp[c]);
 		if(wstate.b[c] == wstate.t[c]) {
 			sstate.done = true;
 			ncompleted++;
 			continue;
 		}
-		p.bwt.set(wstate.tf[c], wstate.bf[c], wstate.tb[c], wstate.bb[c]);
+		p.bwt.set(wstate.t[c], wstate.b[c], wstate.tp[c], wstate.bp[c]);
 		if(i+1 == n_seed_steps) {
 			p.checkCV();
 			sstate.need_reporting = true;

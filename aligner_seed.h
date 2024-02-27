@@ -1620,7 +1620,6 @@ public:
 	SeedAlignerSearchWorkState()
 	: tp{0,0,0,0}, bp{0,0,0,0}
 	, t{0,0,0,0}, b{0,0,0,0}
-	, tf(t), tb(tp), bf(b), bb(bp)
 	, ntop(0)
 	, off(0)
 	{}
@@ -1631,7 +1630,6 @@ public:
 	: tp{bwt.topb,bwt.topb,bwt.topb,bwt.topb}
 	, bp{bwt.botb,bwt.botb,bwt.botb,bwt.botb}
 	, t{0,0,0,0}, b{0,0,0,0}
-	, tf(t), tb(tp), bf(b), bb(bp)
 	, ntop(bwt.topf)
 	, off(abs(_off)-1)
 	{}
@@ -1646,8 +1644,6 @@ public:
 		{
 			tp[0] = tp[1] = tp[2] = tp[3] = bwt.topb;
 			bp[0] = bp[1] = bp[2] = bp[3] = bwt.botb;
-			tf = t; tb = tp;
-			bf = b; bb = bp;
 			ntop = bwt.topf;
 		}
 	}
