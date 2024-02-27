@@ -1602,71 +1602,55 @@ protected:
 
 class SeedAlignerSearchState {
 public:
+	bool done;
+	bool need_reporting;
+	SeedAlignerSearchState() : done(false), need_reporting(false) {}
+
+};
+
+class SeedAlignerSearchWorkState {
+public:
 	TIndexOffU tp[4], bp[4]; // dest BW ranges for "prime" index
 	TIndexOffU t[4], b[4];   // dest BW ranges
 	TIndexOffU *tf, *tb, *bf, *bb; // depend on ltr
-	const Ebwt* ebwt;
 
 	TIndexOffU ntop;
 	int off;
-	bool ltr;
-	bool done;
-	bool need_reporting;
 public:
-	SeedAlignerSearchState()
+	SeedAlignerSearchWorkState()
 	: tp{0,0,0,0}, bp{0,0,0,0}
 	, t{0,0,0,0}, b{0,0,0,0}
-	, tf(NULL), tb(NULL), bf(NULL), bb(NULL)
-	, ebwt(NULL)
+	, tf(t), tb(tp), bf(b), bb(bp)
 	, ntop(0)
 	, off(0)
-	, ltr(false)
-	, done(false)
-	, need_reporting(false)
+	{}
+
+	SeedAlignerSearchWorkState(
+		int _off,
+		const BwtTopBot &bwt)      // The 4 BWT idxs
+	: tp{bwt.topb,bwt.topb,bwt.topb,bwt.topb}
+	, bp{bwt.botb,bwt.botb,bwt.botb,bwt.botb}
+	, t{0,0,0,0}, b{0,0,0,0}
+	, tf(t), tb(tp), bf(b), bb(bp)
+	, ntop(bwt.topf)
+	, off(abs(_off)-1)
 	{}
 
 	void setOff(
-		size_t _off,
-		const BwtTopBot &bwt,      // The 4 BWT idxs
-		const Ebwt* ebwtFw_,       // forward index (BWT)
-		const Ebwt* ebwtBw_)       // backward/mirror index (BWT')
+		int _off,
+		const BwtTopBot &bwt)      // The 4 BWT idxs
 	{
 		off = _off;
-		ltr = off > 0;
 		t[0] = t[1] = t[2] = t[3] = b[0] = b[1] = b[2] = b[3] = 0;
 		off = abs(off)-1;
-		if(ltr) {
-			ebwt = ebwtBw_;
-			tp[0] = tp[1] = tp[2] = tp[3] = bwt.topf;
-			bp[0] = bp[1] = bp[2] = bp[3] = bwt.botf;
-			tf = tp; tb = t;
-			bf = bp; bb = b;
-			ntop = bwt.topb;
-		} else {
-			ebwt = ebwtFw_;
+		{
 			tp[0] = tp[1] = tp[2] = tp[3] = bwt.topb;
 			bp[0] = bp[1] = bp[2] = bp[3] = bwt.botb;
 			tf = t; tb = tp;
 			bf = b; bb = bp;
 			ntop = bwt.topf;
 		}
-		assert(ebwt != NULL);
 	}
-
-public:
-#ifndef NDEBUG
-	TIndexOffU lasttot;
-
-	void initLastTot(TIndexOffU tot) { lasttot = tot;}
-	void assertLeqAndSetLastTot(TIndexOffU tot) {
-		assert_leq(tot, lasttot);
-		lasttot = tot;
-	}
-#else
-	// noop in production code
-	void initLastTot(TIndexOffU tot) {}
-	void assertLeqAndSetLastTot(TIndexOffU tot) {};
-#endif
 
 };
 
@@ -1803,24 +1787,21 @@ protected:
 	 * Given a vector of instantiated seeds, search
 	 */
 	static void searchSeedBi(
-		        const Ebwt* ebwtFw,       // forward index (BWT)
-		        const Ebwt* ebwtBw,       // backward/mirror index (BWT')
+		        const Ebwt* ebwt,       // forward index (BWT)
 			SeedAlignerSearchState* sstateVec,
         		uint64_t& bwops_,         // Burrows-Wheeler operations
 			const uint32_t nparams, SeedAlignerSearchParams paramVec[]);
 
 	// helper function
 	static bool startSearchSeedBi(
-		        const Ebwt* ebwtFw,       // forward index (BWT)
-		        const Ebwt* ebwtBw,       // backward/mirror index (BWT')
+		        const Ebwt* ebwt,       // forward index (BWT)
 			SeedAlignerSearchParams &p);
 
 	/**
 	 * Get tloc and bloc ready for the next step.
 	 */
 	static void nextLocsBi(
-	        const Ebwt* ebwtFw,           // forward index (BWT)
-        	const Ebwt* ebwtBw,           // backward/mirror index (BWT')
+	        const Ebwt* ebwt,           // forward index (BWT)
 	        const int seed_step,         // current instantiated seed step
 		SideLocus& tloc,            // top locus
 		SideLocus& bloc,            // bot locus
@@ -1830,13 +1811,12 @@ protected:
 		TIndexOffU botb);             // bot in BWT'
 	
 	static void nextLocsBi(
-	        const Ebwt* ebwtFw,           // forward index (BWT)
-        	const Ebwt* ebwtBw,           // backward/mirror index (BWT')
+	        const Ebwt* ebwt,           // forward index (BWT)
 	        const int seed_step,          // current instantiated seed step
 		SideLocus& tloc,            // top locus
 		SideLocus& bloc,            // bot locus
 		const BwtTopBot &bwt)       // The 4 BWT idxs
-	{ nextLocsBi(ebwtFw, ebwtBw, seed_step, tloc, bloc, bwt.topf, bwt.botf, bwt.topb, bwt.botb); }
+	{ nextLocsBi(ebwt, seed_step, tloc, bloc, bwt.topf, bwt.botf, bwt.topb, bwt.botb); }
 
 #if 0
 	void prefetchNextLocsBi(

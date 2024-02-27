@@ -597,7 +597,8 @@ void SeedAligner::searchAllSeeds(
 		   // do the searches
 		   if (!paramVec.empty()) {
 			const size_t nparams = paramVec.size();
-			searchSeedBi(ebwtFw_,ebwtBw_, sstateVec_.ptr(), bwops_, nparams, &(paramVec[0]));
+			assert(ebwtBw_==NULL);
+			searchSeedBi(ebwtFw_, sstateVec_.ptr(), bwops_, nparams, &(paramVec[0]));
 
 			for (size_t n=0; n<nparams; n++) {
 				SeedAlignerSearchState& sstate = sstateVec_[n];
@@ -1208,8 +1209,7 @@ bool SeedAligner::oneMmSearch(
  */
 inline void
 SeedAligner::nextLocsBi(
-        const Ebwt* ebwtFw,           // forward index (BWT)
-        const Ebwt* ebwtBw,           // backward/mirror index (BWT')
+        const Ebwt* ebwt,             // forward index (BWT)
 	const int seed_step,          // current instantiated seed step
 	SideLocus& tloc,              // top locus
 	SideLocus& bloc,              // bot locus
@@ -1220,29 +1220,16 @@ SeedAligner::nextLocsBi(
 	)
 {
 	assert_gt(botf, 0);
-	assert(ebwtBw == NULL || botb > 0);
-	assert(ebwtBw == NULL || botf-topf == botb-topb);
-	// Which direction are we going in next?
-	if(seed_step > 0) {
-		// Left to right; use BWT'
-		if(botb - topb == 1) {
-			// Already down to 1 row; just init top locus
-			tloc.initFromRow(topb, ebwtBw->eh(), ebwtBw->ebwt());
-			bloc.invalidate();
-		} else {
-			SideLocus::initFromTopBot(
-				topb, botb, ebwtBw->eh(), ebwtBw->ebwt(), tloc, bloc);
-			assert(bloc.valid());
-		}
-	} else {
-		// Right to left; use BWT
+	assert(botb > 0);
+	assert(botf-topf == botb-topb);
+	{
 		if(botf - topf == 1) {
 			// Already down to 1 row; just init top locus
-			tloc.initFromRow(topf, ebwtFw->eh(), ebwtFw->ebwt());
+			tloc.initFromRow(topf, ebwt->eh(), ebwt->ebwt());
 			bloc.invalidate();
 		} else {
 			SideLocus::initFromTopBot(
-				topf, botf, ebwtFw->eh(), ebwtFw->ebwt(), tloc, bloc);
+				topf, botf, ebwt->eh(), ebwt->ebwt(), tloc, bloc);
 			assert(bloc.valid());
 		}
 	}
@@ -1253,20 +1240,13 @@ SeedAligner::nextLocsBi(
 // return true, if we are already done
 bool
 SeedAligner::startSearchSeedBi(
-                        const Ebwt* ebwtFw,       // forward index (BWT)
-                        const Ebwt* ebwtBw,       // backward/mirror index (BWT')
+                        const Ebwt* ebwt,       // forward index (BWT)
 			SeedAligner::SeedAlignerSearchParams &p)
 {
 	const char *seq = p.cs.seq;
 	const int n_seed_steps = p.cs.n_seed_steps;
 
 	assert_gt(n_seed_steps, 0);
-	assert(ebwtBw == NULL || ebwtBw->eh().ftabChars() == ebwtFw->eh().ftabChars());
-#ifndef NDEBUG
-	for(int i = 0; i < 4; i++) {
-		assert(ebwtBw == NULL || ebwtBw->fchr()[i] == ebwtFw->fchr()[i]);
-	}
-#endif
 	if(p.step == n_seed_steps) {
 		return true;
 	}
@@ -1284,42 +1264,28 @@ SeedAligner::startSearchSeedBi(
 		const int seed_step_min = p.cs.seed_step_min();
 		int off = abs(seed_step_min)-1;
 		// Check whether/how far we can jump using ftab or fchr
-		int ftabLen = ebwtFw->eh().ftabChars();
+		int ftabLen = ebwt->eh().ftabChars();
 		if(p.cs.hasi0) { //if(ftabLen > 1 && ftabLen <= p.cs.maxjump)
-			ebwtFw->ftabLoHi(p.cs.fwi0, p.bwt.topf, p.bwt.botf);
-			#ifdef NDEBUG
+			ebwt->ftabLoHi(p.cs.fwi0, p.bwt.topf, p.bwt.botf);
 			if(p.bwt.botf - p.bwt.topf == 0) return true;
-			#endif
-			#ifdef NDEBUG
-			if(ebwtBw != NULL) {
-				p.bwt.topb = ebwtBw->ftabHi(p.cs.bwi0);
-				p.bwt.botb = p.bwt.topb + (p.bwt.botf-p.bwt.topf);
-			}
-			#else
-			if(ebwtBw != NULL) {
-				ebwtBw->ftabLoHi(p.cs.bwi0, p.bwt.topb, p.bwt.botb);
-				assert_eq(p.bwt.botf-p.bwt.topf, p.bwt.botb-p.bwt.topb);
-			}
-			if(p.bwt.botf - p.bwt.topf == 0) return true;
-			#endif
 			p.step += ftabLen;
 		} else if(p.cs.maxjump() > 0) {
 			// Use fchr
 			int c = seq[off];
 			assert_range(0, 3, c);
-			p.bwt.topf = p.bwt.topb = ebwtFw->fchr()[c];
-			p.bwt.botf = p.bwt.botb = ebwtFw->fchr()[c+1];
+			p.bwt.topf = p.bwt.topb = ebwt->fchr()[c];
+			p.bwt.botf = p.bwt.botb = ebwt->fchr()[c+1];
 			if(p.bwt.botf - p.bwt.topf == 0) return true;
 			p.step++;
 		} else {
 			assert_eq(0, p.cs.maxjump());
 			p.bwt.topf = p.bwt.topb = 0;
-			p.bwt.botf = p.bwt.botb = ebwtFw->fchr()[4];
+			p.bwt.botf = p.bwt.botb = ebwt->fchr()[4];
 		}
 		if(p.step == n_seed_steps) {
 			return true;
 		}
-		nextLocsBi(ebwtFw,ebwtBw, seed_step_min+p.step, p.tloc, p.bloc, p.bwt);
+		nextLocsBi(ebwt, seed_step_min+p.step, p.tloc, p.bloc, p.bwt);
 		assert(p.tloc.valid());
 	} else assert(p.prevEdit != NULL);
 	assert(p.tloc.valid());
@@ -1360,6 +1326,7 @@ private:
 	const SideLocus oldBloc;
 };
 
+#if 0
 // State used for recursion
 class SeedAlignerSearchRecState {
 public:
@@ -1392,6 +1359,7 @@ public:
 private:
 	DoublyLinkedList<Edit> *_prevEdit;
 };
+#endif
 
 /**
  * Given a seed, search.  Assumes zone 0 = no backtracking.
@@ -1402,8 +1370,7 @@ private:
  */
 void
 SeedAligner::searchSeedBi(
-                        const Ebwt* ebwtFw,       // forward index (BWT)
-                        const Ebwt* ebwtBw,       // backward/mirror index (BWT')
+                        const Ebwt* ebwt,       // forward index (BWT)
                         SeedAlignerSearchState* sstateVec,
                         uint64_t& bwops_,         // Burrows-Wheeler operations
                         const uint32_t nparams, SeedAlignerSearchParams paramVec[])
@@ -1415,7 +1382,7 @@ SeedAligner::searchSeedBi(
 	   for (uint32_t n=0; n<nparams; n++) {
 		SeedAlignerSearchParams& p= paramVec[n];
 		SeedAlignerSearchState& sstate = sstateVec[n];
-		const bool done = startSearchSeedBi(ebwtFw, ebwtBw, p);
+		const bool done = startSearchSeedBi(ebwt, p);
 		sstate.done = done;
 		sstate.need_reporting = false;
 		if(done) {
@@ -1425,8 +1392,6 @@ SeedAligner::searchSeedBi(
 				sstate.need_reporting = true;
 			}
 			ncompleted++;
-		} else {
-			sstate.initLastTot(p.bwt.botf - p.bwt.topf);
 		}
 	    }
 	    nleft -= ncompleted;
@@ -1461,23 +1426,17 @@ SeedAligner::searchSeedBi(
 		assert_gt(p.bwt.botf, p.bwt.topf);
 		assert(p.bwt.botf - p.bwt.topf == 1 ||  p.bloc.valid());
 		assert(p.bwt.botf - p.bwt.topf > 1  || !p.bloc.valid());
-		assert(ebwtBw == NULL || p.bwt.botf-p.bwt.topf == p.bwt.botb-p.bwt.topb);
+		assert(p.bwt.botf-p.bwt.topf == p.bwt.botb-p.bwt.topb);
 		assert(p.tloc.valid());
-		sstate.setOff(seed_step_min+i, p.bwt, ebwtFw, ebwtBw);
-		__builtin_prefetch(&(seq[sstate.off]));
+		SeedAlignerSearchWorkState wstate(seed_step_min+i, p.bwt);
+		__builtin_prefetch(&(seq[wstate.off]));
 		if(p.bloc.valid()) {
 			// Range delimited by tloc/bloc has size >1.  If size == 1,
 			// we use a simpler query (see if(!bloc.valid()) blocks below)
 			bwops++;
-			sstate.ebwt->mapBiLFEx(p.tloc, p.bloc, sstate.t, sstate.b, sstate.tp, sstate.bp);
-			ASSERT_ONLY(TIndexOffU tot = (sstate.b[0]-sstate.t[0])+(sstate.b[1]-sstate.t[1])+(sstate.b[2]-sstate.t[2])+(sstate.b[3]-sstate.t[3]));
-			ASSERT_ONLY(TIndexOffU totp = (sstate.bp[0]-sstate.tp[0])+(sstate.bp[1]-sstate.tp[1])+(sstate.bp[2]-sstate.tp[2])+(sstate.bp[3]-sstate.tp[3]));
-			assert_eq(tot, totp);
-#ifndef NDEBUG
-			sstate.assertLeqAndSetLastTot(tot);
-#endif
+			ebwt->mapBiLFEx(p.tloc, p.bloc, wstate.t, wstate.b, wstate.tp, wstate.bp);
 		}
-		int c = seq[sstate.off];  assert_range(0, 4, c);
+		int c = seq[wstate.off];  assert_range(0, 4, c);
 		//
 		if(c == 4) { // couldn't handle the N
 			sstate.done = true;
@@ -1485,30 +1444,27 @@ SeedAligner::searchSeedBi(
 			continue;
 		}
 		if(!p.bloc.valid()) {
-			assert(ebwtBw == NULL || sstate.bp[c] == sstate.tp[c]+1);
+			assert(wstate.bp[c] == wstate.tp[c]+1);
 			// Range delimited by tloc/bloc has size 1
 			bwops++;
-			sstate.t[c] = sstate.ebwt->mapLF1(sstate.ntop, p.tloc, c);
-			if(sstate.t[c] == OFF_MASK) {
+			wstate.t[c] = ebwt->mapLF1(wstate.ntop, p.tloc, c);
+			if(wstate.t[c] == OFF_MASK) {
 				sstate.done = true;
 				ncompleted++;
 				continue;
 			}
-			assert_geq(sstate.t[c], sstate.ebwt->fchr()[c]);
-			assert_lt(sstate.t[c],  sstate.ebwt->fchr()[c+1]);
-			sstate.b[c] = sstate.t[c]+1;
-			assert_gt(sstate.b[c], 0);
+			assert_geq(wstate.t[c], ebwt->fchr()[c]);
+			assert_lt(wstate.t[c],  ebwt->fchr()[c+1]);
+			wstate.b[c] = wstate.t[c]+1;
+			assert_gt(wstate.b[c], 0);
 		}
-		assert(ebwtBw == NULL || sstate.bf[c]-sstate.tf[c] == sstate.bb[c]-sstate.tb[c]);
-#ifndef NDEBUG
-		sstate.assertLeqAndSetLastTot(sstate.bf[c]-sstate.tf[c]);
-#endif
-		if(sstate.b[c] == sstate.t[c]) {
+		assert(wstate.bf[c]-wstate.tf[c] == wstate.bb[c]-wstate.tb[c]);
+		if(wstate.b[c] == wstate.t[c]) {
 			sstate.done = true;
 			ncompleted++;
 			continue;
 		}
-		p.bwt.set(sstate.tf[c], sstate.bf[c], sstate.tb[c], sstate.bb[c]);
+		p.bwt.set(wstate.tf[c], wstate.bf[c], wstate.tb[c], wstate.bb[c]);
 		if(i+1 == n_seed_steps) {
 			p.checkCV();
 			sstate.need_reporting = true;
@@ -1516,7 +1472,7 @@ SeedAligner::searchSeedBi(
 			ncompleted++;
 			continue;
 		}
-		nextLocsBi(ebwtFw,ebwtBw, seed_step_min+i+1, p.tloc, p.bloc, p.bwt);
+		nextLocsBi(ebwt, seed_step_min+i+1, p.tloc, p.bloc, p.bwt);
 	   } // for n
 	   nleft -= ncompleted;
 	   bwops_ += bwops;
