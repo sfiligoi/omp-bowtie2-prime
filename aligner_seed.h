@@ -617,13 +617,6 @@ public:
 	}
 
 	/**
-	 * Set the current read.
-	 */
-	void nextRead(const Read& read) {
-		read_ = &read;
-	}
-
-	/**
 	 * Set the appropriate element of either hitsFw_ or hitsRc_ to the given
 	 * QVal.  A QVal encapsulates all the BW ranges for reference substrings 
 	 * that are within some distance of the seed string.
@@ -673,13 +666,11 @@ public:
 	 */
 protected:
 	void resetNoOff(
-		const Read& read,
 		const size_t numOffs,
 		const uint32_t seqLen)
 	{
 		assert_gt(numOffs, 0);
 		clearSeeds();
-		read_ = &read;
 		numOffs_ = numOffs;
 		seqLen_ = seqLen;
 		seqBuf_.resize(2*numOffs*seqLen);
@@ -702,23 +693,21 @@ protected:
 
 public:
 	void reset(
-		const Read& read,
 		const EList<uint32_t>& offIdx2off,
 		size_t numOffs,   
                 const uint32_t seqLen)
 	{
-		resetNoOff(read,numOffs,seqLen);
+		resetNoOff(numOffs,seqLen);
 		offIdx2off_ = offIdx2off;
 	}
 
 	void reset(
-		const Read& read,
 		const size_t off,                // offset into read to start extracting
 		const int per,                   // interval between seeds
 		size_t numOffs,   
                 const uint32_t seqLen)
 	{
-		resetNoOff(read,numOffs,seqLen);
+		resetNoOff(numOffs,seqLen);
 		offIdx2off_.clear();
 		for(int i = 0; i < numOffs; i++) {
 			offIdx2off_.push_back(per * i + (int)off);
@@ -757,7 +746,6 @@ public:
 	 */
 	void clear() {
 		clearSeeds();
-		read_ = NULL;
 		exactFwHit_.reset();
 		exactRcHit_.reset();
 		mm1Hit_.clear();
@@ -975,22 +963,13 @@ public:
 	 */
 	size_t numOffs() const { return numOffs_; }
 	
-	/**
-	 * Return the read from which seeds were extracted, aligned.
-	 */
-	const Read& read() const { return *read_; }
-	
 #ifndef NDEBUG
 	/**
 	 * Check that this SeedResults is internally consistent.
 	 */
 	bool repOk(
-		const AlignmentCache* ac,
-		bool requireInited = false) const
+		const AlignmentCache* ac) const
 	{
-		if(requireInited) {
-			assert(read_ != NULL);
-		}
 		if(numOffs_ > 0) {
 			assert_eq(numOffs_, hitsFw_.size());
 			assert_eq(numOffs_, hitsRc_.size());
@@ -1358,7 +1337,6 @@ protected:
 	// These fields set once per read
 	size_t              numOffs_;   // # different seed offsets possible
 	uint32_t            seqLen_;    // # length of each seq
-	const Read*         read_;      // read from which seeds were extracted
 	
 	EEHit               exactFwHit_; // end-to-end exact hit for fw read
 	EEHit               exactRcHit_; // end-to-end exact hit for rc read

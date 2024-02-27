@@ -495,7 +495,7 @@ void SeedAligner::instantiateSeeds(
 	insts[0] = insts[1] = insts[2] = 0;
 
 	const int min_len = std::min<int>(len, (int)read.length());
-	sr.reset(read, off, per, nseeds, min_len);
+	sr.reset(off, per, nseeds, min_len);
 
 	// For each seed position
 	for(int fwi = 0; fwi < 2; fwi++) {

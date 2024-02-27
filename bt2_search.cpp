@@ -2461,7 +2461,6 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					// done[mate] = !filt;
 					// Increment counters according to what got filtered
 					if(filt) { // done[mate] == false
-						msobj.shs.nextRead(*rds[mate]);
 						assert(msobj.shs.empty());
 
 						// Calculate interval length for both mates
