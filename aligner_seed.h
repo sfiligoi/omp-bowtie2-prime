@@ -1602,10 +1602,23 @@ protected:
 
 class SeedAlignerSearchState {
 public:
-	bool done;
-	bool need_reporting;
-	SeedAlignerSearchState() : done(false), need_reporting(false) {}
+	SeedAlignerSearchState() : idx1(1) {}
 
+	void reset(uint32_t idx) {
+		idx1 = idx+1;
+	}
+	
+	uint32_t get_idx_fast() const { return idx1-1;} // for when you know not reporting
+	uint32_t get_idx() const { return abs(idx1)-1;}
+
+	void clear_reporting() { idx1 = abs(idx1); }
+	void set_reporting() { idx1 = -abs(idx1); }
+
+	bool need_reporting() const {return idx1<0;};
+
+private:
+	// encode index and need reporting
+	int32_t idx1;
 };
 
 class SeedAlignerSearchWorkState {

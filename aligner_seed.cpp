@@ -602,8 +602,8 @@ void SeedAligner::searchAllSeeds(
 
 			for (size_t n=0; n<nparams; n++) {
 				SeedAlignerSearchState& sstate = sstateVec_[n];
-				if (sstate.need_reporting) {
-					SeedAlignerSearchParams& p= paramVec[n];
+				if (sstate.need_reporting()) {
+					SeedAlignerSearchParams& p= paramVec[sstate.get_idx()];
 					assert(p.prevEdit==NULL);
 					// Finished aligning seed
 					const char *seq = p.cs.seq;
@@ -1378,23 +1378,26 @@ SeedAligner::searchSeedBi(
 	uint32_t nleft = nparams; // will keep track of how many are not done yet
 
 	{
-           uint32_t ncompleted = 0;
-	   for (uint32_t n=0; n<nparams; n++) {
-		SeedAlignerSearchParams& p= paramVec[n];
-		SeedAlignerSearchState& sstate = sstateVec[n];
+	   uint32_t n=0;
+           uint32_t iparam = 0; // iparam and n may diverge, if some are done at init stage
+	   while (n<nleft) {
+		SeedAlignerSearchParams& p= paramVec[iparam];
+		sstateVec[n].reset(iparam);
+		iparam+=1;
 		const bool done = startSearchSeedBi(ebwt, p);
-		sstate.done = done;
-		sstate.need_reporting = false;
 		if(done) {
 		        if(p.step == (int)p.cs.n_seed_steps) {
                 		// Finished aligning seed
 				p.checkCV();
-				sstate.need_reporting = true;
+				sstateVec[n].set_reporting();
 			}
-			ncompleted++;
+			// done with this, swap with last and reduce nleft
+			nleft-=1;
+			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
+		} else {
+			n+=1;
 		}
 	    }
-	    nleft -= ncompleted;
 	}
 
 
@@ -1403,18 +1406,18 @@ SeedAligner::searchSeedBi(
 	   // but we must do the steps inside the same param in order
 	   // We still want to do them sequentially, not in parallel, 
 	   // to give time for the prefetch to do its job.
-	   // Will loop over all of them, and just check which ones are invalid
 	   uint32_t bwops = 0;
-           uint32_t ncompleted = 0;
-           for (uint32_t n=0; n<nparams; n++) {
-                SeedAlignerSearchState& sstate = sstateVec[n];
-		if (sstate.done) continue;
+	   uint32_t n=0;
+           // logically a for (uint32_t n=0; n<nleft; n++) but with nleft potentially changing
+	   while (n<nleft) {
+		const uint32_t iparam = sstateVec[n].get_idx_fast();
 
-		SeedAlignerSearchParams& p= paramVec[n];
+		SeedAlignerSearchParams& p= paramVec[iparam];
 		const int n_seed_steps = p.cs.n_seed_steps;
 		if (p.step >= (int) n_seed_steps) {
-			sstate.done = true;
-			ncompleted++;
+			// done with this, swap with last and reduce nleft
+			nleft-=1;
+			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
 			continue;
 		}
 		const int seed_step_min = p.cs.seed_step_min();
@@ -1439,8 +1442,9 @@ SeedAligner::searchSeedBi(
 		int c = seq[wstate.off];  assert_range(0, 4, c);
 		//
 		if(c == 4) { // couldn't handle the N
-			sstate.done = true;
-			ncompleted++;
+			// done with this, swap with last and reduce nleft
+			nleft-=1;
+			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
 			continue;
 		}
 		if(!p.bloc.valid()) {
@@ -1449,8 +1453,9 @@ SeedAligner::searchSeedBi(
 			bwops++;
 			wstate.t[c] = ebwt->mapLF1(wstate.ntop, p.tloc, c);
 			if(wstate.t[c] == OFF_MASK) {
-				sstate.done = true;
-				ncompleted++;
+				// done with this, swap with last and reduce nleft
+				nleft-=1;
+				if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
 				continue;
 			}
 			assert_geq(wstate.t[c], ebwt->fchr()[c]);
@@ -1460,23 +1465,26 @@ SeedAligner::searchSeedBi(
 		}
 		assert(wstate.b[c]-wstate.t[c] == wstate.bp[c]-wstate.tp[c]);
 		if(wstate.b[c] == wstate.t[c]) {
-			sstate.done = true;
-			ncompleted++;
+			// done with this, swap with last and reduce nleft
+			nleft-=1;
+			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
 			continue;
 		}
 		p.bwt.set(wstate.t[c], wstate.b[c], wstate.tp[c], wstate.bp[c]);
 		if(i+1 == n_seed_steps) {
 			p.checkCV();
-			sstate.need_reporting = true;
-			sstate.done = true;
-			ncompleted++;
+			sstateVec[n].set_reporting();
+			// done with this, swap with last and reduce nleft
+			nleft-=1;
+			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
 			continue;
 		}
 		nextLocsBi(ebwt, seed_step_min+i+1, p.tloc, p.bloc, p.bwt);
-	   } // for n
-	   nleft -= ncompleted;
+		// not done, move to the next element
+		n+=1;
+	   } // while n
 	   bwops_ += bwops;
-	} // while
+	} // while nleft
 
 	return;
 }
