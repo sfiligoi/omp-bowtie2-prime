@@ -2523,7 +2523,6 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds
 								*rds[mate],     // read to align
-								msconsts->sc,             // scoring scheme
 								msconsts->nofw,          // don't align forward read
 								msconsts->norc,          // don't align revcomp read
 								msobj.shs,      // holds all the seed hits

@@ -403,11 +403,7 @@ struct InstantiatedSeed {
 	bool instantiateExact(
 		const int seed_len,
 		const Read& read,
-		const char *seq, // seed read sequence
-		const Scoring& pens,
-		int depth,
-		int seedoffidx,
-		bool fw);
+		const char *seq); // seed read sequence
 
 	// Steps map.  There are as many steps as there are positions in
 	// the seed.  The map is a helpful abstraction because we sometimes
@@ -427,15 +423,15 @@ struct InstantiatedSeed {
 	BTDnaString *seq;
 	
 	// Offset of seed from 5' end of read
-	int seedoff;
+	//int seedoff;
 
 	// Id for seed offset; ids are such that the smallest index is the
 	// closest to the 5' end and consecutive ids are adjacent (i.e.
 	// there are no intervening offsets with seeds)
-	int seedoffidx;
+	//int seedoffidx;
 	
 	// Seed comes from forward-oriented read?
-	bool fw;
+	//bool fw;
 	
 #ifndef NDEBUG
 	/**
@@ -1756,7 +1752,6 @@ public:
 		size_t off,                 // offset into read to start extracting
 		int per,                    // interval between seeds
 		const Read& read,           // read to align
-		const Scoring& pens,        // scoring scheme
 		bool nofw,                  // don't align forward read
 		bool norc,                  // don't align revcomp read
 		SeedResults& sr,            // holds all the seed hits

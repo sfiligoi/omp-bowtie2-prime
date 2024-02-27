@@ -308,11 +308,7 @@ bool
 InstantiatedSeed::instantiateExact(
 	const int seed_len,
 	const Read& read,
-	const char *seq, // seed read sequence
-	const Scoring& pens,
-	int _depth,
-	int _seedoffidx,
-	bool _fw)
+	const char *seq) // seed read sequence
 {
 	int seedlen = seed_len;
 	if((int)read.length() < seedlen) {
@@ -339,9 +335,6 @@ InstantiatedSeed::instantiateExact(
 			return false;
 		}
 	}
-	seedoff = _depth;
-	seedoffidx = _seedoffidx;
-	fw = _fw;
 	return true;
 }
 
@@ -486,7 +479,6 @@ void SeedAligner::instantiateSeeds(
 	size_t off,                // offset into read to start extracting
 	int per,                   // interval between seeds
 	const Read& read,          // read to align
-	const Scoring& pens,       // scoring scheme
 	bool nofw,                 // don't align forward read
 	bool norc,                 // don't align revcomp read
 	SeedResults& sr,           // holds all the seed hits
@@ -530,11 +522,7 @@ void SeedAligner::instantiateSeeds(
 				if(is.instantiateExact(
 					seed_len,
 					read,
-					sr.seqs(fw,i),
-					pens,
-					depth,
-					i,
-					fw))
+					sr.seqs(fw,i)))
 				{
 					// Can we fill this seed hit in from the cache?
 					insts[0]++;
