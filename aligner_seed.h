@@ -351,20 +351,6 @@ struct Seed {
 	bool acceptable() { return true; }
 
 	/**
-	 * Given a read, depth and orientation, extract a seed data structure
-	 * from the read and fill in the steps & zones arrays.  The Seed
-	 * contains the sequence and quality values.
-	 */
-	bool instantiate(
-		const Read& read,
-		const char * seq, // already-extracted seed sequence
-		const Scoring& pens,
-		int depth,
-		int seedoffidx,
-		bool fw,
-		InstantiatedSeed& si) const;
-
-	/**
 	 * Return a list of Seed objects encapsulating
 	 */
 	static void mmSeeds(
@@ -409,17 +395,33 @@ struct InstantiatedSeed {
 
 	bool isValid() const {return n_steps>=0;}
 
+	/**
+	 * Given a read, depth and orientation, extract a seed data structure
+	 * from the read and fill in the steps & zones arrays.  The Seed
+	 * contains the sequence and quality values.
+	 */
+	bool instantiateExact(
+		const int seed_len,
+		const Read& read,
+		const char *seq, // seed read sequence
+		const Scoring& pens,
+		int depth,
+		int seedoffidx,
+		bool fw);
+
 	// Steps map.  There are as many steps as there are positions in
 	// the seed.  The map is a helpful abstraction because we sometimes
 	// visit seed positions in an irregular order (e.g. inside-out
 	// search).
 	int n_steps;
-	int step_min;
+
+	// Since we only suport exact matches, use -n_steps
+	int step_min() const {return -n_steps;}
 
 	// Maximum number of positions that the aligner may advance before
 	// its first step.  This lets the aligner know whether it can use
 	// the ftab or not.
-	int maxjump;
+	int maxjump() const {return n_steps;}
 	
 	// Nucleotide sequence covering the seed, extracted from read
 	BTDnaString *seq;
@@ -434,13 +436,6 @@ struct InstantiatedSeed {
 	
 	// Seed comes from forward-oriented read?
 	bool fw;
-	
-	// Filtered out due to the pattern of Ns present.  If true, this
-	// seed should be ignored by searchAllSeeds().
-	bool nfiltered;
-	
-	// Seed this was instantiated from
-	Seed s;
 	
 #ifndef NDEBUG
 	/**
@@ -688,10 +683,15 @@ protected:
 	{
 		assert_gt(numOffs, 0);
 		clearSeeds();
+		read_ = &read;
 		numOffs_ = numOffs;
 		seqLen_ = seqLen;
 		seqBuf_.resize(2*numOffs*seqLen);
 		seedsBuf_.resize(2*numOffs);
+		for(size_t i = 0; i < 2*numOffs; i++) {
+			seedsBuf_[i].invalidate();
+		}
+
 		hitsFw_.resize(numOffs);
 		hitsRc_.resize(numOffs);
 		sortedFw_.resize(numOffs);
@@ -701,12 +701,6 @@ protected:
 			hitsFw_[i].reset();
 			hitsRc_[i].reset();
 		}
-		/*
-		for(size_t i = 0; i < 2*numOffs; i++) {
-			seedsBuf_.invalidate();
-		}
-		*/
-		read_ = &read;
 		sorted_ = false;
 	}
 
@@ -1330,14 +1324,6 @@ public:
 		return mm1Elt_;
 	}
 	
-	/**
-	 * Return the length of the read that yielded the seed hits.
-	 */
-	size_t readLength() const {
-		assert(read_ != NULL);
-		return read_->length();
-	}
-
 protected:
 
 	// As seed hits and edits are added they're sorted into these
@@ -1766,7 +1752,7 @@ public:
 	 * search for each seed.
 	 */
 	static void instantiateSeeds(
-		const Seed& seed,           // search seed
+		const int seed_len,        // search seed length
 		size_t off,                 // offset into read to start extracting
 		int per,                    // interval between seeds
 		const Read& read,           // read to align

@@ -104,13 +104,11 @@ public:
 		{
 			seq = _cache.getSeq();
 			n_seed_steps = _seed.n_steps;
-			seed_step_min = _seed.step_min;
-			maxjump = _seed.maxjump;
 
-	                bool ltr = seed_step_min > 0;
-        	        int off = abs(seed_step_min)-1;
+	                constexpr bool ltr = false; // seed_step_min > 0 i.e. n_seed_steps<0
+        	        int off = abs(seed_step_min())-1;
 			int ftabLen = ebwtFw->eh().ftabChars();
-			hasi0 = (ftabLen > 1 && ftabLen <= maxjump);
+			hasi0 = (ftabLen > 1 && ftabLen <= maxjump());
 			if(hasi0) {
 				if(!ltr) {
 					assert_geq(off+1, ftabLen-1);
@@ -132,11 +130,17 @@ public:
 
 		CacheAndSeed& operator=(const CacheAndSeed& other) = default;
 
+		// Since we only suport exact matches, use -n_steps
+		int seed_step_min() const {return -n_seed_steps;}
+
+		// Maximum number of positions that the aligner may advance before
+		// its first step.  This lets the aligner know whether it can use
+		// the ftab or not.
+		int maxjump() const {return n_seed_steps;}
+	
 		// Use pointers, so they can be changed 
 		const char *seq;                // sequence os the local seed alignment cache
 		int n_seed_steps;               // steps in the current instantiated seed
-		int seed_step_min;              // min step val in current instantiated seed
-		int maxjump;			// maxjump val in current instantiated seed
 		bool hasi0;
 		TIndexOffU fwi0;                // Idx of fw ftab
 		TIndexOffU bwi0;                // Idx of bw ftab
@@ -206,6 +210,8 @@ public:
  * from the read and fill in the steps & zones arrays.  The Seed
  * contains the sequence and quality values.
  */
+
+#if 0
 bool
 Seed::instantiate(
 	const Read& read,
@@ -295,6 +301,48 @@ Seed::instantiate(
 	is.fw = fw;
 	is.s = *this;
 	return ret;
+}
+#endif
+
+bool
+InstantiatedSeed::instantiateExact(
+	const int seed_len,
+	const Read& read,
+	const char *seq, // seed read sequence
+	const Scoring& pens,
+	int _depth,
+	int _seedoffidx,
+	bool _fw)
+{
+	int seedlen = seed_len;
+	if((int)read.length() < seedlen) {
+		// Shrink seed length to fit read if necessary
+		seedlen = (int)read.length();
+	}
+	assert_gt(seedlen, 0);
+	n_steps = seedlen;
+	//step_min = -seedlen;
+	
+	// Take a sweep through the seed sequence.  Consider where the Ns
+	// occur and how zones are laid out.  Calculate the maximum number
+	// of positions we can jump over initially (e.g. with the ftab) and
+	// perhaps set this function's return value to false, indicating
+	// that the arrangements of Ns prevents the seed from aligning.
+	for(int i = 0; i < seedlen; i++) {
+		const int stepi = i-seedlen; //step_min+i;
+		int off = abs(stepi)-1;
+		int c = seq[off];  assert_range(0, 4, c);
+		if(c == 4) {
+			// cons.canN always false since mms and edit both ==0
+			// Seed disqualified due to arrangement of Ns
+			invalidate();
+			return false;
+		}
+	}
+	seedoff = _depth;
+	seedoffidx = _seedoffidx;
+	fw = _fw;
+	return true;
 }
 
 /**
@@ -434,7 +482,7 @@ SeedAligner::instantiateSeq(
  * For each seed, instantiate the seed, retracting if necessary.
  */
 void SeedAligner::instantiateSeeds(
-	const Seed&        seed,  // search seeds
+	const int seed_len,        // search seed length
 	size_t off,                // offset into read to start extracting
 	int per,                   // interval between seeds
 	const Read& read,          // read to align
@@ -444,11 +492,9 @@ void SeedAligner::instantiateSeeds(
 	SeedResults& sr,           // holds all the seed hits
 	int insts[3])              // counters
 {
-	pair<int, int> instFw;
-	pair<int, int> instRc;
 	assert_gt(read.length(), 0);
 	// Check whether read has too many Ns
-	int len = seed.len; // assume they're all the same length
+	const int len = seed_len;
 	// Calc # seeds within read interval
 	int nseeds = 1;
 	if((int)read.length() - (int)off > len) {
@@ -481,22 +527,18 @@ void SeedAligner::instantiateSeeds(
 			// For each search strategy
 			InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			{
-				if(seed.instantiate(
+				if(is.instantiateExact(
+					seed_len,
 					read,
 					sr.seqs(fw,i),
 					pens,
 					depth,
 					i,
-					fw,
-					is))
+					fw))
 				{
 					// Can we fill this seed hit in from the cache?
 					insts[0]++;
 					insts[fw ? 1 : 2]++;
-				} else {
-					// Seed may fail to instantiate if there are Ns
-					// that prevent it from matching
-					is.invalidate();
 				}
 			}
 		}
@@ -1251,7 +1293,7 @@ SeedAligner::startSearchSeedBi(
 		assert(p.prevEdit == NULL);
 		assert(!p.tloc.valid());
 		assert(!p.bloc.valid());
-		const int seed_step_min = p.cs.seed_step_min;
+		const int seed_step_min = p.cs.seed_step_min();
 		int off = abs(seed_step_min)-1;
 		// Check whether/how far we can jump using ftab or fchr
 		int ftabLen = ebwtFw->eh().ftabChars();
@@ -1273,7 +1315,7 @@ SeedAligner::startSearchSeedBi(
 			if(p.bwt.botf - p.bwt.topf == 0) return true;
 			#endif
 			p.step += ftabLen;
-		} else if(p.cs.maxjump > 0) {
+		} else if(p.cs.maxjump() > 0) {
 			// Use fchr
 			int c = seq[off];
 			assert_range(0, 3, c);
@@ -1282,7 +1324,7 @@ SeedAligner::startSearchSeedBi(
 			if(p.bwt.botf - p.bwt.topf == 0) return true;
 			p.step++;
 		} else {
-			assert_eq(0, p.cs.maxjump);
+			assert_eq(0, p.cs.maxjump());
 			p.bwt.topf = p.bwt.topb = 0;
 			p.bwt.botf = p.bwt.botb = ebwtFw->fchr()[4];
 		}
@@ -1422,7 +1464,7 @@ SeedAligner::searchSeedBi(
 			ncompleted++;
 			continue;
 		}
-		const int seed_step_min = p.cs.seed_step_min;
+		const int seed_step_min = p.cs.seed_step_min();
 		size_t i = p.step; // call the stepIdx i for historical reasons
 		p.step++; // get ready for the next iteration
 

@@ -2512,18 +2512,14 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					if(offset > 0 && multiseedLen + offset > rds[mate]->length()) {
 						mate_idx[mate] = MATE_DONE;
 					} else {
-						Seed seed;
 						assert(multiseedMms==0);
-						Seed::zeroMmSeed(
-							multiseedLen,    // length of a multiseed seed
-							seed);            // seed
 						msobj.shs.clearSeeds();
 						assert(msobj.shs.empty());
 						assert(msobj.shs.repOk(&msobj.ca.current()));
 						int tries[3];
-							// Instantiate the seeds
+						// Instantiate the seeds
 						SeedAligner::instantiateSeeds(
-								seed,           // search seed
+								multiseedLen,    // length of a multiseed seed
 								offset,         // offset to begin extracting
 								interval,       // interval between seeds
 								*rds[mate],     // read to align
