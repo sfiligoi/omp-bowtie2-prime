@@ -1412,7 +1412,6 @@ SeedAligner::searchSeedBi(
 
 	{
            uint32_t ncompleted = 0;
-#pragma acc parallel loop independent gang vector reduction(+:ncompleted)
 	   for (uint32_t n=0; n<nparams; n++) {
 		SeedAlignerSearchParams& p= paramVec[n];
 		SeedAlignerSearchState& sstate = sstateVec[n];
@@ -1437,10 +1436,11 @@ SeedAligner::searchSeedBi(
 	while (nleft>0) {
 	   // Note: We can do the params in any order we want
 	   // but we must do the steps inside the same param in order
+	   // We still want to do them sequentially, not in parallel, 
+	   // to give time for the prefetch to do its job.
 	   // Will loop over all of them, and just check which ones are invalid
 	   uint32_t bwops = 0;
            uint32_t ncompleted = 0;
-#pragma acc parallel loop independent gang vector reduction(+:ncompleted,bwops)
            for (uint32_t n=0; n<nparams; n++) {
                 SeedAlignerSearchState& sstate = sstateVec[n];
 		if (sstate.done) continue;
