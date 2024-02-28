@@ -606,15 +606,15 @@ void SeedAligner::searchAllSeeds(
 			const size_t nparams = paramVec.size();
 			for (size_t n=0; n<nparams; n++) {
 				SeedAlignerSearchState& sstate = sstateVec_[n];
-				if (sstate.need_reporting()) {
-					SeedAlignerSearchParams& p= paramVec[sstate.get_idx()];
-					if (&srcache == p.cs.pcache) {
-						// Finished aligning seed
-						const char *seq = p.cs.seq;
-						auto& bwt = p.bwt;
-						bool mysuccess = srcache.addOnTheFly(seq, bwt.topf, bwt.botf);
-						success &= mysuccess;
-					}
+				if ( sstate.need_reporting() && 
+				    (sstate.get_idx()==mnr)  // there is a 1==1 mapping between mcache[i] and paramVec[i]
+				   ) {
+					SeedAlignerSearchParams& p= paramVec[mnr];
+					// Finished aligning seed
+					const char *seq = p.cs.seq;
+					auto& bwt = p.bwt;
+					bool mysuccess = srcache.addOnTheFly(seq, bwt.topf, bwt.botf);
+					success &= mysuccess;
 					
 				}
 			}
