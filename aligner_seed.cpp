@@ -148,7 +148,7 @@ public:
 	        const Ebwt* ebwtFw) 	        // forward index (BWT)
 	: cs(cache, seed, ebwtFw)
 	, step(0)
-	, depth(0)
+	, need_reporting(false)
 	, bwt()
 	, tloc()
 	, bloc()
@@ -159,7 +159,7 @@ public:
 	SeedAlignerSearchParams()
 	: cs()
 	, step(0)
-	, depth(0)
+	, need_reporting(false)
 	, bwt()
 	, tloc()
 	, bloc()
@@ -174,7 +174,7 @@ public:
 	{
 	  cs.reset(cache, seed, ebwtFw);
 	  step = 0;
-	  depth = 0;
+	  need_reporting = false;
 	  bwt.set(0,0);
 	  tloc.invalidate();
 	  bloc.invalidate();
@@ -183,9 +183,11 @@ public:
 	void checkCV() const {
 	}
 
+	void set_reporting() { need_reporting = true; }
+
 	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
 	int step;             // depth into steps[] array, i.e. step_min+step
-	int depth;            // recursion depth
+	bool need_reporting;
 	BwtTopBotFw bwt;      // The 2 BWT idxs
 	SideLocus tloc;       // locus for top (perhaps unititialized)
 	SideLocus bloc;       // locus for bot (perhaps unititialized)
@@ -603,19 +605,14 @@ void SeedAligner::searchAllSeeds(
 			}
 			assert(srcache.aligning());
 			bool success = true;
-			const size_t nparams = paramVec.size();
-			for (size_t n=0; n<nparams; n++) {
-				SeedAlignerSearchState& sstate = sstateVec_[n];
-				if ( sstate.need_reporting() && 
-				    (sstate.get_idx()==mnr)  // there is a 1==1 mapping between mcache[i] and paramVec[i]
-				   ) {
-					SeedAlignerSearchParams& p= paramVec[mnr];
+			{
+				SeedAlignerSearchParams& p= paramVec[mnr];
+				if ( p.need_reporting ) {
 					// Finished aligning seed
 					const char *seq = p.cs.seq;
 					auto& bwt = p.bwt;
 					bool mysuccess = srcache.addOnTheFly(seq, bwt.topf, bwt.botf);
 					success &= mysuccess;
-					
 				}
 			}
 			if(!success){
@@ -1234,12 +1231,6 @@ SeedAligner::startSearchSeedBi(
 	if(p.step == n_seed_steps) {
 		return true;
 	}
-#ifndef NDEBUG
-	if(p.depth > 0) {
-		assert(p.bwt.botf - p.bwt.topf == 1 ||  p.bloc.valid());
-		assert(p.bwt.botf - p.bwt.topf > 1  || !p.bloc.valid());
-	}
-#endif
 	if(p.step == 0) {
 		// Just starting
 		assert(p.prevEdit == NULL);
@@ -1366,14 +1357,14 @@ SeedAligner::searchSeedBi(
            uint32_t iparam = 0; // iparam and n may diverge, if some are done at init stage
 	   while (n<nleft) {
 		SeedAlignerSearchParams& p= paramVec[iparam];
-		sstateVec[n].reset(iparam);
+		sstateVec[n] = iparam;
 		iparam+=1;
 		const bool done = startSearchSeedBi(ebwt, p);
 		if(done) {
 		        if(p.step == (int)p.cs.n_seed_steps) {
                 		// Finished aligning seed
 				p.checkCV();
-				sstateVec[n].set_reporting();
+				p.set_reporting();
 			}
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
@@ -1394,7 +1385,7 @@ SeedAligner::searchSeedBi(
 	   uint32_t n=0;
            // logically a for (uint32_t n=0; n<nleft; n++) but with nleft potentially changing
 	   while (n<nleft) {
-		const uint32_t iparam = sstateVec[n].get_idx_fast();
+		const uint32_t iparam = sstateVec[n];
 
 		SeedAlignerSearchParams& p= paramVec[iparam];
 		const int n_seed_steps = p.cs.n_seed_steps;
@@ -1456,7 +1447,7 @@ SeedAligner::searchSeedBi(
 		p.bwt.set(wstate.t[c], wstate.b[c]);
 		if(i+1 == n_seed_steps) {
 			p.checkCV();
-			sstateVec[n].set_reporting();
+			p.set_reporting();
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
 			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
