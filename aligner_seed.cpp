@@ -555,7 +555,7 @@ void SeedAligner::searchAllSeeds(
 	ebwtFw_ = ebwtFw;
 	ebwtBw_ = ebwtBw;
 	sc_ = &pens;
-	bwops_ = bwedits_ = 0;
+	bwops_ = 0;
 	uint64_t possearches = 0, seedsearches = 0, ooms = 0;
 
 	SeedSearchMultiCache& mcache = mcache_;

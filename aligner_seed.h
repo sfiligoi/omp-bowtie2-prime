@@ -1593,13 +1593,9 @@ public:
 	/**
 	 * Initialize with index.
 	 */
-	SeedAligner()
-	: edits_(AL_CAT)
-        { 
-	}
+	SeedAligner() {}
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		edits_.set_alloc(alloc, propagate_alloc);
 		tmprfdnastr_.set_alloc(alloc, propagate_alloc);
 		tmpdnastr_.set_alloc(alloc, propagate_alloc);
 		mcache_.set_alloc(alloc, propagate_alloc);
@@ -1767,9 +1763,7 @@ protected:
 	const Ebwt* ebwtBw_;       // backward/mirror index (BWT')
 	const Scoring* sc_;        // scoring scheme
 	
-	EList<Edit> edits_;        // temporary place to sort edits
 	uint64_t bwops_;           // Burrows-Wheeler operations
-	uint64_t bwedits_;         // Burrows-Wheeler edits
 	BTDnaString tmprfdnastr_;  // used in reportHit
 
 	/**
