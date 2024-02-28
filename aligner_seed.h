@@ -1759,9 +1759,6 @@ protected:
 
 	// Following are set in searchAllSeeds then used by searchSeed()
 	// and other protected members.
-	const Ebwt* ebwtFw_;       // forward index (BWT)
-	const Ebwt* ebwtBw_;       // backward/mirror index (BWT')
-	const Scoring* sc_;        // scoring scheme
 	
 	uint64_t bwops_;           // Burrows-Wheeler operations
 	BTDnaString tmprfdnastr_;  // used in reportHit

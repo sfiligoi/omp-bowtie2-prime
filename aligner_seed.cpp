@@ -552,9 +552,7 @@ void SeedAligner::searchAllSeeds(
 	assert(ebwtFw != NULL);
 	assert(ebwtFw->isInMemory());
 	assert(sr.repOk(&cache.current()));
-	ebwtFw_ = ebwtFw;
-	ebwtBw_ = ebwtBw;
-	sc_ = &pens;
+	assert(ebwtBw == NULL);
 	bwops_ = 0;
 	uint64_t possearches = 0, seedsearches = 0, ooms = 0;
 
@@ -588,7 +586,7 @@ void SeedAligner::searchAllSeeds(
 					assert_eq(fw, is.fw);
 					assert_eq(i, (int)is.seedoffidx);
 					paramVec.expand_noresize();
-					paramVec.back().reset(srcache, is, ebwtFw_, ebwtBw_);
+					paramVec.back().reset(srcache, is, ebwtFw, NULL);
 					seedsearches++;
 				}
 			}
@@ -598,7 +596,7 @@ void SeedAligner::searchAllSeeds(
 		   if (!paramVec.empty()) {
 			const size_t nparams = paramVec.size();
 			assert(ebwtBw_==NULL);
-			searchSeedBi(ebwtFw_, sstateVec_.ptr(), bwops_, nparams, &(paramVec[0]));
+			searchSeedBi(ebwtFw, sstateVec_.ptr(), bwops_, nparams, &(paramVec[0]));
 		   }
 
 		   // finish aligning and add to SeedResult
