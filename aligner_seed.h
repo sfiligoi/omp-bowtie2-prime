@@ -1637,13 +1637,13 @@ public:
 
 		// this is a good time to reserve the space
                 mcache_.reserve(ibatch_size);
-                paramVec_.reserve(ibatch_maxVec);
-                sstateVec_.reserve(ibatch_maxVec);
+                paramVec_.reserve(ibatch_size);
+                sstateVec_.reserve(ibatch_size);
 
 		// force memory allocation(lazy, else)
 		paramVec_.expand(); paramVec_.clear();
 		// set it to the right size immediately, no dynamic growing
-		while (sstateVec_.size()<ibatch_maxVec) sstateVec_.expand();
+		while (sstateVec_.size()<ibatch_size) sstateVec_.expand();
 		// mcache_.reserve is not lazy
 	}
 
@@ -1802,11 +1802,9 @@ protected:
  	*       and 32 is too big (cache trashing).
  	**/
 	static constexpr size_t ibatch_size = 8;
-	static constexpr size_t iss_x_ibatch = 16; // assume no more than 16 iss per cache, on average
-	static constexpr size_t ibatch_maxVec= ibatch_size*iss_x_ibatch;
 	SeedSearchMultiCache mcache_;
-	EList<SeedAlignerSearchParams,int(ibatch_maxVec)> paramVec_;
-	EList<SeedAlignerSearchState, int(ibatch_maxVec)> sstateVec_;
+	EList<SeedAlignerSearchParams,int(ibatch_size)> paramVec_;
+	EList<SeedAlignerSearchState, int(ibatch_size)> sstateVec_;
 
 	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
 	BTDnaString tmpdnastr_;
