@@ -83,23 +83,21 @@ public:
 	public:
 		CacheAndSeed()
 		: seq(NULL), n_seed_steps(0)
-		, hasi0(false), fwi0(0), bwi0(0), pcache(NULL) {}
+		, hasi0(false), fwi0(0), pcache(NULL) {}
 
 		CacheAndSeed(
 			SeedSearchCache &_cache,         // local seed alignment cache
 			const InstantiatedSeed& _seed,   // current instantiated seed
-		        const Ebwt* ebwtFw, 	         // forward index (BWT)
-			const Ebwt* ebwtBw               // backward/mirror index (BWT')
+		        const Ebwt* ebwtFw 	         // forward index (BWT)
 
 		) : seq(NULL), n_seed_steps(0)
-		, hasi0(false), fwi0(0), bwi0(0), pcache(NULL) // just set a default
-		{ reset(_cache,_seed,ebwtFw,ebwtBw); }
+		, hasi0(false), fwi0(0), pcache(NULL) // just set a default
+		{ reset(_cache,_seed,ebwtFw); }
 
 		void reset(
 			SeedSearchCache &_cache,         // local seed alignment cache
 			const InstantiatedSeed& _seed,   // current instantiated seed
-		        const Ebwt* ebwtFw, 	         // forward index (BWT)
-			const Ebwt* ebwtBw               // backward/mirror index (BWT')
+		        const Ebwt* ebwtFw  	         // forward index (BWT)
 		)
 		{
 			seq = _cache.getSeq();
@@ -117,10 +115,6 @@ public:
 				// startSearchSeedBi will need them, start prefetching now
 				fwi0 = ebwtFw->ftabSeqToInt( seq, off, false);
 				ebwtFw->ftabLoHiPrefetch(fwi0);
-				if(ebwtBw!=NULL) {
-					bwi0 = ebwtBw->ftabSeqToInt( seq, off, false);
-					ebwtBw->ftabLoHiPrefetch(bwi0);
-				}
 			}
 			pcache = &_cache; //  keep track of the big object
 		}
@@ -143,7 +137,6 @@ public:
 		int n_seed_steps;               // steps in the current instantiated seed
 		bool hasi0;
 		TIndexOffU fwi0;                // Idx of fw ftab
-		TIndexOffU bwi0;                // Idx of bw ftab
 		SeedSearchCache *pcache; //  keep track of the big object
 	};
 
@@ -152,9 +145,8 @@ public:
 	SeedAlignerSearchParams(
 		SeedSearchCache &cache,         // local seed alignment cache
 		const InstantiatedSeed& seed,   // current instantiated seed
-	        const Ebwt* ebwtFw, 	        // forward index (BWT)
-		const Ebwt* ebwtBw)             // backward/mirror index (BWT')
-	: cs(cache, seed, ebwtFw, ebwtBw)
+	        const Ebwt* ebwtFw) 	        // forward index (BWT)
+	: cs(cache, seed, ebwtFw)
 	, step(0)
 	, depth(0)
 	, bwt()
@@ -178,10 +170,9 @@ public:
 	void reset(
 		SeedSearchCache &cache,         // local seed alignment cache
 		const InstantiatedSeed& seed,   // current instantiated seed
-	        const Ebwt* ebwtFw, 	        // forward index (BWT)
-		const Ebwt* ebwtBw)             // backward/mirror index (BWT')
+	        const Ebwt* ebwtFw) 	        // forward index (BWT)
 	{
-	  cs.reset(cache, seed, ebwtFw, ebwtBw);
+	  cs.reset(cache, seed, ebwtFw);
 	  step = 0;
 	  depth = 0;
 	  bwt.set(0,0);
@@ -586,7 +577,7 @@ void SeedAligner::searchAllSeeds(
 					assert_eq(fw, is.fw);
 					assert_eq(i, (int)is.seedoffidx);
 					paramVec.expand_noresize();
-					paramVec.back().reset(srcache, is, ebwtFw, NULL);
+					paramVec.back().reset(srcache, is, ebwtFw);
 					seedsearches++;
 				}
 			}
