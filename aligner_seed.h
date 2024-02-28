@@ -1359,11 +1359,14 @@ class SeedSearchCache {
 
 public:
 	SeedSearchCache(
-                const char *   rfseq     // reference sequence close to read seq - content
+                const char *   rfseq,        // reference sequence close to read seq - content
+		AlignmentCacheIface& cache,  // local cache for seed alignments
+		SeedResults& sr              // holds all the seed hits
 		)
 		: qv()
 		, seq(rfseq)
-		, cachep(NULL)
+		, cachep(&cache)
+		, srp(&sr)
 	{
 	}
 
@@ -1371,16 +1374,21 @@ public:
 		: qv()
 		, seq(NULL)
 		, cachep(NULL)
+		, srp(NULL)
 	{
 	}
 
 	SeedSearchCache& operator=(const SeedSearchCache& other) = default;
 
 	void reset(
-                const char *   rfseq     // reference sequence close to read seq - content
+                const char *   rfseq,        // reference sequence close to read seq - content
+		AlignmentCacheIface& cache,  // local cache for seed alignments
+		SeedResults& sr              // holds all the seed hits
 		)
 	{
 		seq = rfseq;
+		cachep = &cache;
+		srp = &sr;
 	}
 
 	/**
@@ -1389,12 +1397,12 @@ public:
 	 *
 	 * See AlignmentCacheIface::beginAlign for details
 	 */
-	int beginAlign(AlignmentCacheIface& cache, const uint32_t seq_len) 
-	{ 
-		int ret = cache.beginAlign(seq, seq_len, qv);
-		if (ret>=0) {
-			cachep = &cache;
-		}
+	int beginAlign() 
+	{
+		assert(srp!=NULL);
+		assert(cachep!=NULL);
+		const uint32_t seq_len = srp->seqs_len();
+		int ret = cachep->beginAlign(seq, seq_len, qv);
 		return ret;
 	}
 
@@ -1407,11 +1415,10 @@ public:
          * Also, if the alignment is cacheable, it commits it to the next
          * cache up in the cache hierarchy.
          */
-        void finishAlign(bool getLock = true) 
+        void finishAlign() 
 	{ 
 		assert(cachep!=NULL);
-		qv = cachep->finishAlign(getLock); 
-		cachep = NULL;
+		qv = cachep->finishAlign(); 
 	}
 
         /**
@@ -1420,14 +1427,30 @@ public:
          */
         bool addOnTheFly(
                 const char *   rfseq,     // reference sequence close to read seq - content
-                const uint32_t rfseq_len, // reference sequence close to read seq - length
                 TIndexOffU topf,            // top in BWT index
-                TIndexOffU botf,            // bot in BWT index
-		bool getLock = true)
+                TIndexOffU botf)            // bot in BWT index
 	{
 		if (!aligning()) return false;
-		SAKey sak(rfseq, rfseq_len ASSERT_ONLY(, tmp));
-		return cachep->addOnTheFly(sak, topf, botf, getLock);
+		assert(srp!=NULL);
+		assert(cachep!=NULL);
+		const uint32_t seq_len = srp->seqs_len();
+		SAKey sak(rfseq, seq_len ASSERT_ONLY(, tmp));
+		return cachep->addOnTheFly(sak, topf, botf);
+	}
+
+	void addToCache(
+		int seedoffidx,          // seed index
+		bool fw                  // is it fw?
+		) {
+		if(qv.valid()) {
+			assert(srp!=NULL);
+			assert(cachep!=NULL);
+			srp->add(
+				qv,   // range of ranges in cache
+				cachep->current(), // cache
+				seedoffidx,     // seed index (from 5' end)
+				fw);   // whether seed is from forward read
+		}
 	}
 
 	/**
@@ -1439,12 +1462,14 @@ public:
 
 	const QVal&          getQv() const {return qv;}
 	const char *         getSeq() const {return seq;}
+	
 
 protected:
 	QVal                 qv;
 	const char*          seq;       // sequence of current seed - content
 
-	AlignmentCacheIface*  cachep; // local alignment cache for seed alignment, set at beginAliginings
+	AlignmentCacheIface*  cachep;  // local alignment cache for seed alignment
+	SeedResults*          srp;      // // holds all the seed hits
 };
 
 /**
@@ -1463,23 +1488,25 @@ public:
 	}
 
 	void emplace_back( 
-               	const char *   seq,     // reference sequence close to read seq - content
+		AlignmentCacheIface& cache,  // local cache for seed alignments
+		SeedResults& sr,             // holds all the seed hits
 		int seedoffidx,          // seed index
 		bool fw                  // is it fw?
 		)
 	{
 		cacheVec.expand();
-		cacheVec.back().reset(seq, seedoffidx, fw);
+		cacheVec.back().reset(cache, sr, seedoffidx, fw);
 	}
 
 	void emplace_back_noresize( 
-               	const char *   seq,     // reference sequence close to read seq - content
+		AlignmentCacheIface& cache,  // local cache for seed alignments
+		SeedResults& sr,             // holds all the seed hits
 		int seedoffidx,          // seed index
 		bool fw                  // is it fw?
 		)
 	{
 		cacheVec.expand_noresize();
-		cacheVec.back().reset(seq, seedoffidx, fw);
+		cacheVec.back().reset(cache, sr, seedoffidx, fw);
 	}
 
 	// Same semantics as std::vector
@@ -1501,15 +1528,18 @@ public:
 	int getSeedOffIdx(size_t idx) const { return cacheVec[idx].seedoffidx; }
 	bool getFw(size_t idx) const { return cacheVec[idx].fw; }
 
+	void addToMainCache(size_t idx) {cacheVec[idx].addToCache();} 
+
 protected:
 	class CacheEl {
 	public:
 		CacheEl(
-                	const char *   seq,     // reference sequence close to read seq - content
-			int _seedoffidx,          // seed index
-			bool _fw                  // is it fw?
+			AlignmentCacheIface& cache,  // local cache for seed alignments
+			SeedResults& sr,             // holds all the seed hits
+			const int _seedoffidx,          // seed index
+			const bool _fw                  // is it fw?
 			)
-			: srcache(seq)
+			: srcache(sr.seqs(_fw,_seedoffidx), cache,sr)
 			, seedoffidx(_seedoffidx)
 			, fw(_fw) {}
 		
@@ -1519,15 +1549,18 @@ protected:
 			{}
 
 		void reset(
-                	const char *   seq,     // reference sequence close to read seq - content
-			int _seedoffidx,          // seed index
-			bool _fw                  // is it fw?
+			AlignmentCacheIface& cache,  // local cache for seed alignments
+			SeedResults& sr,             // holds all the seed hits
+			const int _seedoffidx,          // seed index
+			const bool _fw                  // is it fw?
 			) {
-			srcache.reset(seq);
-			seedoffidx = _seedoffidx;
-			fw = _fw;
+				const char *   seq = sr.seqs(_fw,_seedoffidx);
+				srcache.reset(seq,cache,sr);
+				seedoffidx = _seedoffidx;
+				fw = _fw;
 			}
-		
+	
+		void addToCache() { srcache.addToCache(seedoffidx,fw);}
 
 		SeedSearchCache     srcache;   // search wrapper
 		int                 seedoffidx; // seed index
