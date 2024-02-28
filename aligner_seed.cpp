@@ -599,19 +599,6 @@ void SeedAligner::searchAllSeeds(
 			const size_t nparams = paramVec.size();
 			assert(ebwtBw_==NULL);
 			searchSeedBi(ebwtFw_, sstateVec_.ptr(), bwops_, nparams, &(paramVec[0]));
-
-			for (size_t n=0; n<nparams; n++) {
-				SeedAlignerSearchState& sstate = sstateVec_[n];
-				if (sstate.need_reporting()) {
-					SeedAlignerSearchParams& p= paramVec[sstate.get_idx()];
-					assert(p.prevEdit==NULL);
-					// Finished aligning seed
-					const char *seq = p.cs.seq;
-					auto& bwt = p.bwt;
-					p.cs.pcache->addOnTheFly(seq, sr.seqs_len(), bwt.topf, bwt.botf);
-					
-				}
-			}
 		   }
 
 		   // finish aligning and add to SeedResult
@@ -626,7 +613,23 @@ void SeedAligner::searchAllSeeds(
 				continue;
 			}
 			assert(srcache.aligning());
-			if(!srcache.addAllCached()){
+			bool success = true;
+			const size_t nparams = paramVec.size();
+			for (size_t n=0; n<nparams; n++) {
+				SeedAlignerSearchState& sstate = sstateVec_[n];
+				if (sstate.need_reporting()) {
+					SeedAlignerSearchParams& p= paramVec[sstate.get_idx()];
+					if (&srcache == p.cs.pcache) {
+						// Finished aligning seed
+						const char *seq = p.cs.seq;
+						auto& bwt = p.bwt;
+						bool mysuccess = srcache.addOnTheFly(seq, sr.seqs_len(), bwt.topf, bwt.botf);
+						success &= mysuccess;
+					}
+					
+				}
+			}
+			if(!success){
 				// Memory exhausted during copy
 				ooms++;
 				continue;

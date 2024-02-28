@@ -1363,19 +1363,15 @@ public:
 		)
 		: qv()
 		, seq(rfseq)
-		, cachedEls()
 		, cachep(NULL)
 	{
-		cachedEls.reserve(16); // do not expect I will need more
 	}
 
 	SeedSearchCache()
 		: qv()
 		, seq(NULL)
-		, cachedEls()
 		, cachep(NULL)
 	{
-		cachedEls.reserve(16); // do not expect I will need more
 	}
 
 	SeedSearchCache& operator=(const SeedSearchCache& other) = default;
@@ -1402,24 +1398,6 @@ public:
 		return ret;
 	}
 
-        /**
-         * Add an alignment to the running list of alignments being
-         * compiled for the current read in the local cache.
-         */
-	bool addAllCached(bool getLock = true)
-	{
-		if (!aligning()) return false;
-		const size_t nEls = cachedEls.size();
-		bool success = true;
-		for(size_t i=0; i<nEls; i++) {
-			AddEl &el = cachedEls[i];
-			success &= cachep->addOnTheFly(el.sak, el.topf, el.botf, getLock);
-		}
-		cachedEls.clear();
-		return success;
-	}
-
-
 	/**
          * Called when is finished aligning a read (and so is finished
          * adding associated reference strings).  Returns a copy of the
@@ -1440,14 +1418,16 @@ public:
          * Add an alignment to the running list of alignments being
          * compiled for the current read in the local memory buffer.
          */
-        void addOnTheFly(
+        bool addOnTheFly(
                 const char *   rfseq,     // reference sequence close to read seq - content
                 const uint32_t rfseq_len, // reference sequence close to read seq - length
                 TIndexOffU topf,            // top in BWT index
-                TIndexOffU botf)            // bot in BWT index
+                TIndexOffU botf,            // bot in BWT index
+		bool getLock = true)
 	{
-		cachedEls.expand();
-		cachedEls.back().reset(rfseq, rfseq_len, topf, botf);
+		if (!aligning()) return false;
+		SAKey sak(rfseq, rfseq_len ASSERT_ONLY(, tmp));
+		return cachep->addOnTheFly(sak, topf, botf, getLock);
 	}
 
 	/**
@@ -1461,44 +1441,9 @@ public:
 	const char *         getSeq() const {return seq;}
 
 protected:
-	class AddEl {
-	public:
-        	AddEl(
-	                const char *   rfseq,     // reference sequence close to read seq - content
-        	        const uint32_t rfseq_len, // reference sequence close to read seq - length
-                	TIndexOffU _topf,            // top in BWT index
-                	TIndexOffU _botf             // bot in BWT index
-			) :
-			ASSERT_ONLY(tmp(), )
-			sak(rfseq, rfseq_len ASSERT_ONLY(, tmp)),
-			topf(_topf), botf(_botf)
-		{}
-
-		AddEl() {}
-
-		void reset(
-                	const char *   rfseq,     // reference sequence close to read seq - content
-	                const uint32_t rfseq_len, // reference sequence close to read seq - length
-                        TIndexOffU _topf,         // top in BWT index
-                        TIndexOffU _botf          // bot in BWT index
-                        )
-		{
-			sak.init(rfseq, rfseq_len ASSERT_ONLY(, tmp));
-			topf = _topf; botf = _botf;
-		}
-
-		AddEl& operator=(const AddEl& other) = default;
-
-                ASSERT_ONLY(BTDnaString tmp;)
-                SAKey      sak;
-                TIndexOffU topf;            // top in BWT index
-                TIndexOffU botf;            // bot in BWT index
-	};
-
 	QVal                 qv;
 	const char*          seq;       // sequence of current seed - content
 
-	EList<AddEl>          cachedEls; // tmp storage of values that will go in the cache
 	AlignmentCacheIface*  cachep; // local alignment cache for seed alignment, set at beginAliginings
 };
 
