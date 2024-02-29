@@ -545,7 +545,6 @@ void SeedAligner::instantiateSeeds(
  * Return number of batches
  */
 uint32_t SeedAligner::searchAllSeedsPrepare(
-	const Ebwt* ebwtFw,          // BWT index
 	AlignmentCacheIface& cache,  // local cache for seed alignments
 	SeedResults& sr)             // holds all the seed hits
 {
@@ -596,8 +595,7 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 	return (mcache.size()+(ibatch_size-1))/ibatch_size;
 }
 
-void SeedAligner::searchAllSeedsDoAll(
-	const Ebwt* ebwtFw)          // BWT index
+void SeedAligner::searchAllSeedsDoAll()
 {
 	assert(ebwtFw != NULL);
 	assert(ebwtFw->isInMemory());
@@ -613,9 +611,7 @@ void SeedAligner::searchAllSeedsDoAll(
 
 }
 
-void SeedAligner::searchAllSeedsDoBatch(
-	const Ebwt* ebwtFw,          // BWT index
-	uint32_t ibatch)
+void SeedAligner::searchAllSeedsDoBatch(uint32_t ibatch)
 {
 	size_t mnr = ibatch*ibatch_size;
 	const size_t ibatch_max = std::min(mnr+ibatch_size,mcache_.size());
@@ -674,8 +670,7 @@ void SeedAligner::searchAllSeedsFinalize()
 	}
 }
 
-bool SeedAligner::sanityPartial(
-	const Ebwt*        ebwtFw, // BWT index
+inline bool SeedAligner::sanityPartial(
 	const Ebwt*        ebwtBw, // BWT' index
 	const BTDnaString& seq,
 	size_t dep,
@@ -808,8 +803,7 @@ inline bool exactSweepStep(
  * any.  Calculate a lower bound on the number of edits in an end-to-end
  * alignment.
  */
-size_t SeedAligner::exactSweep(
-	const Ebwt&        ebwt,    // BWT index
+inline size_t SeedAligner::exactSweep(
 	const Read&        read,    // read to align
 	const Scoring&     sc,      // scoring scheme
 	bool               nofw,    // don't align forward read
@@ -820,6 +814,7 @@ size_t SeedAligner::exactSweep(
 	bool               repex,   // report 0mm hits?
 	SeedResults&       hits)    // holds all the seed hits (and exact hit)
 {
+	const Ebwt&  ebwt = *ebwtFw;
 	assert_gt(mineMax, 0);
 	const size_t len = read.length();
 	const int ftabLen = ebwt.eh().ftabChars();

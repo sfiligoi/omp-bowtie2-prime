@@ -2133,7 +2133,14 @@ public:
 
 class msWorkerObjs {
 public:
-	msWorkerObjs() = default;
+	msWorkerObjs()
+	: ca()
+	, al(multiseed_ebwtFw)
+	, sd()
+	, sw()
+	, shs()
+	, rnd()
+	{}
 
 	msWorkerObjs(msWorkerObjs&& o) = default;
 	msWorkerObjs(const msWorkerObjs& o) = delete;
@@ -2249,6 +2256,7 @@ public:
 	double dt[32];
 	const char* msgs[32];
 };
+
 
 /**
  * Called once per thread.  Sets up per-thread pointers to the shared global
@@ -2556,7 +2564,6 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 							// Fill internal structures
 						max_batches = std::max(max_batches,
 							msobj.al.searchAllSeedsPrepare(
-								&msconsts->ebwtFw,          // BWT index
 								msobj.ca,         // alignment cache
 								msobj.shs));        // store seed hits here
 				} // if
@@ -2570,18 +2577,26 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   	// We will use a simplistic assumption that the variation is not too large
 		   	// and just do a somple loop for similicty (needed for proper parallelization).
 		   	// searchAllSeedsDoBatch is a NOOP is past the limit
-		   	uint64_t g_max_batches = num_parallel_tasks*uint64_t(max_batches);
+		   	const uint64_t g_max_batches = num_parallel_tasks*uint64_t(max_batches);
+#ifdef FORCE_ALL_OMP
 #pragma omp parallel for default(shared) schedule(dynamic,8)
 			for (uint64_t gbatch=0; gbatch<g_max_batches; gbatch++) {
+#else
+			std::for_each_n(std::execution::par_unseq,
+				thrust::counting_iterator(0), g_max_batches,
+				[mate_idx,g_msobjs,max_batches](uint64_t gbatch) mutable {
+#endif
 				uint32_t mate = gbatch / max_batches;
 				uint32_t ibatch = gbatch % max_batches;
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					// Align a batch of seeds
 					g_msobjs[mate].al.searchAllSeedsDoBatch(
-								&msconsts->ebwtFw,          // BWT index
 								ibatch);
 				} // if
 			} // for mate
+#ifndef FORCE_ALL_OMP
+			); // for_each
+#endif
 		   tmr.next("searchAllSeedsDo");
 
 			// always call ensure_spare from main CPU thread

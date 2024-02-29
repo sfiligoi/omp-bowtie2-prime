@@ -1608,7 +1608,9 @@ public:
 	/**
 	 * Initialize with index.
 	 */
-	SeedAligner() {}
+	SeedAligner(
+		const Ebwt* ebwtFw_          // BWT index
+	) : ebwtFw(ebwtFw_) {}
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		tmprfdnastr_.set_alloc(alloc, propagate_alloc);
@@ -1662,20 +1664,21 @@ public:
 	 * Return number of batches
 	 */
 	uint32_t searchAllSeedsPrepare(
-		const Ebwt* ebwtFw,          // BWT index
 		AlignmentCacheIface& cache,  // local cache for seed alignments
 		SeedResults& sr);            // holds all the seed hits
 
-	void searchAllSeedsDoAll(const Ebwt* ebwtFw);
-	void searchAllSeedsDoBatch(const Ebwt* ebwtFw, uint32_t ibatch);
+	void searchAllSeedsDoAll();
+	void searchAllSeedsDoBatch(uint32_t ibatch);
 
 	void searchAllSeedsFinalize();
+
+	// Same value as returned by searchAllSeedsPrepare
+	uint32_t getSearchBatches() const {return (mcache_.size()+(ibatch_size-1))/ibatch_size;}
 
 	/**
 	 * Sanity-check a partial alignment produced during oneMmSearch.
 	 */
 	bool sanityPartial(
-		const Ebwt*        ebwtFw, // BWT index
 		const Ebwt*        ebwtBw, // BWT' index
 		const BTDnaString& seq,
 		size_t             dep,
@@ -1691,7 +1694,6 @@ public:
 	 * and to find exact alignments.
 	 */
 	size_t exactSweep(
-		const Ebwt&        ebwt,    // BWT index
 		const Read&        read,    // read to align
 		const Scoring&     sc,      // scoring scheme
 		bool               nofw,    // don't align forward read
@@ -1707,7 +1709,6 @@ public:
 	 * Search for end-to-end alignments with up to 1 mismatch.
 	 */
 	bool oneMmSearch(
-		const Ebwt*        ebwtFw, // BWT index
 		const Ebwt*        ebwtBw, // BWT' index
 		const Read&        read,   // read to align
 		const Scoring&     sc,     // scoring
@@ -1771,6 +1772,8 @@ protected:
 		int step)                   // step to get ready for
 	{ prefetchNextLocsBi(seed, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
 #endif
+
+	const Ebwt*        ebwtFw; // forward index (BWT)
 
 	// Following are set in searchAllSeeds then used by searchSeed()
 	// and other protected members.
