@@ -2134,7 +2134,8 @@ public:
 class msWorkerObjs {
 public:
 	msWorkerObjs()
-	: ca()
+	: ftabLen(multiseed_ebwtFw->eh().ftabChars())
+	, ca()
 	, al(multiseed_ebwtFw)
 	, sd()
 	, sw()
@@ -2156,6 +2157,9 @@ public:
 		shs.set_alloc(alloc,propagate_alloc);
 	}
 
+	// redundant, but useful
+	const int ftabLen;
+
 	// Interfaces for alignment and seed caches
 	AlignmentCacheIfaceBT2 ca;
 
@@ -2164,6 +2168,7 @@ public:
 	SwAligner sw;
 	SeedResults shs;
 	RandomSource rnd;
+
 };
 
 class msWorkerConsts {
@@ -2565,7 +2570,8 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 						max_batches = std::max(max_batches,
 							msobj.al.searchAllSeedsPrepare(
 								msobj.ca,         // alignment cache
-								msobj.shs));        // store seed hits here
+								msobj.shs,        // store seed hits here
+								msobj.ftabLen));  // only thing needed out of BTW index
 				} // if
 			} // for mate
 		   tmr.next("searchAllSeedsPrepare");

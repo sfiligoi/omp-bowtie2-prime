@@ -1665,7 +1665,8 @@ public:
 	 */
 	uint32_t searchAllSeedsPrepare(
 		AlignmentCacheIface& cache,  // local cache for seed alignments
-		SeedResults& sr);            // holds all the seed hits
+		SeedResults& sr,            // holds all the seed hits
+		const int ftabLen);         // forward index (BWT) value
 
 	void searchAllSeedsDoAll();
 	void searchAllSeedsDoBatch(uint32_t ibatch);

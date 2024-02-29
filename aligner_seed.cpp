@@ -88,16 +88,16 @@ public:
 		CacheAndSeed(
 			SeedSearchCache &_cache,         // local seed alignment cache
 			const InstantiatedSeed& _seed,   // current instantiated seed
-		        const Ebwt* ebwtFw 	         // forward index (BWT)
+		        const int ftabLen                // forward index (BWT) value
 
 		) : seq(NULL), n_seed_steps(0)
 		, hasi0(false), fwi0(0), pcache(NULL) // just set a default
-		{ reset(_cache,_seed,ebwtFw); }
+		{ reset(_cache, _seed, ftabLen); }
 
 		void reset(
 			SeedSearchCache &_cache,         // local seed alignment cache
 			const InstantiatedSeed& _seed,   // current instantiated seed
-		        const Ebwt* ebwtFw  	         // forward index (BWT)
+		        const int ftabLen  	         // forward index (BWT) value
 		)
 		{
 			seq = _cache.getSeq();
@@ -105,16 +105,14 @@ public:
 
 	                constexpr bool ltr = false; // seed_step_min > 0 i.e. n_seed_steps<0
         	        int off = abs(seed_step_min())-1;
-			int ftabLen = ebwtFw->eh().ftabChars();
 			hasi0 = (ftabLen > 1 && ftabLen <= maxjump());
 			if(hasi0) {
 				if(!ltr) {
 					assert_geq(off+1, ftabLen-1);
 					off = off - ftabLen + 1;
 				}
-				// startSearchSeedBi will need them, start prefetching now
-				fwi0 = ebwtFw->ftabSeqToInt( seq, off, false);
-				ebwtFw->ftabLoHiPrefetch(fwi0);
+				fwi0 = Ebwt::ftabSeqToInt(ftabLen, true, seq, off, false);
+				// Note: No prefetching as prepare and do are often separate
 			}
 			pcache = &_cache; //  keep track of the big object
 		}
@@ -145,8 +143,9 @@ public:
 	SeedAlignerSearchParams(
 		SeedSearchCache &cache,         // local seed alignment cache
 		const InstantiatedSeed& seed,   // current instantiated seed
-	        const Ebwt* ebwtFw) 	        // forward index (BWT)
-	: cs(cache, seed, ebwtFw)
+	        const int ftabLen                // forward index (BWT) value
+	)
+	: cs(cache, seed, ftabLen)
 	, step(0)
 	, need_reporting(false)
 	, bwt()
@@ -170,9 +169,10 @@ public:
 	void reset(
 		SeedSearchCache &cache,         // local seed alignment cache
 		const InstantiatedSeed& seed,   // current instantiated seed
-	        const Ebwt* ebwtFw) 	        // forward index (BWT)
+	        const int ftabLen                // forward index (BWT) value
+	)
 	{
-	  cs.reset(cache, seed, ebwtFw);
+	  cs.reset(cache, seed, ftabLen);
 	  step = 0;
 	  need_reporting = false;
 	  bwt.set(0,0);
@@ -546,10 +546,9 @@ void SeedAligner::instantiateSeeds(
  */
 uint32_t SeedAligner::searchAllSeedsPrepare(
 	AlignmentCacheIface& cache,  // local cache for seed alignments
-	SeedResults& sr)             // holds all the seed hits
+	SeedResults& sr,             // holds all the seed hits
+	const int ftabLen)           // forward index (BWT) value
 {
-	assert(ebwtFw != NULL);
-	assert(ebwtFw->isInMemory());
 	assert(sr.repOk(&cache.current()));
 	uint32_t possearches = 0;
 	uint32_t seedsearches = 0;
@@ -584,7 +583,7 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 					assert_eq(fw, is.fw);
 					assert_eq(i, (int)is.seedoffidx);
 					paramVec.expand();
-					paramVec.back().reset(srcache, is, ebwtFw);
+					paramVec.back().reset(srcache, is, ftabLen);
 					seedsearches++;
 				}
 			}

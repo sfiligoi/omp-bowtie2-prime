@@ -1355,16 +1355,17 @@ public:
 	 * length equal to the index's 'ftabChars' into an int that can be
 	 * used to index into the ftab array.
 	 */
-	TIndexOffU ftabSeqToInt(
+	static TIndexOffU ftabSeqToInt(
+		const int fc,
+		const bool fw,
 		const char *seq,
 		size_t off,
-		bool rev) const
+		bool rev)
 		{
-			int fc = _eh._ftabChars;
 			size_t lo = off, hi = lo + fc;
 			TIndexOffU ftabOff = 0;
 			for(int i = 0; i < fc; i++) {
-				bool fwex = fw();
+				bool fwex = fw;
 				if(rev) fwex = !fwex;
 				// We add characters to the ftabOff in the order they would
 				// have been consumed in a normal search.  For BWT, this
@@ -1378,6 +1379,15 @@ public:
 				ftabOff |= c;
 			}
 			return ftabOff;
+		}
+
+	TIndexOffU ftabSeqToInt(
+		const char *seq,
+		size_t off,
+		bool rev) const
+		{
+			int fc = _eh._ftabChars;
+			return ftabSeqToInt(fc, fw(), seq, off, rev);
 		}
 
 	/**
