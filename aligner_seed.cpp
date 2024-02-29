@@ -547,28 +547,30 @@ void SeedAligner::searchAllSeeds(
 	assert(sr.repOk(&cache.current()));
 	assert(ebwtBw == NULL);
 	bwops_ = 0;
-	uint64_t possearches = 0, seedsearches = 0, ooms = 0;
+	uint32_t ooms = 0;
+	uint32_t possearches = 0;
+	uint32_t seedsearches = 0;
 
 	SeedSearchMultiCache& mcache = mcache_;
 	auto& paramVec = paramVec_;
 
+	mcache.clear();
+	paramVec.clear();
+
+	// Build the support structures
+	// the order is arbirtrary
 	for(int fwi = 0; fwi < 2; fwi++) {
 		const bool fw = (fwi == 0);
-                size_t i =0;
-		// For each instantiated seed, but batched
-		while (i < sr.numOffs()) {
-		   const size_t ibatch_max = std::min(i+ibatch_size,sr.numOffs());
-		   mcache.clear();
-		   paramVec.clear();
-		   // start aligning and find list of seeds to search
-		   for(; i < ibatch_max; i++) {
+		// For each instantiated seed
+		// start aligning and find list of seeds to search
+		for(size_t i =0; i < sr.numOffs(); i++) {
 			assert(sr.repOk(&cache.current()));
 			InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			if(!is.isValid()) {
 				// Cache hit in an across-read cache
 				continue;
 			}
-			mcache.emplace_back_noresize(cache, sr, i, fw);
+			mcache.emplace_back(cache, sr, i, fw);
 			const size_t mnr = mcache.size()-1;
 			SeedSearchCache &srcache = mcache[mnr];
 			{
@@ -578,22 +580,22 @@ void SeedAligner::searchAllSeeds(
 					// and qualities already installed in SeedResults
 					assert_eq(fw, is.fw);
 					assert_eq(i, (int)is.seedoffidx);
-					paramVec.expand_noresize();
+					paramVec.expand();
 					paramVec.back().reset(srcache, is, ebwtFw);
 					seedsearches++;
 				}
 			}
-		   } // internal i (batch) loop
+		} // for i
+	} // for fwi
 
-		   // do the searches
-		   if (!paramVec.empty()) {
-			const size_t nparams = paramVec.size();
-			assert(ebwtBw_==NULL);
-			searchSeedBi(ebwtFw, sstateVec_.ptr(), bwops_, nparams, &(paramVec[0]));
-		   }
+	// do the searches in batches
+	for (size_t mnr=0; mnr<mcache.size(); mnr+=ibatch_size) {
+		const size_t ibatch_max = std::min(mnr+ibatch_size,mcache.size());
+		searchSeedBi(ebwtFw, sstateVec_.ptr(), bwops_, ibatch_max-mnr, &(paramVec[mnr]));
+	} // mnr loop
 
-		   // finish aligning and add to SeedResult
-		   for (size_t mnr=0; mnr<mcache.size(); mnr++) {
+	// finish aligning and add to SeedResult
+	for (size_t mnr=0; mnr<mcache.size(); mnr++) {
 			SeedSearchCache &srcache = mcache[mnr];
 			// Tell the cache that we've started aligning, so the cache can
 			// expect a series of on-the-fly updates
@@ -624,9 +626,10 @@ void SeedAligner::searchAllSeeds(
 			assert(!srcache.aligning());
 
 			mcache.addToMainCache(mnr);
-		   } // mnr loop
-		} // external i while
-	} // for fwi
+	} // mnr loop
+	if (ooms>0) {
+		std::cerr << "WARNING: searchAllSeeds oom " << ooms << std::endl;
+	}
 }
 
 bool SeedAligner::sanityPartial(
