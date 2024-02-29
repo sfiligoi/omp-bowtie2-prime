@@ -1615,17 +1615,13 @@ public:
 		tmpdnastr_.set_alloc(alloc, propagate_alloc);
 		mcache_.set_alloc(alloc, propagate_alloc);
 		paramVec_.set_alloc(alloc, propagate_alloc);
-		sstateVec_.set_alloc(alloc, propagate_alloc);
 
 		// this is a good time to reserve the space
                 mcache_.reserve(ibatch_size);
                 paramVec_.reserve(ibatch_size);
-                sstateVec_.reserve(ibatch_size);
 
 		// force memory allocation(lazy, else)
 		paramVec_.expand(); paramVec_.clear();
-		// set it to the right size immediately, no dynamic growing
-		while (sstateVec_.size()<ibatch_size) sstateVec_.expand();
 		// mcache_.reserve is not lazy
 	}
 
@@ -1727,11 +1723,11 @@ protected:
 	 * Main, recursive implementation of the seed search.
 	 * Given a vector of instantiated seeds, search
 	 */
+	template<uint8_t SS_SIZE>
 	static void searchSeedBi(
 		        const Ebwt* ebwt,       // forward index (BWT)
-			SeedAlignerSearchState* sstateVec,
         		uint64_t& bwops_,         // Burrows-Wheeler operations
-			const uint32_t nparams, SeedAlignerSearchParams paramVec[]);
+			const uint8_t nparams, SeedAlignerSearchParams paramVec[]);
 
 	// helper function
 	static bool startSearchSeedBi(
@@ -1784,10 +1780,9 @@ protected:
  	*       2 is too small for prefetch to be fully effective, 4 seems already OK, 
  	*       and 32 is too big (cache trashing).
  	**/
-	static constexpr size_t ibatch_size = 8;
+	static constexpr uint8_t ibatch_size = 8;
 	SeedSearchMultiCache mcache_;
-	EList<SeedAlignerSearchParams,int(ibatch_size)> paramVec_;
-	EList<SeedAlignerSearchState, int(ibatch_size)> sstateVec_;
+	EList<SeedAlignerSearchParams> paramVec_;
 
 	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
 	BTDnaString tmpdnastr_;

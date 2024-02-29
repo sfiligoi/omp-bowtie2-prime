@@ -180,6 +180,14 @@ public:
 	  bloc.invalidate();
 	}
 
+	void resetData() {
+	  step = 0;
+	  need_reporting = false;
+	  bwt.set(0,0);
+	  tloc.invalidate();
+	  bloc.invalidate();
+	}
+
 	void checkCV() const {
 	}
 
@@ -542,7 +550,6 @@ void SeedAligner::searchAllSeedsPrepare(
 	assert(ebwtFw != NULL);
 	assert(ebwtFw->isInMemory());
 	assert(sr.repOk(&cache.current()));
-	uint32_t ooms = 0;
 	uint32_t possearches = 0;
 	uint32_t seedsearches = 0;
 
@@ -597,7 +604,7 @@ void SeedAligner::searchAllSeedsDo(
 	// do the searches in batches
 	for (size_t mnr=0; mnr<mcache.size(); mnr+=ibatch_size) {
 		const size_t ibatch_max = std::min(mnr+ibatch_size,mcache.size());
-		searchSeedBi(ebwtFw, sstateVec_.ptr(), bwops_, ibatch_max-mnr, &(paramVec[mnr]));
+		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec[mnr]));
 	} // mnr loop
 
 }
@@ -1361,20 +1368,24 @@ private:
  * 1. Edits
  * 2. Bidirectional BWT range(s) on either end
  */
+template<uint8_t SS_SIZE>
 void
 SeedAligner::searchSeedBi(
                         const Ebwt* ebwt,       // forward index (BWT)
-                        SeedAlignerSearchState* sstateVec,
                         uint64_t& bwops_,         // Burrows-Wheeler operations
-                        const uint32_t nparams, SeedAlignerSearchParams paramVec[])
+                        const uint8_t nparams, SeedAlignerSearchParams paramVec[])
 {
+	SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
+	assert(nparams<=SS_SIZE);
+
 	uint32_t nleft = nparams; // will keep track of how many are not done yet
 
 	{
-	   uint32_t n=0;
-           uint32_t iparam = 0; // iparam and n may diverge, if some are done at init stage
+	   uint8_t n=0;
+           uint8_t iparam = 0; // iparam and n may diverge, if some are done at init stage
 	   while (n<nleft) {
 		SeedAlignerSearchParams& p= paramVec[iparam];
+		p.resetData();
 		sstateVec[n] = iparam;
 		iparam+=1;
 		const bool done = startSearchSeedBi(ebwt, p);
@@ -1386,7 +1397,7 @@ SeedAligner::searchSeedBi(
 			}
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
+			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 		} else {
 			n+=1;
 		}
@@ -1400,17 +1411,17 @@ SeedAligner::searchSeedBi(
 	   // We still want to do them sequentially, not in parallel, 
 	   // to give time for the prefetch to do its job.
 	   uint32_t bwops = 0;
-	   uint32_t n=0;
+	   uint8_t n=0;
            // logically a for (uint32_t n=0; n<nleft; n++) but with nleft potentially changing
 	   while (n<nleft) {
-		const uint32_t iparam = sstateVec[n];
+		const uint8_t iparam = sstateVec[n];
 
 		SeedAlignerSearchParams& p= paramVec[iparam];
 		const int n_seed_steps = p.cs.n_seed_steps;
 		if (p.step >= (int) n_seed_steps) {
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
+			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 			continue;
 		}
 		const int seed_step_min = p.cs.seed_step_min();
@@ -1436,7 +1447,7 @@ SeedAligner::searchSeedBi(
 		if(c == 4) { // couldn't handle the N
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
+			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 			continue;
 		}
 		if(!p.bloc.valid()) {
@@ -1448,7 +1459,7 @@ SeedAligner::searchSeedBi(
 			if(wstate.t[c] == OFF_MASK) {
 				// done with this, swap with last and reduce nleft
 				nleft-=1;
-				if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
+				if (n<nleft) sstateVec[n] = sstateVec[nleft];
 				continue;
 			}
 			assert_geq(wstate.t[c], ebwt->fchr()[c]);
@@ -1459,7 +1470,7 @@ SeedAligner::searchSeedBi(
 		if(wstate.b[c] == wstate.t[c]) {
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
+			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 			continue;
 		}
 		p.bwt.set(wstate.t[c], wstate.b[c]);
@@ -1468,7 +1479,7 @@ SeedAligner::searchSeedBi(
 			p.set_reporting();
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) std::swap(sstateVec[n],sstateVec[nleft]);
+			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 			continue;
 		}
 		nextLocsBi(ebwt, seed_step_min+i+1, p.tloc, p.bloc, p.bwt);
