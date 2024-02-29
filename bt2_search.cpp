@@ -2552,14 +2552,43 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 						msobj.ca.nextRead(); // Clear cache in preparation for new search
-							// Align seeds
-							msobj.al.searchAllSeeds(
+							// Fill internal structures
+							msobj.al.searchAllSeedsPrepare(
 								&msconsts->ebwtFw,          // BWT index
-								msconsts->ebwtBw,           // BWT' index
-								msconsts->sc,               // scoring scheme
 								msobj.ca,         // alignment cache
-								msobj.shs,        // store seed hits here
-								msinkwrap.prm);   // per-read metrics
+								msobj.shs);        // store seed hits here
+				} // if
+			} // for mate
+		   tmr.next("searchAllSeedsPrepare");
+
+			// always call ensure_spare from main CPU thread
+		 	mate_allocs.ensure_spare();
+
+		   	// we can do all of the "mates" in parallel
+#pragma omp parallel for default(shared) schedule(dynamic,8)
+			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+				if (mate_idx[mate]>=0 ) { // !done[mate]
+					msWorkerObjs& msobj = g_msobjs[mate];
+					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
+							// Align seeds
+							msobj.al.searchAllSeedsDo(
+								&msconsts->ebwtFw);          // BWT index
+				} // if
+			} // for mate
+		   tmr.next("searchAllSeedsDo");
+
+			// always call ensure_spare from main CPU thread
+		 	mate_allocs.ensure_spare();
+
+		   	// we can do all of the "mates" in parallel
+#pragma omp parallel for default(shared) schedule(dynamic,8)
+			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+				if (mate_idx[mate]>=0 ) { // !done[mate]
+					msWorkerObjs& msobj = g_msobjs[mate];
+					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
+							// Get data from internal stuctures
+							msobj.al.searchAllSeedsFinalize();
+
 							msinkwrap.updatePRM(msobj.shs);
 							assert(msobj.shs.repOk(&msobj.ca.current()));
 							if(msobj.shs.empty()) {
@@ -2572,7 +2601,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 							}
 				} // if
 			} // for mate
-		   tmr.next("searchAllSeeds");
+		   tmr.next("searchAllSeedsFinalize");
 
 			// always call ensure_spare from main CPU thread
 		 	mate_allocs.ensure_spare();

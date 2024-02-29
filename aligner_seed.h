@@ -1663,13 +1663,14 @@ public:
 	 * Iterate through the seeds that cover the read and initiate a
 	 * search for each seed.
 	 */
-	void searchAllSeeds(
-		const Ebwt* ebwtFw,         // BWT index
-		const Ebwt* ebwtBw,         // BWT' index
-		const Scoring& pens,        // scoring scheme
-		AlignmentCacheIface& cache, // local seed alignment cache
-		SeedResults& hits,          // holds all the seed hits
-		PerReadMetrics& prm);       // per-read metrics
+	void searchAllSeedsPrepare(
+		const Ebwt* ebwtFw,          // BWT index
+		AlignmentCacheIface& cache,  // local cache for seed alignments
+		SeedResults& sr);            // holds all the seed hits
+
+	void searchAllSeedsDo(const Ebwt* ebwtFw);
+
+	void searchAllSeedsFinalize();
 
 	/**
 	 * Sanity-check a partial alignment produced during oneMmSearch.

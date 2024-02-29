@@ -534,19 +534,14 @@ void SeedAligner::instantiateSeeds(
  * 1. Instantiate all seeds, retracting them if necessary.
  * 2. Calculate zone boundaries for each seed
  */
-void SeedAligner::searchAllSeeds(
+void SeedAligner::searchAllSeedsPrepare(
 	const Ebwt* ebwtFw,          // BWT index
-	const Ebwt* ebwtBw,          // BWT' index
-	const Scoring& pens,         // scoring scheme
 	AlignmentCacheIface& cache,  // local cache for seed alignments
-	SeedResults& sr,             // holds all the seed hits
-	PerReadMetrics& prm)         // per-read metrics
+	SeedResults& sr)             // holds all the seed hits
 {
 	assert(ebwtFw != NULL);
 	assert(ebwtFw->isInMemory());
 	assert(sr.repOk(&cache.current()));
-	assert(ebwtBw == NULL);
-	bwops_ = 0;
 	uint32_t ooms = 0;
 	uint32_t possearches = 0;
 	uint32_t seedsearches = 0;
@@ -587,12 +582,32 @@ void SeedAligner::searchAllSeeds(
 			}
 		} // for i
 	} // for fwi
+}
+
+void SeedAligner::searchAllSeedsDo(
+	const Ebwt* ebwtFw)          // BWT index
+{
+	assert(ebwtFw != NULL);
+	assert(ebwtFw->isInMemory());
+	bwops_ = 0;
+
+	SeedSearchMultiCache& mcache = mcache_;
+	auto& paramVec = paramVec_;
 
 	// do the searches in batches
 	for (size_t mnr=0; mnr<mcache.size(); mnr+=ibatch_size) {
 		const size_t ibatch_max = std::min(mnr+ibatch_size,mcache.size());
 		searchSeedBi(ebwtFw, sstateVec_.ptr(), bwops_, ibatch_max-mnr, &(paramVec[mnr]));
 	} // mnr loop
+
+}
+
+void SeedAligner::searchAllSeedsFinalize()
+{
+	uint32_t ooms = 0;
+
+	SeedSearchMultiCache& mcache = mcache_;
+	auto& paramVec = paramVec_;
 
 	// finish aligning and add to SeedResult
 	for (size_t mnr=0; mnr<mcache.size(); mnr++) {
