@@ -1658,13 +1658,16 @@ public:
 	/**
 	 * Iterate through the seeds that cover the read and initiate a
 	 * search for each seed.
+	 *
+	 * Return number of batches
 	 */
-	void searchAllSeedsPrepare(
+	uint32_t searchAllSeedsPrepare(
 		const Ebwt* ebwtFw,          // BWT index
 		AlignmentCacheIface& cache,  // local cache for seed alignments
 		SeedResults& sr);            // holds all the seed hits
 
-	void searchAllSeedsDo(const Ebwt* ebwtFw);
+	void searchAllSeedsDoAll(const Ebwt* ebwtFw);
+	void searchAllSeedsDoBatch(const Ebwt* ebwtFw, uint32_t ibatch);
 
 	void searchAllSeedsFinalize();
 

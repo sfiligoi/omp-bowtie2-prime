@@ -541,8 +541,10 @@ void SeedAligner::instantiateSeeds(
  *
  * 1. Instantiate all seeds, retracting them if necessary.
  * 2. Calculate zone boundaries for each seed
+ *
+ * Return number of batches
  */
-void SeedAligner::searchAllSeedsPrepare(
+uint32_t SeedAligner::searchAllSeedsPrepare(
 	const Ebwt* ebwtFw,          // BWT index
 	AlignmentCacheIface& cache,  // local cache for seed alignments
 	SeedResults& sr)             // holds all the seed hits
@@ -589,14 +591,16 @@ void SeedAligner::searchAllSeedsPrepare(
 			}
 		} // for i
 	} // for fwi
+	bwops_ = 0;
+	// return number of batches (rounded up)
+	return (mcache.size()+(ibatch_size-1))/ibatch_size;
 }
 
-void SeedAligner::searchAllSeedsDo(
+void SeedAligner::searchAllSeedsDoAll(
 	const Ebwt* ebwtFw)          // BWT index
 {
 	assert(ebwtFw != NULL);
 	assert(ebwtFw->isInMemory());
-	bwops_ = 0;
 
 	SeedSearchMultiCache& mcache = mcache_;
 	auto& paramVec = paramVec_;
@@ -607,6 +611,22 @@ void SeedAligner::searchAllSeedsDo(
 		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec[mnr]));
 	} // mnr loop
 
+}
+
+void SeedAligner::searchAllSeedsDoBatch(
+	const Ebwt* ebwtFw,          // BWT index
+	uint32_t ibatch)
+{
+	size_t mnr = ibatch*ibatch_size;
+	const size_t ibatch_max = std::min(mnr+ibatch_size,mcache_.size());
+	if (mnr<ibatch_max) {
+		assert(ebwtFw != NULL);
+		assert(ebwtFw->isInMemory());
+
+		// Note: Updates on bwops_ may not be atomi
+		// But a small discrepancy is acceptable, as it is only rarely used diagnostics
+		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec_[mnr]));
+	}
 }
 
 void SeedAligner::searchAllSeedsFinalize()

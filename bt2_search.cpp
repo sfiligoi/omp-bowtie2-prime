@@ -2545,18 +2545,20 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 			// always call ensure_spare from main CPU thread
 		 	mate_allocs.ensure_spare();
 
+			uint32_t max_batches = 0;
 		   	// we can do all of the "mates" in parallel
-#pragma omp parallel for default(shared) schedule(dynamic,8)
+#pragma omp parallel for reduction(max:max_batches) default(shared) schedule(dynamic,8)
 			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 						msobj.ca.nextRead(); // Clear cache in preparation for new search
 							// Fill internal structures
+						max_batches = std::max(max_batches,
 							msobj.al.searchAllSeedsPrepare(
 								&msconsts->ebwtFw,          // BWT index
 								msobj.ca,         // alignment cache
-								msobj.shs);        // store seed hits here
+								msobj.shs));        // store seed hits here
 				} // if
 			} // for mate
 		   tmr.next("searchAllSeedsPrepare");
@@ -2564,15 +2566,20 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 			// always call ensure_spare from main CPU thread
 		 	mate_allocs.ensure_spare();
 
-		   	// we can do all of the "mates" in parallel
+			// Align the seeds
+		   	// We will use a simplistic assumption that the variation is not too large
+		   	// and just do a somple loop for similicty (needed for proper parallelization).
+		   	// searchAllSeedsDoBatch is a NOOP is past the limit
+		   	uint64_t g_max_batches = num_parallel_tasks*uint64_t(max_batches);
 #pragma omp parallel for default(shared) schedule(dynamic,8)
-			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+			for (uint64_t gbatch=0; gbatch<g_max_batches; gbatch++) {
+				uint32_t mate = gbatch / max_batches;
+				uint32_t ibatch = gbatch % max_batches;
 				if (mate_idx[mate]>=0 ) { // !done[mate]
-					msWorkerObjs& msobj = g_msobjs[mate];
-					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-							// Align seeds
-							msobj.al.searchAllSeedsDo(
-								&msconsts->ebwtFw);          // BWT index
+					// Align a batch of seeds
+					g_msobjs[mate].al.searchAllSeedsDoBatch(
+								&msconsts->ebwtFw,          // BWT index
+								ibatch);
 				} // if
 			} // for mate
 		   tmr.next("searchAllSeedsDo");
