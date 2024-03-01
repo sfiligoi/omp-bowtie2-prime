@@ -2130,13 +2130,16 @@ public:
 
 };
 
+class SeedAlignerBT2 : public SeedAligner {
+public:
+	SeedAlignerBT2() : SeedAligner(multiseed_ebwtFw) {}
+};
 
 class msWorkerObjs {
 public:
 	msWorkerObjs()
 	: ftabLen(multiseed_ebwtFw->eh().ftabChars())
 	, ca()
-	, al(multiseed_ebwtFw)
 	, sd()
 	, sw()
 	, shs()
@@ -2151,7 +2154,6 @@ public:
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true)
 	{
-		al.set_alloc(alloc,propagate_alloc);
 		sd.set_alloc(alloc,propagate_alloc);
 		sw.set_alloc(alloc,propagate_alloc);
 		shs.set_alloc(alloc,propagate_alloc);
@@ -2163,7 +2165,6 @@ public:
 	// Interfaces for alignment and seed caches
 	AlignmentCacheIfaceBT2 ca;
 
-	SeedAligner al;
 	SwDriverBT2 sd;
 	SwAligner sw;
 	SeedResults shs;
@@ -2334,14 +2335,17 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		// These arrays move between CPU and GPU often
 		// Keep them together
 
-		uint16_t* intervals = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint16_t))) uint16_t[num_parallel_tasks];
-		uint16_t* irounds = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint16_t))) uint16_t[num_parallel_tasks];
+		SeedAlignerBT2* g_als = new(worker_alloc.allocate(num_parallel_tasks,sizeof(SeedAlignerBT2))) SeedAlignerBT2[num_parallel_tasks];
+		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) g_als[mate].set_alloc(&(mate_allocs[mate]));
 
 		static constexpr int32_t MATE_DONE_READING = -1000;  // done with g_psrah mate
 		static constexpr int32_t MATE_DONE = -1;             // done with this read
 		// Mate index for std::for_each
 		// Also used to ecode done and done_reading
 		int32_t *mate_idx = new(worker_alloc.allocate(num_parallel_tasks,sizeof(int32_t))) int32_t[num_parallel_tasks];
+
+		uint16_t* intervals = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint16_t))) uint16_t[num_parallel_tasks];
+		uint16_t* irounds = new(worker_alloc.allocate(num_parallel_tasks,sizeof(uint16_t))) uint16_t[num_parallel_tasks];
 
 		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			mate_idx[mate] = mate;
@@ -2568,7 +2572,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 						msobj.ca.nextRead(); // Clear cache in preparation for new search
 							// Fill internal structures
 						max_batches = std::max(max_batches,
-							msobj.al.searchAllSeedsPrepare(
+							g_als[mate].searchAllSeedsPrepare(
 								msobj.ca,         // alignment cache
 								msobj.shs,        // store seed hits here
 								msobj.ftabLen));  // only thing needed out of BTW index
@@ -2590,13 +2594,13 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 #else
 			std::for_each_n(std::execution::par_unseq,
 				thrust::counting_iterator(0), g_max_batches,
-				[mate_idx,g_msobjs,max_batches](uint64_t gbatch) mutable {
+				[mate_idx,g_als,max_batches](uint64_t gbatch) mutable {
 #endif
 				uint32_t mate = gbatch / max_batches;
 				uint32_t ibatch = gbatch % max_batches;
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					// Align a batch of seeds
-					g_msobjs[mate].al.searchAllSeedsDoBatch(
+					g_als[mate].searchAllSeedsDoBatch(
 								ibatch);
 				} // if
 			} // for mate
@@ -2615,7 +2619,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 							// Get data from internal stuctures
-							msobj.al.searchAllSeedsFinalize();
+							g_als[mate].searchAllSeedsFinalize();
 
 							msinkwrap.updatePRM(msobj.shs);
 							assert(msobj.shs.repOk(&msobj.ca.current()));
