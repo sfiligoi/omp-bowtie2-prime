@@ -1614,7 +1614,6 @@ public:
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		tmprfdnastr_.set_alloc(alloc, propagate_alloc);
-		tmpdnastr_.set_alloc(alloc, propagate_alloc);
 		mcache_.set_alloc(alloc, propagate_alloc);
 		paramVec_.set_alloc(alloc, propagate_alloc);
 
@@ -1676,6 +1675,7 @@ public:
 	// Same value as returned by searchAllSeedsPrepare
 	uint32_t getSearchBatches() const {return (mcache_.size()+(ibatch_size-1))/ibatch_size;}
 
+#if 0
 	/**
 	 * Sanity-check a partial alignment produced during oneMmSearch.
 	 */
@@ -1689,7 +1689,7 @@ public:
 		TIndexOffU           botfw,
 		TIndexOffU           topbw,
 		TIndexOffU           botbw);
-
+#endif
 	/**
 	 * Do an exact-matching sweet to establish a lower bound on number of edits
 	 * and to find exact alignments.
@@ -1792,7 +1792,6 @@ protected:
 	EList<SeedAlignerSearchParams> paramVec_;
 
 	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
-	BTDnaString tmpdnastr_;
 };
 
 #define INIT_LOCS(top, bot, tloc, bloc, e) { \

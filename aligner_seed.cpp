@@ -669,6 +669,7 @@ void SeedAligner::searchAllSeedsFinalize()
 	}
 }
 
+#if 0
 inline bool SeedAligner::sanityPartial(
 	const Ebwt*        ebwtBw, // BWT' index
 	const BTDnaString& seq,
@@ -697,6 +698,7 @@ inline bool SeedAligner::sanityPartial(
 	}
 	return true;
 }
+#endif
 
 inline void exactSweepInit(
 	const Ebwt&        ebwt,
