@@ -1672,7 +1672,6 @@ public:
 	) : ebwtFw(ebwtFw_) {}
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		tmprfdnastr_.set_alloc(alloc, propagate_alloc);
 		mcache_.set_alloc(alloc, propagate_alloc);
 		paramVec_.set_alloc(alloc, propagate_alloc);
 
@@ -1844,7 +1843,6 @@ protected:
 	// and other protected members.
 	
 	uint64_t bwops_;           // Burrows-Wheeler operations
-	BTDnaString tmprfdnastr_;  // used in reportHit
 
 	/**
  	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.
