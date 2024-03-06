@@ -710,9 +710,8 @@ void SeedAligner::searchAllSeedsFinalize()
 				SeedAlignerSearchParams& p= paramVec[mnr];
 				if ( p.need_reporting ) {
 					// Finished aligning seed
-					const char *seq = p.cs.seq;
 					auto& bwt = p.bwt;
-					bool mysuccess = srcache.addOnTheFly(seq, bwt.topf, bwt.botf);
+					bool mysuccess = srcache.addOnTheFly(bwt.topf, bwt.botf);
 					success &= mysuccess;
 				}
 			}

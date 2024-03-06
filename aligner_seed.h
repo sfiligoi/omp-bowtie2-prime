@@ -1485,7 +1485,6 @@ public:
          * compiled for the current read in the local memory buffer.
          */
         bool addOnTheFly(
-                const char *   rfseq,     // reference sequence close to read seq - content
                 TIndexOffU topf,            // top in BWT index
                 TIndexOffU botf)            // bot in BWT index
 	{
@@ -1493,7 +1492,7 @@ public:
 		assert(srp!=NULL);
 		assert(cachep!=NULL);
 		const uint32_t seq_len = srp->seqs_len();
-		SAKey sak(rfseq, seq_len ASSERT_ONLY(, tmp));
+		SAKey sak(seq, seq_len ASSERT_ONLY(, tmp));
 		return cachep->addOnTheFly(sak, topf, botf);
 	}
 
