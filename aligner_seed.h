@@ -402,7 +402,6 @@ struct InstantiatedSeed {
 	 */
 	bool instantiateExact(
 		const int seed_len,
-		const Read& read,
 		const char *seq); // seed read sequence
 
 	// Steps map.  There are as many steps as there are positions in
@@ -567,8 +566,6 @@ class SeedResults {
 
 public:
 	SeedResults() :
-		seqBuf_(AL_CAT),
-		seedsBuf_(AL_CAT),
 		hitsFw_(AL_CAT),
 		hitsRc_(AL_CAT),
 		sortedFw_(AL_CAT),
@@ -576,6 +573,7 @@ public:
 		offIdx2off_(AL_CAT),
 		rankOffs_(AL_CAT),
 		rankFws_(AL_CAT),
+		numOffs_(0),
 		mm1Hit_(AL_CAT)
 	{
 		clear();
@@ -585,8 +583,6 @@ public:
 	SeedResults& operator=(const SeedResults& other) = delete;
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		seqBuf_.set_alloc(alloc, propagate_alloc);
-		seedsBuf_.set_alloc(alloc, propagate_alloc);
 		hitsFw_.set_alloc(alloc, propagate_alloc);
 		hitsRc_.set_alloc(alloc, propagate_alloc);
 		sortedFw_.set_alloc(alloc, propagate_alloc);
@@ -652,15 +648,12 @@ public:
 	 */
 protected:
 	void resetNoOff(
-		const size_t numOffs,
-		const uint32_t seqLen)
+		char*              seqBuf,      // content of all the seqs, no separators
+		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
 	{
-		assert_gt(numOffs, 0);
-		clearSeeds();
-		numOffs_ = numOffs;
-		seqLen_ = seqLen;
-		seqBuf_.resize(2*numOffs*seqLen);
-		seedsBuf_.resize(2*numOffs);
+		const size_t numOffs = numOffs_;
+		seqBuf_ = seqBuf;     // must be be at least getSeqSize()
+		seedsBuf_ = seedsBuf; // must be be at least getSeedsSize()
 		for(size_t i = 0; i < 2*numOffs; i++) {
 			seedsBuf_[i].invalidate();
 		}
@@ -678,33 +671,55 @@ protected:
 	}
 
 public:
-	void reset(
-		const EList<uint32_t>& offIdx2off,
-		size_t numOffs,   
-                const uint32_t seqLen)
-	{
-		resetNoOff(numOffs,seqLen);
-		offIdx2off_ = offIdx2off;
+
+	size_t getSeqSize() const { return 2*numOffs_*seqLen_; }
+
+	size_t getSeedsSize() const { return 2*numOffs_; };
+
+	void invalidate() {
+		numOffs_ = 0;
 	}
 
-	void reset(
+	void prepare(
 		const size_t off,                // offset into read to start extracting
 		const int per,                   // interval between seeds
 		size_t numOffs,   
                 const uint32_t seqLen)
 	{
-		resetNoOff(numOffs,seqLen);
+		assert_gt(numOffs, 0);
+		clearSeeds();
+		numOffs_ = numOffs;
+		seqLen_ = seqLen;
+		off_ = off;
+		per_ = per;
+	}
+
+	void reset(
+		const EList<uint32_t>& offIdx2off,
+		char*              seqBuf,      // content of all the seqs, no separators
+		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
+	{
+		resetNoOff(seqBuf,seedsBuf);
+		offIdx2off_ = offIdx2off;
+	}
+
+	// expects prepare to have been called first
+	void reset(
+		char*              seqBuf,      // content of all the seqs, no separators
+		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
+	{
+		resetNoOff(seqBuf,seedsBuf);
 		offIdx2off_.clear();
-		for(int i = 0; i < numOffs; i++) {
-			offIdx2off_.push_back(per * i + (int)off);
+		for(int i = 0; i < numOffs_; i++) {
+			offIdx2off_.push_back(per_ * i + (int)off_);
                 }
 	}
+
 	
 	/**
 	 * Clear seed-hit state.
 	 */
 	void clearSeeds() {
-		seedsBuf_.clear();
 		sortedFw_.clear();
 		sortedRc_.clear();
 		rankOffs_.clear();
@@ -712,7 +727,6 @@ public:
 		offIdx2off_.clear();
 		hitsFw_.clear();
 		hitsRc_.clear();
-		seqBuf_.clear();
 		nonzTot_ = 0;
 		uniTot_ = uniTotS_[0] = uniTotS_[1] = 0;
 		repTot_ = repTotS_[0] = repTotS_[1] = 0;
@@ -796,6 +810,9 @@ public:
 		}
 	}
 	
+	bool isValid() const {return numOffs_ > 0; }
+
+
 	/**
 	 * Return average number of hits per seed.
 	 */
@@ -948,6 +965,9 @@ public:
 	 * Return the number of different seed offsets possible.
 	 */
 	size_t numOffs() const { return numOffs_; }
+
+	int getOffset() const { return off_; }
+	int getInterval() const { return per_; }
 	
 #ifndef NDEBUG
 	/**
@@ -1148,13 +1168,13 @@ public:
 	 * the forward or reverse strand.
 	 */
 	char * seqs(bool fw, size_t i) { 
-		char * base = seqBuf_.ptr();
+		char * base = seqBuf_;
 		if (!fw) base += seqLen_*numOffs_;
 		return base + (i*seqLen_);
 	}
 
 	const char * seqs(bool fw, size_t i) const { 
-		const char * base = seqBuf_.ptr();
+		const char * base = seqBuf_;
 		if (!fw) base += seqLen_*numOffs_;
 		return base + (i*seqLen_);
 	}
@@ -1289,8 +1309,9 @@ protected:
 
 	// As seed hits and edits are added they're sorted into these
 	// containers
-	EList<char>         seqBuf_;      // content of all the seqs, no separators
-	EList<InstantiatedSeed> seedsBuf_; // all the instantiated seeds, both fw and rc
+	char*               seqBuf_;      // not owned, content of all the seqs, no separators
+	InstantiatedSeed*   seedsBuf_;    // not owned, all the instantiated seeds, both fw and rc
+
 	EList<QVal>         hitsFw_;      // hits for forward read
 	EList<QVal>         hitsRc_;      // hits for revcomp read
 	EList<bool>         sortedFw_;    // true iff fw QVal was sorted/ranked
@@ -1323,6 +1344,8 @@ protected:
 	// These fields set once per read
 	size_t              numOffs_;   // # different seed offsets possible
 	uint32_t            seqLen_;    // # length of each seq
+	int		    off_;       // offset into read to start extracting
+	int		    per_;       // interval between seeds
 	
 	EEHit               exactFwHit_; // end-to-end exact hit for fw read
 	EEHit               exactRcHit_; // end-to-end exact hit for rc read
@@ -1331,6 +1354,76 @@ protected:
 	bool                mm1Sorted_;  // true iff we've sorted the mm1Hit_ list
 
 	EList<size_t> tmpMedian_; // temporary storage for calculating median
+};
+
+class MultiSeedResults {
+public:
+	MultiSeedResults(
+		uint32_t n_els,            // number of seed elements
+	        const int seed_len,        // search seed length
+	        bool nofw,                 // don't align forward read
+	        bool norc)                 // don't align revcomp read
+ 
+	: _n_sr(n_els)
+	, _srs(new SeedResults[n_els])
+	, _seed_len(seed_len)
+	, _nofw(nofw)
+	, _norc(norc)
+	, _bufOffs(new TBufOffs[n_els])
+	, _seqBuf(NULL),   _seedsBuf(NULL)
+	, _seqBuf_size(0), _seedsBuf_size(0)
+	{}
+
+	~MultiSeedResults() {
+		if (_seedsBuf!=NULL) delete[] _seedsBuf;
+		if (_seqBuf!=NULL) delete[] _seqBuf;
+		delete[] _bufOffs;
+		delete[] _srs;
+	}
+
+	// prevent acidental copies (due to managed pointer)
+	MultiSeedResults(const MultiSeedResults& o) = delete;
+	MultiSeedResults& operator=(const MultiSeedResults& o) = delete;
+
+	uint32_t nSRs() const {return _n_sr;}
+
+	SeedResults &getSR(uint32_t idx) { return _srs[idx];}
+	const SeedResults &getSR(uint32_t idx) const { return _srs[idx];}
+
+	void clearOneSeed(uint32_t idx) {
+		_srs[idx].clear();
+	}
+
+	void clearSeeds() {
+		for (uint32_t i=0; i<_n_sr; i++) _srs[i].clear();
+	}
+
+	// thread-safe on separate indexes
+	void prepareOneSeed(
+		uint32_t idx,              // index in the multi-seed array
+	        size_t off,                // offset into read to start extracting
+	        int per,                   // interval between seeds
+	        const Read* pread);        // read to align
+
+	// Expects prepareOneSeed has been called on all the valid elements
+	size_t instantiateSeeds(const Read* preads[]);
+
+
+private:
+	const uint32_t   _n_sr;
+	SeedResults *    _srs; // array of size n_sr
+	const int        _seed_len;        // search seed length
+	const bool       _nofw;                 // don't align forward read
+	const bool       _norc;                 // don't align revcomp read
+
+	// offsets into _seqBuf and _seedsBuf
+	typedef std::pair<size_t,size_t> TBufOffs;
+	TBufOffs *         _bufOffs; // array of size n_sr
+	// these pointers can be updated during the life of the object
+	char*              _seqBuf;      // content of all the seqs, no separators
+	InstantiatedSeed*  _seedsBuf;    // all the instantiated seeds, both fw and rc
+	size_t             _seqBuf_size;
+	size_t             _seedsBuf_size;
 };
 
 
@@ -1632,15 +1725,20 @@ public:
 	 * Iterate through the seeds that cover the read and initiate a
 	 * search for each seed.
 	 */
-	static void instantiateSeeds(
+	static void prepareSeed(
 		const int seed_len,        // search seed length
-		size_t off,                 // offset into read to start extracting
-		int per,                    // interval between seeds
-		const Read& read,           // read to align
-		bool nofw,                  // don't align forward read
-		bool norc,                  // don't align revcomp read
-		SeedResults& sr,            // holds all the seed hits
-		int insts[3]);              // counters
+		size_t off,                // offset into read to start extracting
+		int per,                   // interval between seeds
+		const Read& read,          // read to align
+		SeedResults& sr);          // holds all the seed hits
+
+	static size_t instantiateSeed(
+		char*              seqBuf,      // content of all the seqs, no separators
+		InstantiatedSeed*  seedsBuf,    // all the instantiated seeds, both fw and rc
+		const Read& read,          // read to align
+		bool nofw,                 // don't align forward read
+		bool norc,                 // don't align revcomp read
+		SeedResults& sr);           // holds all the seed hits
 
 	/**
 	 * Iterate through the seeds that cover the read and initiate a

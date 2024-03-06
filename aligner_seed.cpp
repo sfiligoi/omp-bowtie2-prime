@@ -308,14 +308,9 @@ Seed::instantiate(
 bool
 InstantiatedSeed::instantiateExact(
 	const int seed_len,
-	const Read& read,
 	const char *seq) // seed read sequence
 {
 	int seedlen = seed_len;
-	if((int)read.length() < seedlen) {
-		// Shrink seed length to fit read if necessary
-		seedlen = (int)read.length();
-	}
 	assert_gt(seedlen, 0);
 	n_steps = seedlen;
 	//step_min = -seedlen;
@@ -475,15 +470,12 @@ SeedAligner::instantiateSeq(
  *
  * For each seed, instantiate the seed, retracting if necessary.
  */
-void SeedAligner::instantiateSeeds(
+void SeedAligner::prepareSeed(
 	const int seed_len,        // search seed length
 	size_t off,                // offset into read to start extracting
 	int per,                   // interval between seeds
 	const Read& read,          // read to align
-	bool nofw,                 // don't align forward read
-	bool norc,                 // don't align revcomp read
-	SeedResults& sr,           // holds all the seed hits
-	int insts[3])              // counters
+	SeedResults& sr)           // holds all the seed hits
 {
 	assert_gt(read.length(), 0);
 	// Check whether read has too many Ns
@@ -493,11 +485,28 @@ void SeedAligner::instantiateSeeds(
 	if((int)read.length() - (int)off > len) {
 		nseeds += ((int)read.length() - (int)off - len) / per;
 	}
-	insts[0] = insts[1] = insts[2] = 0;
 
 	const int min_len = std::min<int>(len, (int)read.length());
-	sr.reset(off, per, nseeds, min_len);
+	sr.prepare(off, per, nseeds, min_len);
+}
 
+size_t SeedAligner::instantiateSeed(
+	char*              seqBuf,      // content of all the seqs, no separators
+	InstantiatedSeed*  seedsBuf,    // all the instantiated seeds, both fw and rc
+	const Read& read,          // read to align
+	bool nofw,                 // don't align forward read
+	bool norc,                 // don't align revcomp read
+	SeedResults& sr)           // holds all the seed hits
+{
+	int insts[3];
+	insts[0] = insts[1] = insts[2] = 0;
+
+	const int nseeds = sr.numOffs();
+	const int min_len = sr.seqs_len();
+	sr.reset(seqBuf, seedsBuf);
+
+	const int off = sr.getOffset();
+	const int per = sr.getInterval();
 	// For each seed position
 	for(int fwi = 0; fwi < 2; fwi++) {
 		bool fw = (fwi == 0);
@@ -507,7 +516,7 @@ void SeedAligner::instantiateSeeds(
 		}
 		// For each seed position
 		for(int i = 0; i < nseeds; i++) {
-			int depth = i * per + (int)off;
+			int depth = i * per + off;
 			// Extract the seed sequence at this offset
 			// If fw == true, we extract the characters from i*per to
 			// i*(per-1) (exclusive).  If fw == false, 
@@ -521,8 +530,7 @@ void SeedAligner::instantiateSeeds(
 			InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			{
 				if(is.instantiateExact(
-					seed_len,
-					read,
+					min_len,
 					sr.seqs(fw,i)))
 				{
 					// Can we fill this seed hit in from the cache?
@@ -532,6 +540,60 @@ void SeedAligner::instantiateSeeds(
 			}
 		}
 	}
+
+	return insts[0];
+}
+
+void MultiSeedResults::prepareOneSeed(
+		uint32_t idx,              // index in the multi-seed array
+	        size_t off,                // offset into read to start extracting
+	        int per,                   // interval between seeds
+	        const Read* pread)         // read to align
+{
+	SeedAligner::prepareSeed(
+			_seed_len,    // length of a multiseed seed
+			off,          // offset to begin extracting
+			per,          // interval between seeds
+			*pread,       // read to align
+			_srs[idx]);
+}
+
+size_t MultiSeedResults::instantiateSeeds(const Read* preads[])
+{
+	size_t seq_total_size = 0;
+	size_t seeds_total_size = 0;
+
+	for (uint32_t i=0; i<_n_sr; i++) {
+		_bufOffs[i].first  = seq_total_size;
+		_bufOffs[i].second = seeds_total_size;
+		seq_total_size+=_srs[i].getSeqSize();
+		seeds_total_size+=_srs[i].getSeedsSize();
+	}
+
+	if (_seqBuf_size<seq_total_size) {
+		// need more space
+		delete[] _seqBuf;
+		_seqBuf = new char[seq_total_size];
+		_seqBuf_size = seq_total_size;
+	}
+
+	if (_seedsBuf_size<seeds_total_size) {
+		// need more space
+		delete[] _seedsBuf;
+		_seedsBuf = new InstantiatedSeed[seeds_total_size];
+		_seedsBuf_size = seeds_total_size;
+	}
+
+	size_t tries = 0;
+#pragma omp parallel for reduction(+:tries) default(shared) schedule(dynamic,8)
+	for (uint32_t i=0; i<_n_sr; i++) {
+		tries += SeedAligner::instantiateSeed(
+			_seqBuf + _bufOffs[i].first, _seedsBuf + _bufOffs[i].second,
+			*preads[i], _nofw, _norc,
+			_srs[i]);
+	}
+
+	return tries;
 }
 
 /**
