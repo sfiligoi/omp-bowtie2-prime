@@ -570,7 +570,6 @@ public:
 		hitsRc_(AL_CAT),
 		sortedFw_(AL_CAT),
 		sortedRc_(AL_CAT),
-		offIdx2off_(AL_CAT),
 		rankOffs_(AL_CAT),
 		rankFws_(AL_CAT),
 		numOffs_(0),
@@ -587,7 +586,6 @@ public:
 		hitsRc_.set_alloc(alloc, propagate_alloc);
 		sortedFw_.set_alloc(alloc, propagate_alloc);
 		sortedRc_.set_alloc(alloc, propagate_alloc);
-		offIdx2off_.set_alloc(alloc, propagate_alloc);
 		rankOffs_.set_alloc(alloc, propagate_alloc);
 		rankFws_.set_alloc(alloc, propagate_alloc);
 		mm1Hit_.set_alloc(alloc, propagate_alloc);
@@ -694,25 +692,12 @@ public:
 		per_ = per;
 	}
 
-	void reset(
-		const EList<uint32_t>& offIdx2off,
-		char*              seqBuf,      // content of all the seqs, no separators
-		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
-	{
-		resetNoOff(seqBuf,seedsBuf);
-		offIdx2off_ = offIdx2off;
-	}
-
 	// expects prepare to have been called first
 	void reset(
 		char*              seqBuf,      // content of all the seqs, no separators
 		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
 	{
 		resetNoOff(seqBuf,seedsBuf);
-		offIdx2off_.clear();
-		for(int i = 0; i < numOffs_; i++) {
-			offIdx2off_.push_back(per_ * i + (int)off_);
-                }
 	}
 
 	
@@ -724,7 +709,6 @@ public:
 		sortedRc_.clear();
 		rankOffs_.clear();
 		rankFws_.clear();
-		offIdx2off_.clear();
 		hitsFw_.clear();
 		hitsRc_.clear();
 		nonzTot_ = 0;
@@ -933,8 +917,8 @@ public:
 	/**
 	 * Given an offset index, return the offset that has that index.
 	 */
-	size_t idx2off(size_t off) const {
-		return offIdx2off_[off];
+	size_t idx2off(size_t idx) const {
+		return per_ * idx + off_;
 	}
 	
 	/**
@@ -1149,15 +1133,13 @@ public:
 		if(rankFws_[r]) {
 			fw = true;
 			offidx = rankOffs_[r];
-			assert_lt(offidx, offIdx2off_.size());
-			off = offIdx2off_[offidx];
+			off = idx2off(offidx);
 			seedlen = seqLen_;
 			return hitsFw_[rankOffs_[r]];
 		} else {
 			fw = false;
 			offidx = rankOffs_[r];
-			assert_lt(offidx, offIdx2off_.size());
-			off = offIdx2off_[offidx];
+			off = idx2off(offidx);
 			seedlen = seqLen_;
 			return hitsRc_[rankOffs_[r]];
 		}
@@ -1329,8 +1311,6 @@ protected:
 	size_t              numEltsFw_;   // # elements added for fw seeds
 	size_t              numRangesRc_; // # ranges added for rc seeds
 	size_t              numEltsRc_;   // # elements added for rc seeds
-
-	EList<uint32_t>     offIdx2off_;// map from offset indexes to offsets from 5' end
 
 	// When the sort routine is called, the seed hits collected so far
 	// are sorted into another set of containers that allow easy access
