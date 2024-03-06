@@ -419,20 +419,6 @@ struct InstantiatedSeed {
 	// the ftab or not.
 	int maxjump() const {return n_steps;}
 	
-	// Nucleotide sequence covering the seed, extracted from read
-	BTDnaString *seq;
-	
-	// Offset of seed from 5' end of read
-	//int seedoff;
-
-	// Id for seed offset; ids are such that the smallest index is the
-	// closest to the 5' end and consecutive ids are adjacent (i.e.
-	// there are no intervening offsets with seeds)
-	//int seedoffidx;
-	
-	// Seed comes from forward-oriented read?
-	//bool fw;
-	
 #ifndef NDEBUG
 	/**
 	 * Check that InstantiatedSeed is internally consistent.
