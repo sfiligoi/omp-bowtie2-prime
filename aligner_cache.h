@@ -738,16 +738,23 @@ public:
 	int beginAlign(
                 const char *   seq,     // reference sequence close to read seq - content
                 const uint32_t seq_len, // reference sequence close to read seq - length
-		QVal& qv,              // out: filled in if we find it in the cache
-		bool getLock = true)
+		QVal& qv)              // out: filled in if we find it in the cache
 	{
 		assert(repOk());
-		qk_.init(seq, seq_len ASSERT_ONLY(, tmpdnastr_));
-		if(qk_.cacheable()) {
+		QKey qk(seq, seq_len ASSERT_ONLY(, tmpdnastr_));
+		return beginAlign(qk, qv);
+	}
+
+	int beginAlign(
+		const QKey&    qk,
+		QVal& qv)              // out: filled in if we find it in the cache
+	{
+		assert(repOk());
+		if(qk.cacheable()) {
 			// Make a QNode for this key and possibly add the QNode to the
 			// Red-Black map; but if 'seq' isn't cacheable, just create the
 			// QNode (without adding it to the map).
-			qv_ = current_->add(qk_, &cacheable_, getLock);
+			qv_ = current_->add(qk, &cacheable_);
 		} else {
 			qv_ = &qvbuf_;
 		}

@@ -1423,6 +1423,7 @@ public:
 		SeedResults& sr              // holds all the seed hits
 		)
 		: qv()
+		, sak(rfseq, sr.seqs_len() ASSERT_ONLY(, tmp))
 		, seq(rfseq)
 		, cachep(&cache)
 		, srp(&sr)
@@ -1431,6 +1432,7 @@ public:
 
 	SeedSearchCache()
 		: qv()
+		, sak()
 		, seq(NULL)
 		, cachep(NULL)
 		, srp(NULL)
@@ -1448,6 +1450,9 @@ public:
 		seq = rfseq;
 		cachep = &cache;
 		srp = &sr;
+		// sak is cheap, create ASAP
+		const uint32_t seq_len = srp->seqs_len();
+		sak.init(rfseq, seq_len ASSERT_ONLY(, tmp));
 	}
 
 	/**
@@ -1458,10 +1463,8 @@ public:
 	 */
 	int beginAlign() 
 	{
-		assert(srp!=NULL);
 		assert(cachep!=NULL);
-		const uint32_t seq_len = srp->seqs_len();
-		int ret = cachep->beginAlign(seq, seq_len, qv);
+		int ret = cachep->beginAlign(sak, qv);
 		return ret;
 	}
 
@@ -1489,10 +1492,7 @@ public:
                 TIndexOffU botf)            // bot in BWT index
 	{
 		if (!aligning()) return false;
-		assert(srp!=NULL);
 		assert(cachep!=NULL);
-		const uint32_t seq_len = srp->seqs_len();
-		SAKey sak(seq, seq_len ASSERT_ONLY(, tmp));
 		return cachep->addOnTheFly(sak, topf, botf);
 	}
 
@@ -1524,6 +1524,7 @@ public:
 
 protected:
 	QVal                 qv;
+	SAKey                sak;
 	const char*          seq;       // sequence of current seed - content
 
 	AlignmentCacheIface*  cachep;  // local alignment cache for seed alignment
