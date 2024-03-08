@@ -559,8 +559,8 @@ void SeedAligner::searchAllSeedsFinalize(
 				// Cache hit in an across-read cache
 				continue;
 			}
-			const char *   seq = sr.seqs(fw,i);
-			SeedSearchCache srcache(seq,cache,sr);
+			SAKey sak(sr.seqs(fw,i), sr.seqs_len());
+			SeedSearchCache srcache(sak,cache,sr);
 
 			const SeedAlignerSearchData& sdata= dataVec[seedsearches];
 			seedsearches++;

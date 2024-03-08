@@ -1425,13 +1425,12 @@ class SeedSearchCache {
 
 public:
 	SeedSearchCache(
-                const char *   rfseq,        // reference sequence close to read seq - content
+		const SAKey&   _sak,         // key of the reference sequence close to read seq
 		AlignmentCacheIface& cache,  // local cache for seed alignments
 		SeedResults& sr              // holds all the seed hits
 		)
 		: qv()
-		, sak(rfseq, sr.seqs_len() ASSERT_ONLY(, tmp))
-		, seq(rfseq)
+		, sak(_sak)
 		, cachep(&cache)
 		, srp(&sr)
 	{
@@ -1440,7 +1439,6 @@ public:
 	SeedSearchCache()
 		: qv()
 		, sak()
-		, seq(NULL)
 		, cachep(NULL)
 		, srp(NULL)
 	{
@@ -1449,17 +1447,14 @@ public:
 	SeedSearchCache& operator=(const SeedSearchCache& other) = default;
 
 	void reset(
-                const char *   rfseq,        // reference sequence close to read seq - content
+		const SAKey&   _sak,         // key of the reference sequence close to read seq
 		AlignmentCacheIface& cache,  // local cache for seed alignments
 		SeedResults& sr              // holds all the seed hits
 		)
 	{
-		seq = rfseq;
 		cachep = &cache;
 		srp = &sr;
-		// sak is cheap, create ASAP
-		const uint32_t seq_len = srp->seqs_len();
-		sak.init(rfseq, seq_len ASSERT_ONLY(, tmp));
+		sak = _sak;
 	}
 
 	/**
@@ -1526,13 +1521,11 @@ public:
 	bool qvValid() const { return qv.valid();}
 
 	const QVal&          getQv() const {return qv;}
-	const char *         getSeq() const {return seq;}
 	
 
 protected:
 	QVal                 qv;
 	SAKey                sak;
-	const char*          seq;       // sequence of current seed - content
 
 	AlignmentCacheIface*  cachep;  // local alignment cache for seed alignment
 	SeedResults*          srp;      // // holds all the seed hits
