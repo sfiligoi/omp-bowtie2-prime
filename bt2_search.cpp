@@ -2565,12 +2565,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
-						msobj.ca.nextRead(); // Clear cache in preparation for new search
 						// Fill internal structures
 						max_batches = std::max(max_batches,
-							als.prepareSearchAllSeedsOne(
-								mate,
-								msobj.ca));           // alignment cache
+							als.prepareSearchAllSeedsOne(mate));
 				} // if
 			} // for mate
 
@@ -2594,8 +2591,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
+						msobj.ca.nextRead(); // Clear cache in preparation for new search
 							// Get data from internal stuctures
-							als.searchAllSeedsOneFinalize(mate);
+							als.searchAllSeedsOneFinalize(mate, msobj.ca); // pass alignment cache
 
 							msinkwrap.updatePRM(psrs->getSR(mate));
 							assert(psrs->getSR(mate).repOk(&msobj.ca.current()));

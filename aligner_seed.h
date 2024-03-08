@@ -1587,10 +1587,8 @@ public:
 
 	// Set buffers needed by searchAllSeeds
 	void setBufs(
-		SeedSearchCache*         cacheVec,
 		SeedAlignerSearchParams* paramVec,
 		SeedAlignerSearchData*   dataVec) {
-		cacheVec_ = cacheVec;
 		paramVec_ = paramVec;
 		dataVec_  = dataVec;
 	}
@@ -1634,14 +1632,15 @@ public:
 	 * Return number of batches
 	 */
 	uint32_t searchAllSeedsPrepare(
-		AlignmentCacheIface& cache,  // local cache for seed alignments
-		SeedResults& sr,            // holds all the seed hits
+		const SeedResults& sr,      // holds all the seed hits
 		const int ftabLen);         // forward index (BWT) value
 
 	void searchAllSeedsDoAll(const Ebwt* ebwtFw);
 	void searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwtFw);
 
-	void searchAllSeedsFinalize(const SeedResults& sr);
+	void searchAllSeedsFinalize(
+		AlignmentCacheIface& cache,  // local cache for seed alignments
+		SeedResults& sr);            // holds all the seed hits
 
 	/**
 	 * Main, recursive implementation of the seed search.
@@ -1666,7 +1665,6 @@ protected:
  	**/
 	static constexpr uint8_t ibatch_size = 8;
 
-	SeedSearchCache*         cacheVec_;      // not owned
 	SeedAlignerSearchParams* paramVec_;      // not owned
 	SeedAlignerSearchData*   dataVec_;       // not owned
 	uint32_t                 seedsearches_;   // valid elements in the above buffers
@@ -1705,18 +1703,18 @@ public:
 	 *
 	 * Return number of batches
 	 */
-	uint32_t prepareSearchAllSeedsOne(
-		uint32_t             idx,      // srs/als index
-		AlignmentCacheIface& cache) {  // local cache for seed alignments
-		return _als[idx].searchAllSeedsPrepare(cache, _srs.getSR(idx), _ftabLen);
+	uint32_t prepareSearchAllSeedsOne(uint32_t idx) {
+		return _als[idx].searchAllSeedsPrepare(_srs.getSR(idx), _ftabLen);
 	}
 
 	// Align the Seeds
 	// Assumes all prepareSearchAllSeeds were already called
 	void searchAllSeedsDoAll();
 
-	void searchAllSeedsOneFinalize(uint32_t idx) {
-		_als[idx].searchAllSeedsFinalize(_srs.getSR(idx));
+	void searchAllSeedsOneFinalize(
+		uint32_t             idx,      // srs/als index
+		AlignmentCacheIface& cache) {  // local cache for seed alignments
+		_als[idx].searchAllSeedsFinalize(cache, _srs.getSR(idx));
 	}
 
 private:
@@ -1726,7 +1724,6 @@ private:
 
 	const int                _ftabLen;
 
-	SeedSearchCache*         _cacheVec;      // array of _bufVec_size
 	SeedAlignerSearchParams* _paramVec;      // array of _bufVec_size
 	SeedAlignerSearchData*   _dataVec;       // array of _bufVec_size
 	size_t                   _bufVec_size;

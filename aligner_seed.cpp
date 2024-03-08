@@ -468,14 +468,12 @@ uint32_t SeedAligner::computeValidInstantiatedSeeds(
  * Return number of batches
  */
 uint32_t SeedAligner::searchAllSeedsPrepare(
-	AlignmentCacheIface& cache,  // local cache for seed alignments
-	SeedResults& sr,
+	const SeedResults& sr,
 	const int ftabLen)           // forward index (BWT) value
 {
 	assert(sr.repOk(&cache.current()));
 	uint32_t seedsearches = 0;
 
-	SeedSearchCache*         cacheVec = cacheVec_;
 	SeedAlignerSearchParams* paramVec = paramVec_;
 
 	// Build the support structures
@@ -486,14 +484,12 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 		// start aligning and find list of seeds to search
 		for(size_t i =0; i < sr.numOffs(); i++) {
 			assert(sr.repOk(&cache.current()));
-			InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
+			const InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			if(!is.isValid()) {
 				// Cache hit in an across-read cache
 				continue;
 			}
-			SeedSearchCache &srcache = cacheVec[seedsearches];
 			const char *   seq = sr.seqs(fw,i);
-			srcache.reset(seq,cache,sr);
 			{
 					assert_eq(fw, is.fw);
 					assert_eq(i, (int)is.seedoffidx);
@@ -543,11 +539,11 @@ inline void SeedAligner::searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwt
 
 
 void SeedAligner::searchAllSeedsFinalize(
-				const SeedResults& sr)
+	AlignmentCacheIface& cache,  // local cache for seed alignments
+	SeedResults& sr)
 {
 	uint32_t ooms = 0;
 
-	SeedSearchCache*             cacheVec = cacheVec_;
 	const SeedAlignerSearchData* dataVec = dataVec_;
 
 	uint32_t seedsearches = 0;
@@ -563,7 +559,9 @@ void SeedAligner::searchAllSeedsFinalize(
 				// Cache hit in an across-read cache
 				continue;
 			}
-			SeedSearchCache &srcache = cacheVec[seedsearches];
+			const char *   seq = sr.seqs(fw,i);
+			SeedSearchCache srcache(seq,cache,sr);
+
 			const SeedAlignerSearchData& sdata= dataVec[seedsearches];
 			seedsearches++;
 
@@ -605,14 +603,13 @@ MultiSeedAligner::MultiSeedAligner(
 	, _srs(srs)
 	, _als(new SeedAligner[srs.nSRs()])
 	, _ftabLen(ebwtFw->eh().ftabChars()) // cache the value
-	, _cacheVec(NULL), _paramVec(NULL), _dataVec(NULL)
+	,  _paramVec(NULL), _dataVec(NULL)
 	, _bufVec_size(0)
 {}
 
 MultiSeedAligner::~MultiSeedAligner() {
 	if (_dataVec!=NULL) delete[] _dataVec;
 	if (_paramVec!=NULL) delete[] _paramVec;
-	if (_cacheVec!=NULL) delete[] _cacheVec;
 	delete[] _als;
 }
 
@@ -634,8 +631,6 @@ void MultiSeedAligner::reserveBuffers()
 		// need bigger buffers
 		delete[] _dataVec;
 		delete[] _paramVec;
-		delete[] _cacheVec;
-		_cacheVec = new SeedSearchCache[buf_total_size];
 		_paramVec = new SeedAlignerSearchParams[buf_total_size];
 		_dataVec = new SeedAlignerSearchData[buf_total_size];
 		_bufVec_size = buf_total_size;
@@ -645,7 +640,6 @@ void MultiSeedAligner::reserveBuffers()
 	buf_total_size = 0;
 	for (uint32_t i=0; i<n_sr; i++) {
 		_als[i].setBufs(
-			_cacheVec+buf_total_size,
 			_paramVec+buf_total_size,
 			_dataVec+buf_total_size); 
 		buf_total_size+=_als[i].getBufsSize();
