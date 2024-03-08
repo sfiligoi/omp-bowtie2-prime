@@ -1565,6 +1565,7 @@ public:
 
 class SeedAlignerSearchState;
 class SeedAlignerSearchParams;
+class SeedAlignerSearchData;
 
 /**
  * Given an index and a seeding scheme, searches for seed hits.
@@ -1585,9 +1586,13 @@ public:
 	uint32_t computeValidInstantiatedSeeds(const SeedResults& sr);
 
 	// Set buffers needed by searchAllSeeds
-	void setBufs(SeedSearchCache* cacheVec, SeedAlignerSearchParams* paramVec) {
+	void setBufs(
+		SeedSearchCache*         cacheVec,
+		SeedAlignerSearchParams* paramVec,
+		SeedAlignerSearchData*   dataVec) {
 		cacheVec_ = cacheVec;
 		paramVec_ = paramVec;
+		dataVec_  = dataVec;
 	}
 	
 	uint32_t getBufsSize() const {return seedsearches_;}
@@ -1644,9 +1649,11 @@ public:
 	 */
 	template<uint8_t SS_SIZE>
 	static void searchSeedBi(
-		        const Ebwt* ebwt,       // forward index (BWT)
+		        const Ebwt* ebwt,         // forward index (BWT)
         		uint64_t& bwops_,         // Burrows-Wheeler operations
-			const uint8_t nparams, SeedAlignerSearchParams paramVec[]);
+			const uint8_t nparams,    // must be leq SS_SIZE
+			const SeedAlignerSearchParams paramVec[],
+			SeedAlignerSearchData         dataVec[]);
 
 protected:
 	
@@ -1661,6 +1668,7 @@ protected:
 
 	SeedSearchCache*         cacheVec_;      // not owned
 	SeedAlignerSearchParams* paramVec_;      // not owned
+	SeedAlignerSearchData*   dataVec_;       // not owned
 	uint32_t                 seedsearches_;   // valid elements in the above buffers
 
 	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
@@ -1720,6 +1728,7 @@ private:
 
 	SeedSearchCache*         _cacheVec;      // array of _bufVec_size
 	SeedAlignerSearchParams* _paramVec;      // array of _bufVec_size
+	SeedAlignerSearchData*   _dataVec;       // array of _bufVec_size
 	size_t                   _bufVec_size;
 
 	/**

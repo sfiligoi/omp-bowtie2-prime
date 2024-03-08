@@ -168,16 +168,12 @@ public:
 	        const int ftabLen                // forward index (BWT) value
 	)
 	: cs(cache, seed, ftabLen)
-	, need_reporting(false)
-	, bwt()
 	{}
 
 	// create an empty bwt
 	// and constratins from seed, for initial searchSeedBi invocation
 	SeedAlignerSearchParams()
 	: cs()
-	, need_reporting(false)
-	, bwt()
 	{}
 
 	SeedAlignerSearchParams& operator=(const SeedAlignerSearchParams& other) = default;
@@ -189,23 +185,33 @@ public:
 	)
 	{
 	  cs.reset(cache, seed, ftabLen);
-	  need_reporting = false;
-	  bwt.set(0,0);
 	}
+
+	// A sub-class for historical reasons
+	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
+};
+
+
+class SeedAlignerSearchData {
+public:
+	// create an empty bwt
+	// and constratins from seed, for initial searchSeedBi invocation
+	SeedAlignerSearchData()
+	: bwt()
+	, need_reporting(false)
+	{}
+
+	SeedAlignerSearchData& operator=(const SeedAlignerSearchData& other) = default;
 
 	void resetData() {
-	  need_reporting = false;
 	  bwt.set(0,0);
-	}
-
-	void checkCV() const {
+	  need_reporting = false;
 	}
 
 	void set_reporting() { need_reporting = true; }
 
-	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
-	bool need_reporting;
 	BwtTopBotFw bwt;      // The 2 BWT idxs
+	bool need_reporting;
 };
 
 
@@ -514,13 +520,14 @@ inline void SeedAligner::searchAllSeedsDoAll(const Ebwt* ebwtFw)
 	assert(ebwtFw != NULL);
 	assert(ebwtFw->isInMemory());
 
-	SeedAlignerSearchParams* paramVec = paramVec_;
+	const SeedAlignerSearchParams* paramVec = paramVec_;
+	SeedAlignerSearchData*         dataVec = dataVec_;
 	const size_t seedsearches = seedsearches_;
 
 	// do the searches in batches
 	for (size_t mnr=0; mnr<seedsearches; mnr+=ibatch_size) {
 		const size_t ibatch_max = std::min(mnr+ibatch_size,seedsearches);
-		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec[mnr]));
+		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec[mnr]), &(dataVec[mnr]) );
 	} // mnr loop
 
 }
@@ -536,7 +543,7 @@ inline void SeedAligner::searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwt
 
 		// Note: Updates on bwops_ may not be atomi
 		// But a small discrepancy is acceptable, as it is only rarely used diagnostics
-		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec_[mnr]));
+		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec_[mnr]), &(dataVec_[mnr]) );
 	}
 }
 
@@ -546,8 +553,8 @@ void SeedAligner::searchAllSeedsFinalize(
 {
 	uint32_t ooms = 0;
 
-	SeedSearchCache*         cacheVec = cacheVec_;
-	SeedAlignerSearchParams* paramVec = paramVec_;
+	SeedSearchCache*             cacheVec = cacheVec_;
+	const SeedAlignerSearchData* dataVec = dataVec_;
 
 	uint32_t seedsearches = 0;
 
@@ -563,7 +570,7 @@ void SeedAligner::searchAllSeedsFinalize(
 				continue;
 			}
 			SeedSearchCache &srcache = cacheVec[seedsearches];
-			SeedAlignerSearchParams& p= paramVec[seedsearches];
+			const SeedAlignerSearchData& sdata= dataVec[seedsearches];
 			seedsearches++;
 
 			// Tell the cache that we've started aligning, so the cache can
@@ -576,10 +583,9 @@ void SeedAligner::searchAllSeedsFinalize(
 			}
 			assert(srcache.aligning());
 			bool success = true;
-			if ( p.need_reporting ) {
+			if ( sdata.need_reporting ) {
 				// Finished aligning seed
-				auto& bwt = p.bwt;
-				bool mysuccess = srcache.addOnTheFly(bwt.topf, bwt.botf);
+				bool mysuccess = srcache.addOnTheFly(sdata.bwt.topf, sdata.bwt.botf);
 				success = mysuccess;
 			}
 			if(!success){
@@ -605,11 +611,12 @@ MultiSeedAligner::MultiSeedAligner(
 	, _srs(srs)
 	, _als(new SeedAligner[srs.nSRs()])
 	, _ftabLen(ebwtFw->eh().ftabChars()) // cache the value
-	, _cacheVec(NULL), _paramVec(NULL)
+	, _cacheVec(NULL), _paramVec(NULL), _dataVec(NULL)
 	, _bufVec_size(0)
 {}
 
 MultiSeedAligner::~MultiSeedAligner() {
+	if (_dataVec!=NULL) delete[] _dataVec;
 	if (_paramVec!=NULL) delete[] _paramVec;
 	if (_cacheVec!=NULL) delete[] _cacheVec;
 	delete[] _als;
@@ -631,10 +638,12 @@ void MultiSeedAligner::reserveBuffers()
 
 	if (_bufVec_size<buf_total_size) {
 		// need bigger buffers
-		delete[] _cacheVec;
+		delete[] _dataVec;
 		delete[] _paramVec;
+		delete[] _cacheVec;
 		_cacheVec = new SeedSearchCache[buf_total_size];
 		_paramVec = new SeedAlignerSearchParams[buf_total_size];
+		_dataVec = new SeedAlignerSearchData[buf_total_size];
 		_bufVec_size = buf_total_size;
 	}
 
@@ -643,7 +652,8 @@ void MultiSeedAligner::reserveBuffers()
 	for (uint32_t i=0; i<n_sr; i++) {
 		_als[i].setBufs(
 			_cacheVec+buf_total_size,
-			_paramVec+buf_total_size); 
+			_paramVec+buf_total_size,
+			_dataVec+buf_total_size); 
 		buf_total_size+=_als[i].getBufsSize();
 	}
 }
@@ -651,7 +661,8 @@ void MultiSeedAligner::reserveBuffers()
 void MultiSeedAligner::searchAllSeedsDoAll()
 {
 	const Ebwt* ebwtFw= _ebwtFw;
-	SeedAlignerSearchParams* paramVec = _paramVec;
+	const SeedAlignerSearchParams* paramVec = _paramVec;
+	SeedAlignerSearchData*         dataVec  = _dataVec;
 
 	// do the searches in batches
 	const uint64_t total_els  = _bufVec_size;
@@ -662,12 +673,12 @@ void MultiSeedAligner::searchAllSeedsDoAll()
 #else
 	std::for_each_n(std::execution::par_unseq,
 		thrust::counting_iterator(0), total_batches,
-		[ebwtFw,paramVec,total_els](uint64_t gbatch) mutable {
+		[ebwtFw,paramVec,dataVec,total_els](uint64_t gbatch) mutable {
 #endif
 		const size_t start_el = gbatch*ibatch_size;
 		const size_t end_el = std::min(start_el+ibatch_size,total_els);
 		uint64_t bwops; // just ignore the bwops for now, keep it local
-		SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(paramVec[start_el]));
+		SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(paramVec[start_el]), &(dataVec[start_el]));
 	} // for gbatch
 #ifndef FORCE_ALL_OMP
 	); // for_each
@@ -707,8 +718,9 @@ inline void nextLocsBi(
 // return true, if we are already done
 inline bool startSearchSeedBi(
 	const Ebwt* ebwt,       // forward index (BWT)
-	SeedAlignerSearchParams &p,
-	SeedAlignerSearchState &sstate)
+	const SeedAlignerSearchParams &p,
+	SeedAlignerSearchState &sstate,
+	SeedAlignerSearchData  &sdata)
 {
 
 	assert_eq(sstate.step, 0);
@@ -722,32 +734,32 @@ inline bool startSearchSeedBi(
 		// Check whether/how far we can jump using ftab or fchr
 		int ftabLen = ebwt->eh().ftabChars();
 		if(p.cs.hasi0) { //if(ftabLen > 1 && ftabLen <= p.cs.maxjump)
-			ebwt->ftabLoHi(p.cs.fwi0, p.bwt.topf, p.bwt.botf);
-			if(p.bwt.botf - p.bwt.topf == 0) return true;
+			ebwt->ftabLoHi(p.cs.fwi0, sdata.bwt.topf, sdata.bwt.botf);
+			if(sdata.bwt.botf - sdata.bwt.topf == 0) return true;
 			sstate.step += ftabLen;
 		} else if(p.cs.maxjump() > 0) {
 			// Use fchr
 			const char *seq = p.cs.seq;
 			const int c = seq[off];
 			assert_range(0, 3, c);
-			p.bwt.topf = ebwt->fchr()[c];
-			p.bwt.botf = ebwt->fchr()[c+1];
-			if(p.bwt.botf - p.bwt.topf == 0) return true;
+			sdata.bwt.topf = ebwt->fchr()[c];
+			sdata.bwt.botf = ebwt->fchr()[c+1];
+			if(sdata.bwt.botf - sdata.bwt.topf == 0) return true;
 			sstate.step++;
 		} else {
 			assert_eq(0, p.cs.maxjump());
-			p.bwt.topf = 0;
-			p.bwt.botf = ebwt->fchr()[4];
+			sdata.bwt.topf = 0;
+			sdata.bwt.botf = ebwt->fchr()[4];
 		}
 		if(sstate.step == p.cs.n_seed_steps) {
 			return true;
 		}
-		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, p.bwt.topf, p.bwt.botf);
+		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
 		assert(sstate.tloc.valid());
 	} 
 	assert(sstate.tloc.valid());
-	assert(p.bwt.botf - p.bwt.topf == 1 ||  sstate.bloc.valid());
-	assert(p.bwt.botf - p.bwt.topf > 1  || !sstate.bloc.valid());
+	assert(sdata.bwt.botf - sdata.bwt.topf == 1 ||  sstate.bloc.valid());
+	assert(sdata.bwt.botf - sdata.bwt.topf > 1  || !sstate.bloc.valid());
 	assert_geq(sstate.step, 0);
 
 	return false;
@@ -765,7 +777,9 @@ void
 SeedAligner::searchSeedBi(
                         const Ebwt* ebwt,       // forward index (BWT)
                         uint64_t& bwops_,         // Burrows-Wheeler operations
-                        const uint8_t nparams, SeedAlignerSearchParams paramVec[])
+                        const uint8_t nparams,
+			const SeedAlignerSearchParams paramVec[],
+			SeedAlignerSearchData dataVec[])
 {
 	uint8_t idxs[SS_SIZE]; // indexes into sstateVec and paramVec
 	SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
@@ -777,18 +791,18 @@ SeedAligner::searchSeedBi(
 	   uint8_t n=0;
            uint8_t iparam = 0; // iparam and n may diverge, if some are done at init stage
 	   while (n<nleft) {
-		SeedAlignerSearchParams& p      = paramVec[iparam];
-		SeedAlignerSearchState&  sstate = sstateVec[iparam];
-		p.resetData();
+		const SeedAlignerSearchParams& p = paramVec[iparam];
+		SeedAlignerSearchData&   sdata   = dataVec[iparam];
+		SeedAlignerSearchState&  sstate  = sstateVec[iparam];
+		sdata.resetData();
 		sstate.reset();
 		idxs[n] = iparam;
 		iparam+=1;
-		const bool done = startSearchSeedBi(ebwt, p, sstate);
+		const bool done = startSearchSeedBi(ebwt, p, sstate, sdata);
 		if(done) {
 		        if(sstate.step == (int)p.cs.n_seed_steps) {
                 		// Finished aligning seed
-				p.checkCV();
-				p.set_reporting();
+				sdata.set_reporting();
 			}
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
@@ -810,8 +824,10 @@ SeedAligner::searchSeedBi(
 	   while (n<nleft) {
 		const uint8_t iparam = idxs[n];
 
-		SeedAlignerSearchParams& p      = paramVec[iparam];
-		SeedAlignerSearchState&  sstate = sstateVec[iparam];
+		const SeedAlignerSearchParams& p = paramVec[iparam];
+		SeedAlignerSearchData&   sdata   = dataVec[iparam];
+		SeedAlignerSearchState&  sstate  = sstateVec[iparam];
+
 		const int n_seed_steps = p.cs.n_seed_steps;
 		if (sstate.step >= (int) n_seed_steps) {
 			// done with this, swap with last and reduce nleft
@@ -820,18 +836,18 @@ SeedAligner::searchSeedBi(
 			continue;
 		}
 
-		const int seed_step_min = p.cs.seed_step_min();
-		size_t i = sstate.step; // call the stepIdx i for historical reasons
-		sstate.step++; // get ready for the next iteration
+		assert_gt(sdata.bwt.botf, sdata.bwt.topf);
+		assert(sdata.bwt.botf - sdata.bwt.topf == 1 ||  sstate.bloc.valid());
+		assert(sdata.bwt.botf - sdata.bwt.topf > 1  || !sstate.bloc.valid());
+		assert(sstate.tloc.valid());
 
+		const int seed_step_min = p.cs.seed_step_min();
 		const char *seq = p.cs.seq;
 
-		assert_gt(p.bwt.botf, p.bwt.topf);
-		assert(p.bwt.botf - p.bwt.topf == 1 ||  sstate.bloc.valid());
-		assert(p.bwt.botf - p.bwt.topf > 1  || !sstate.bloc.valid());
-		assert(sstate.tloc.valid());
-		SeedAlignerSearchWorkState wstate(seed_step_min+i);
+		SeedAlignerSearchWorkState wstate(seed_step_min+sstate.step);
 		__builtin_prefetch(&(seq[wstate.off]));
+		sstate.step++; // get ready for the next iteration
+
 		if(sstate.bloc.valid()) {
 			// Range delimited by tloc/bloc has size >1.  If size == 1,
 			// we use a simpler query (see if(!bloc.valid()) blocks below)
@@ -850,7 +866,7 @@ SeedAligner::searchSeedBi(
 			assert(wstate.bp[c] == wstate.tp[c]+1);
 			// Range delimited by tloc/bloc has size 1
 			bwops++;
-			const TIndexOffU ntop = p.bwt.topf;
+			const TIndexOffU ntop = sdata.bwt.topf;
 			wstate.t[c] = ebwt->mapLF1(ntop, sstate.tloc, c);
 			if(wstate.t[c] == OFF_MASK) {
 				// done with this, swap with last and reduce nleft
@@ -869,16 +885,15 @@ SeedAligner::searchSeedBi(
 			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
-		p.bwt.set(wstate.t[c], wstate.b[c]);
-		if(i+1 == n_seed_steps) {
-			p.checkCV();
-			p.set_reporting();
+		sdata.bwt.set(wstate.t[c], wstate.b[c]);
+		if(sstate.step == n_seed_steps) {
+			sdata.set_reporting();
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
 			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
-		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, p.bwt.topf, p.bwt.botf);
+		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
 		// not done, move to the next element
 		n+=1;
 	   } // while n
