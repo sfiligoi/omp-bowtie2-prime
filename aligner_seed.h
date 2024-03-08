@@ -1537,106 +1537,6 @@ protected:
 	SeedResults*          srp;      // // holds all the seed hits
 };
 
-#if 0
-/**
- * Wrap the search cache with all the relevant objects
- */
-class SeedSearchMultiCache {
-
-public:
-	SeedSearchMultiCache(
-		) 
-		: cacheVec()
-	{}
-
-	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		cacheVec.set_alloc(alloc, propagate_alloc);
-	}
-
-	void emplace_back( 
-		AlignmentCacheIface& cache,  // local cache for seed alignments
-		SeedResults& sr,             // holds all the seed hits
-		int seedoffidx,          // seed index
-		bool fw                  // is it fw?
-		)
-	{
-		cacheVec.expand();
-		cacheVec.back().reset(cache, sr, seedoffidx, fw);
-	}
-
-	void emplace_back_noresize( 
-		AlignmentCacheIface& cache,  // local cache for seed alignments
-		SeedResults& sr,             // holds all the seed hits
-		int seedoffidx,          // seed index
-		bool fw                  // is it fw?
-		)
-	{
-		cacheVec.expand_noresize();
-		cacheVec.back().reset(cache, sr, seedoffidx, fw);
-	}
-
-	// Same semantics as std::vector
-	void reserve(size_t new_cap) {
-		cacheVec.reserve(new_cap);
-		// force allocation (lazy, else)
-		cacheVec.expand();
-		cacheVec.clear();
-	}
-
-	size_t size() const {return cacheVec.size(); }
-	void clear() { cacheVec.clear(); }
-	void pop_back() { cacheVec.pop_back(); }
-
-	// Access one of the search caches
-	const SeedSearchCache& operator[](size_t idx) const { return cacheVec[idx].srcache; }
-	SeedSearchCache& operator[](size_t idx) { return cacheVec[idx].srcache; }
-
-	int getSeedOffIdx(size_t idx) const { return cacheVec[idx].seedoffidx; }
-	bool getFw(size_t idx) const { return cacheVec[idx].fw; }
-
-	void addToMainCache(size_t idx) {cacheVec[idx].addToCache();} 
-
-protected:
-	class CacheEl {
-	public:
-		CacheEl(
-			AlignmentCacheIface& cache,  // local cache for seed alignments
-			SeedResults& sr,             // holds all the seed hits
-			const int _seedoffidx,          // seed index
-			const bool _fw                  // is it fw?
-			)
-			: srcache(sr.seqs(_fw,_seedoffidx), cache,sr)
-			, seedoffidx(_seedoffidx)
-			, fw(_fw) {}
-		
-		CacheEl()
-			: srcache()
-			, seedoffidx(0), fw(true) // just to have a default
-			{}
-
-		void reset(
-			AlignmentCacheIface& cache,  // local cache for seed alignments
-			SeedResults& sr,             // holds all the seed hits
-			const int _seedoffidx,          // seed index
-			const bool _fw                  // is it fw?
-			) {
-				const char *   seq = sr.seqs(_fw,_seedoffidx);
-				srcache.reset(seq,cache,sr);
-				seedoffidx = _seedoffidx;
-				fw = _fw;
-			}
-	
-		void addToCache() { srcache.addToCache(seedoffidx,fw);}
-
-		SeedSearchCache     srcache;   // search wrapper
-		int                 seedoffidx; // seed index
-		bool                fw;      // is it fw?
-	};
-
-	EList<CacheEl> cacheVec;
-};
-#endif
-
 // just an index inside the paramVec
 typedef uint32_t SeedAlignerSearchState;
 
@@ -1739,53 +1639,6 @@ public:
 
 	void searchAllSeedsFinalize(const SeedResults& sr);
 
-#if 0
-	// Same value as returned by searchAllSeedsPrepare
-	uint32_t getSearchBatches() const {return (mcache_.size()+(ibatch_size-1))/ibatch_size;}
-
-	/**
-	 * Sanity-check a partial alignment produced during oneMmSearch.
-	 */
-	bool sanityPartial(
-		const Ebwt*        ebwtBw, // BWT' index
-		const BTDnaString& seq,
-		size_t             dep,
-		size_t             len,
-		bool               do1mm,
-		TIndexOffU           topfw,
-		TIndexOffU           botfw,
-		TIndexOffU           topbw,
-		TIndexOffU           botbw);
-	/**
-	 * Do an exact-matching sweet to establish a lower bound on number of edits
-	 * and to find exact alignments.
-	 */
-	size_t exactSweep(
-		const Read&        read,    // read to align
-		const Scoring&     sc,      // scoring scheme
-		bool               nofw,    // don't align forward read
-		bool               norc,    // don't align revcomp read
-		size_t             mineMax, // don't care about edit bounds > this
-		size_t&            mineFw,  // minimum # edits for forward read
-		size_t&            mineRc,  // minimum # edits for revcomp read
-		bool               repex,   // report 0mm hits?
-		SeedResults&       hits);   // holds all the seed hits (and exact hit)
-
-	/**
-	 * Search for end-to-end alignments with up to 1 mismatch.
-	 */
-	bool oneMmSearch(
-		const Ebwt*        ebwtBw, // BWT' index
-		const Read&        read,   // read to align
-		const Scoring&     sc,     // scoring
-		int64_t            minsc,  // minimum score
-		bool               nofw,   // don't align forward read
-		bool               norc,   // don't align revcomp read
-		bool               repex,  // report 0mm hits?
-		bool               rep1mm, // report 1mm hits?
-		SeedResults&       hits);  // holds all the seed hits (and exact hit)
-#endif
-
 	/**
 	 * Main, recursive implementation of the seed search.
 	 * Given a vector of instantiated seeds, search
@@ -1820,22 +1673,6 @@ protected:
 		SideLocus& bloc,            // bot locus
 		const BwtTopBotFw &bwt)       // The 4 BWT idxs
 	{ nextLocsBi(ebwt, seed_step, tloc, bloc, bwt.topf, bwt.botf); }
-
-#if 0
-	void prefetchNextLocsBi(
-		const InstantiatedSeed& seed, // current instantiated seed
-		TIndexOffU topf,              // top in BWT
-		TIndexOffU botf,              // bot in BWT
-		TIndexOffU topb,              // top in BWT'
-		TIndexOffU botb,              // bot in BWT'
-		int step);                  // step to get ready for
-
-	void prefetchNextLocsBi(
-		const InstantiatedSeed& seed, // current instantiated seed
-		const BwtTopBot &bwt,       // The 4 BWT idxs
-		int step)                   // step to get ready for
-	{ prefetchNextLocsBi(seed, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
-#endif
 
 	// Following are set in searchAllSeeds then used by searchSeed()
 	// and other protected members.
