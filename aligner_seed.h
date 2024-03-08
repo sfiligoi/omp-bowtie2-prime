@@ -1537,9 +1537,6 @@ protected:
 	SeedResults*          srp;      // // holds all the seed hits
 };
 
-// just an index inside the paramVec
-typedef uint32_t SeedAlignerSearchState;
-
 class SeedAlignerSearchWorkState {
 public:
 	TIndexOffU t[4], b[4];   // dest BW ranges
@@ -1565,6 +1562,7 @@ public:
 
 };
 
+class SeedAlignerSearchState;
 class SeedAlignerSearchParams;
 
 /**
@@ -1653,7 +1651,8 @@ protected:
 	// helper function
 	static bool startSearchSeedBi(
 		        const Ebwt* ebwt,       // forward index (BWT)
-			SeedAlignerSearchParams &p);
+			SeedAlignerSearchParams &p,
+                        SeedAlignerSearchState &sstate);
 
 	/**
 	 * Get tloc and bloc ready for the next step.

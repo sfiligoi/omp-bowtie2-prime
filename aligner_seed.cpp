@@ -77,6 +77,31 @@ Constraint Constraint::editBased(int edits) {
 	return c;
 }
 
+// just an index inside the paramVec
+class SeedAlignerSearchState {
+public:
+
+	SeedAlignerSearchState()
+	: idx(0)
+	, step(0)
+	, tloc()
+	, bloc()
+	{}
+
+	void reset(uint8_t new_idx) {
+		idx = new_idx;
+		step = 0;
+		tloc.invalidate();
+		bloc.invalidate();
+	}
+
+	uint8_t idx;
+	int step;             // depth into steps[] array, i.e. step_min+step
+	SideLocus tloc;       // locus for top (perhaps unititialized)
+	SideLocus bloc;       // locus for bot (perhaps unititialized)
+};
+
+
 // Input to seachSeedBi
 class SeedAlignerSearchParams {
 public:
@@ -139,7 +164,7 @@ public:
 		SeedSearchCache *pcache; //  keep track of the big object
 	};
 
-	// create an empty bwt, tloc and bloc, with step=0
+	// create an empty bwt
 	// and constratins from seed, for initial searchSeedBi invocation
 	SeedAlignerSearchParams(
 		SeedSearchCache &cache,         // local seed alignment cache
@@ -147,22 +172,16 @@ public:
 	        const int ftabLen                // forward index (BWT) value
 	)
 	: cs(cache, seed, ftabLen)
-	, step(0)
 	, need_reporting(false)
 	, bwt()
-	, tloc()
-	, bloc()
 	{}
 
-	// create an empty bwt, tloc and bloc, with step=0
+	// create an empty bwt
 	// and constratins from seed, for initial searchSeedBi invocation
 	SeedAlignerSearchParams()
 	: cs()
-	, step(0)
 	, need_reporting(false)
 	, bwt()
-	, tloc()
-	, bloc()
 	{}
 
 	SeedAlignerSearchParams& operator=(const SeedAlignerSearchParams& other) = default;
@@ -174,19 +193,13 @@ public:
 	)
 	{
 	  cs.reset(cache, seed, ftabLen);
-	  step = 0;
 	  need_reporting = false;
 	  bwt.set(0,0);
-	  tloc.invalidate();
-	  bloc.invalidate();
 	}
 
 	void resetData() {
-	  step = 0;
 	  need_reporting = false;
 	  bwt.set(0,0);
-	  tloc.invalidate();
-	  bloc.invalidate();
 	}
 
 	void checkCV() const {
@@ -195,11 +208,8 @@ public:
 	void set_reporting() { need_reporting = true; }
 
 	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
-	int step;             // depth into steps[] array, i.e. step_min+step
 	bool need_reporting;
 	BwtTopBotFw bwt;      // The 2 BWT idxs
-	SideLocus tloc;       // locus for top (perhaps unititialized)
-	SideLocus bloc;       // locus for bot (perhaps unititialized)
 };
 
 
@@ -803,20 +813,21 @@ SeedAligner::nextLocsBi(
 bool
 SeedAligner::startSearchSeedBi(
                         const Ebwt* ebwt,       // forward index (BWT)
-			SeedAlignerSearchParams &p)
+			SeedAlignerSearchParams &p,
+			SeedAlignerSearchState &sstate)
 {
 	const char *seq = p.cs.seq;
 	const int n_seed_steps = p.cs.n_seed_steps;
 
 	assert_gt(n_seed_steps, 0);
-	if(p.step == n_seed_steps) {
+	if(sstate.step == n_seed_steps) {
 		return true;
 	}
-	if(p.step == 0) {
+	if(sstate.step == 0) {
 		// Just starting
 		assert(p.prevEdit == NULL);
-		assert(!p.tloc.valid());
-		assert(!p.bloc.valid());
+		assert(!sstate.tloc.valid());
+		assert(!sstate.bloc.valid());
 		const int seed_step_min = p.cs.seed_step_min();
 		int off = abs(seed_step_min)-1;
 		// Check whether/how far we can jump using ftab or fchr
@@ -824,7 +835,7 @@ SeedAligner::startSearchSeedBi(
 		if(p.cs.hasi0) { //if(ftabLen > 1 && ftabLen <= p.cs.maxjump)
 			ebwt->ftabLoHi(p.cs.fwi0, p.bwt.topf, p.bwt.botf);
 			if(p.bwt.botf - p.bwt.topf == 0) return true;
-			p.step += ftabLen;
+			sstate.step += ftabLen;
 		} else if(p.cs.maxjump() > 0) {
 			// Use fchr
 			int c = seq[off];
@@ -832,22 +843,22 @@ SeedAligner::startSearchSeedBi(
 			p.bwt.topf = ebwt->fchr()[c];
 			p.bwt.botf = ebwt->fchr()[c+1];
 			if(p.bwt.botf - p.bwt.topf == 0) return true;
-			p.step++;
+			sstate.step++;
 		} else {
 			assert_eq(0, p.cs.maxjump());
 			p.bwt.topf = 0;
 			p.bwt.botf = ebwt->fchr()[4];
 		}
-		if(p.step == n_seed_steps) {
+		if(sstate.step == n_seed_steps) {
 			return true;
 		}
-		nextLocsBi(ebwt, seed_step_min+p.step, p.tloc, p.bloc, p.bwt);
-		assert(p.tloc.valid());
+		nextLocsBi(ebwt, seed_step_min+sstate.step, sstate.tloc, sstate.bloc, p.bwt);
+		assert(sstate.tloc.valid());
 	} else assert(p.prevEdit != NULL);
-	assert(p.tloc.valid());
-	assert(p.bwt.botf - p.bwt.topf == 1 ||  p.bloc.valid());
-	assert(p.bwt.botf - p.bwt.topf > 1  || !p.bloc.valid());
-	assert_geq(p.step, 0);
+	assert(sstate.tloc.valid());
+	assert(p.bwt.botf - p.bwt.topf == 1 ||  sstate.bloc.valid());
+	assert(p.bwt.botf - p.bwt.topf > 1  || !sstate.bloc.valid());
+	assert_geq(sstate.step, 0);
 
 	return false;
 }
@@ -907,11 +918,11 @@ SeedAligner::searchSeedBi(
 	   while (n<nleft) {
 		SeedAlignerSearchParams& p= paramVec[iparam];
 		p.resetData();
-		sstateVec[n] = iparam;
+		sstateVec[n].reset(iparam);
 		iparam+=1;
-		const bool done = startSearchSeedBi(ebwt, p);
+		const bool done = startSearchSeedBi(ebwt, p, sstateVec[n]);
 		if(done) {
-		        if(p.step == (int)p.cs.n_seed_steps) {
+		        if(sstateVec[n].step == (int)p.cs.n_seed_steps) {
                 		// Finished aligning seed
 				p.checkCV();
 				p.set_reporting();
@@ -935,33 +946,35 @@ SeedAligner::searchSeedBi(
 	   uint8_t n=0;
            // logically a for (uint32_t n=0; n<nleft; n++) but with nleft potentially changing
 	   while (n<nleft) {
-		const uint8_t iparam = sstateVec[n];
+		const uint8_t iparam = sstateVec[n].idx;
 
 		SeedAlignerSearchParams& p= paramVec[iparam];
 		const int n_seed_steps = p.cs.n_seed_steps;
-		if (p.step >= (int) n_seed_steps) {
+		if (sstateVec[n].step >= (int) n_seed_steps) {
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
 			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 			continue;
 		}
+		SeedAlignerSearchState& sstate =  sstateVec[n];
+
 		const int seed_step_min = p.cs.seed_step_min();
-		size_t i = p.step; // call the stepIdx i for historical reasons
-		p.step++; // get ready for the next iteration
+		size_t i = sstate.step; // call the stepIdx i for historical reasons
+		sstate.step++; // get ready for the next iteration
 
 		const char *seq = p.cs.seq;
 
 		assert_gt(p.bwt.botf, p.bwt.topf);
-		assert(p.bwt.botf - p.bwt.topf == 1 ||  p.bloc.valid());
-		assert(p.bwt.botf - p.bwt.topf > 1  || !p.bloc.valid());
-		assert(p.tloc.valid());
+		assert(p.bwt.botf - p.bwt.topf == 1 ||  sstate.bloc.valid());
+		assert(p.bwt.botf - p.bwt.topf > 1  || !sstate.bloc.valid());
+		assert(sstate.tloc.valid());
 		SeedAlignerSearchWorkState wstate(seed_step_min+i);
 		__builtin_prefetch(&(seq[wstate.off]));
-		if(p.bloc.valid()) {
+		if(sstate.bloc.valid()) {
 			// Range delimited by tloc/bloc has size >1.  If size == 1,
 			// we use a simpler query (see if(!bloc.valid()) blocks below)
 			bwops++;
-			ebwt->mapBiLFEx(p.tloc, p.bloc, wstate.t, wstate.b);
+			ebwt->mapBiLFEx(sstate.tloc, sstate.bloc, wstate.t, wstate.b);
 		}
 		int c = seq[wstate.off];  assert_range(0, 4, c);
 		//
@@ -971,12 +984,12 @@ SeedAligner::searchSeedBi(
 			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 			continue;
 		}
-		if(!p.bloc.valid()) {
+		if(!sstate.bloc.valid()) {
 			assert(wstate.bp[c] == wstate.tp[c]+1);
 			// Range delimited by tloc/bloc has size 1
 			bwops++;
 			const TIndexOffU ntop = p.bwt.topf;
-			wstate.t[c] = ebwt->mapLF1(ntop, p.tloc, c);
+			wstate.t[c] = ebwt->mapLF1(ntop, sstate.tloc, c);
 			if(wstate.t[c] == OFF_MASK) {
 				// done with this, swap with last and reduce nleft
 				nleft-=1;
@@ -1003,7 +1016,7 @@ SeedAligner::searchSeedBi(
 			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 			continue;
 		}
-		nextLocsBi(ebwt, seed_step_min+i+1, p.tloc, p.bloc, p.bwt);
+		nextLocsBi(ebwt, seed_step_min+i+1, sstate.tloc, sstate.bloc, p.bwt);
 		// not done, move to the next element
 		n+=1;
 	   } // while n
