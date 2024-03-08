@@ -108,21 +108,21 @@ public:
 		, hasi0(false), fwi0(0) {}
 
 		CacheAndSeed(
-			SeedSearchCache &_cache,         // local seed alignment cache
+			const char *_seq,                // sequence of the local seed alignment cache
 			const InstantiatedSeed& _seed,   // current instantiated seed
 		        const int ftabLen                // forward index (BWT) value
 
 		) : seq(NULL), n_seed_steps(0)
 		, hasi0(false), fwi0(0) // just set a default
-		{ reset(_cache, _seed, ftabLen); }
+		{ reset(_seq, _seed, ftabLen); }
 
 		void reset(
-			SeedSearchCache &_cache,         // local seed alignment cache
+			const char *_seq,                // sequence of the local seed alignment cache
 			const InstantiatedSeed& _seed,   // current instantiated seed
 		        const int ftabLen  	         // forward index (BWT) value
 		)
 		{
-			seq = _cache.getSeq();
+			seq = _seq;
 			n_seed_steps = _seed.n_steps;
 
 	                constexpr bool ltr = false; // seed_step_min > 0 i.e. n_seed_steps<0
@@ -152,7 +152,7 @@ public:
 		int maxjump() const {return n_seed_steps;}
 	
 		// Use pointers, so they can be changed 
-		const char *seq;                // sequence os the local seed alignment cache
+		const char *seq;                // sequence of the local seed alignment cache
 		int n_seed_steps;               // steps in the current instantiated seed
 		bool hasi0;
 		TIndexOffU fwi0;                // Idx of fw ftab
@@ -161,11 +161,11 @@ public:
 	// create an empty bwt
 	// and constratins from seed, for initial searchSeedBi invocation
 	SeedAlignerSearchParams(
-		SeedSearchCache &cache,         // local seed alignment cache
+		const char *seq,                // sequence of the local seed alignment cache
 		const InstantiatedSeed& seed,   // current instantiated seed
 	        const int ftabLen                // forward index (BWT) value
 	)
-	: cs(cache, seed, ftabLen)
+	: cs(seq, seed, ftabLen)
 	{}
 
 	// create an empty bwt
@@ -177,12 +177,12 @@ public:
 	SeedAlignerSearchParams& operator=(const SeedAlignerSearchParams& other) = default;
 
 	void reset(
-		SeedSearchCache &cache,         // local seed alignment cache
+		const char *seq,                // sequence of the local seed alignment cache
 		const InstantiatedSeed& seed,   // current instantiated seed
 	        const int ftabLen                // forward index (BWT) value
 	)
 	{
-	  cs.reset(cache, seed, ftabLen);
+	  cs.reset(seq, seed, ftabLen);
 	}
 
 	// A sub-class for historical reasons
@@ -495,15 +495,11 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 			const char *   seq = sr.seqs(fw,i);
 			srcache.reset(seq,cache,sr);
 			{
-				{
-					// Set seq and qual appropriately, using the seed sequences
-					// and qualities already installed in SeedResults
 					assert_eq(fw, is.fw);
 					assert_eq(i, (int)is.seedoffidx);
-					paramVec[seedsearches].reset(srcache, is, ftabLen);
-					seedsearches++;
-				}
+					paramVec[seedsearches].reset(seq, is, ftabLen);
 			}
+			seedsearches++;
 		} // for i
 	} // for fwi
 	bwops_ = 0;
