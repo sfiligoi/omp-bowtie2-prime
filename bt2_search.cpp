@@ -2130,10 +2130,6 @@ public:
 
 };
 
-class SeedAlignerBT2 : public SeedAligner {
-public:
-	SeedAlignerBT2() : SeedAligner(multiseed_ebwtFw) {}
-};
 
 class msWorkerObjs {
 public:
@@ -2338,11 +2334,11 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 						msconsts->norc);          // don't align revcomp read
 		MultiSeedResults& srs = *psrs;
 
+		MultiSeedAligner *pals = new MultiSeedAligner(multiseed_ebwtFw, srs);
+		MultiSeedAligner& als = *pals;
+
 		// These arrays move between CPU and GPU often
 		// Keep them together
-
-		SeedAlignerBT2* g_als = new(worker_alloc.allocate(num_parallel_tasks,sizeof(SeedAlignerBT2))) SeedAlignerBT2[num_parallel_tasks];
-		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) g_als[mate].set_alloc(&(mate_allocs[mate]));
 
 		static constexpr int32_t MATE_DONE_READING = -1000;  // done with g_psrah mate
 		static constexpr int32_t MATE_DONE = -1;             // done with this read
@@ -2534,6 +2530,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					if(offset > 0 && multiseedLen + offset > rds[mate]->length()) {
 						mate_idx[mate] = MATE_DONE;
 					} else {
+						// register the mate and compute the needed per-mate buffer size 
 						srs.prepareOneSeed(mate, offset, interval, rds[mate]);
 					} // if done
 			   } // if !done_reading[mate]
@@ -2542,8 +2539,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   }
 		   tmr.next("read");
 
-		   // internally threaded
+		   // now finish the instantiation
 		   {
+		   	// internally threaded
 			size_t tries = srs.instantiateSeeds(rds);
 			// just account everythign to the first one
 			// just rough diagnostics
@@ -2554,6 +2552,8 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 			// minor cost, as it is rare
 		   }
 
+		   // srs is now fully initialized, set up the als buffers
+		   als.reserveBuffers();
 		   tmr.next("instantiateSeeds");
 
 			// always call ensure_spare from main CPU thread
@@ -2565,45 +2565,24 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
-					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 						msobj.ca.nextRead(); // Clear cache in preparation for new search
-							// Fill internal structures
+						// Fill internal structures
 						max_batches = std::max(max_batches,
-							g_als[mate].searchAllSeedsPrepare(
-								msobj.ca,           // alignment cache
-								psrs->getSR(mate),  // store seed hits here
-								msobj.ftabLen));    // only thing needed out of BTW index
+							als.prepareSearchAllSeedsOne(
+								mate,
+								msobj.ca));           // alignment cache
 				} // if
 			} // for mate
+
 		   tmr.next("searchAllSeedsPrepare");
 
 			// always call ensure_spare from main CPU thread
 		 	mate_allocs.ensure_spare();
 
 			// Align the seeds
-		   	// We will use a simplistic assumption that the variation is not too large
-		   	// and just do a somple loop for similicty (needed for proper parallelization).
-		   	// searchAllSeedsDoBatch is a NOOP is past the limit
-		   	const uint64_t g_max_batches = num_parallel_tasks*uint64_t(max_batches);
-#ifdef FORCE_ALL_OMP
-#pragma omp parallel for default(shared) schedule(dynamic,8)
-			for (uint64_t gbatch=0; gbatch<g_max_batches; gbatch++) {
-#else
-			std::for_each_n(std::execution::par_unseq,
-				thrust::counting_iterator(0), g_max_batches,
-				[mate_idx,g_als,max_batches](uint64_t gbatch) mutable {
-#endif
-				uint32_t mate = gbatch / max_batches;
-				uint32_t ibatch = gbatch % max_batches;
-				if (mate_idx[mate]>=0 ) { // !done[mate]
-					// Align a batch of seeds
-					g_als[mate].searchAllSeedsDoBatch(
-								ibatch);
-				} // if
-			} // for mate
-#ifndef FORCE_ALL_OMP
-			); // for_each
-#endif
+			// internally parallelized
+			als.searchAllSeedsDoAll();
+
 		   tmr.next("searchAllSeedsDo");
 
 			// always call ensure_spare from main CPU thread
@@ -2616,7 +2595,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 							// Get data from internal stuctures
-							g_als[mate].searchAllSeedsFinalize();
+							als.searchAllSeedsOneFinalize(mate);
 
 							msinkwrap.updatePRM(psrs->getSR(mate));
 							assert(psrs->getSR(mate).repOk(&msobj.ca.current()));
@@ -2759,6 +2738,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		v_msinkwrap.clear();
 		delete rp;
 
+		delete pals;
 		delete psrs;
 
 		delete[] minsc;

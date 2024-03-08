@@ -945,6 +945,12 @@ public:
 		return seedsBuf_[seedoffidx + (fw ? 0: numOffs_)];
 	}
 	
+	const InstantiatedSeed& instantiatedSeed(bool fw, size_t seedoffidx) const {
+		assert_lt(seedoffidx, numOffs_);
+		assert(repOk(NULL));
+		return seedsBuf_[seedoffidx + (fw ? 0: numOffs_)];
+	}
+	
 	/**
 	 * Return the number of different seed offsets possible.
 	 */
@@ -1531,6 +1537,7 @@ protected:
 	SeedResults*          srp;      // // holds all the seed hits
 };
 
+#if 0
 /**
  * Wrap the search cache with all the relevant objects
  */
@@ -1628,6 +1635,7 @@ protected:
 
 	EList<CacheEl> cacheVec;
 };
+#endif
 
 // just an index inside the paramVec
 typedef uint32_t SeedAlignerSearchState;
@@ -1657,6 +1665,8 @@ public:
 
 };
 
+class SeedAlignerSearchParams;
+
 /**
  * Given an index and a seeding scheme, searches for seed hits.
  */
@@ -1667,27 +1677,21 @@ public:
 	/**
 	 * Initialize with index.
 	 */
-	SeedAligner(
-		const Ebwt* ebwtFw_          // BWT index
-	) : ebwtFw(ebwtFw_) {}
+	SeedAligner() {}
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		mcache_.set_alloc(alloc, propagate_alloc);
-		paramVec_.set_alloc(alloc, propagate_alloc);
-
-		// this is a good time to reserve the space
-                mcache_.reserve(ibatch_size);
-                paramVec_.reserve(ibatch_size);
-
-		// force memory allocation(lazy, else)
-		paramVec_.expand(); paramVec_.clear();
-		// mcache_.reserve is not lazy
 	}
 
-	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		set_alloc(arg.first,arg.second);
+	// Update bufsSize
+	uint32_t computeValidInstantiatedSeeds(const SeedResults& sr);
+
+	// Set buffers needed by searchAllSeeds
+	void setBufs(SeedSearchCache* cacheVec, SeedAlignerSearchParams* paramVec) {
+		cacheVec_ = cacheVec;
+		paramVec_ = paramVec;
 	}
 	
+	uint32_t getBufsSize() const {return seedsearches_;}
 	/**
 	 * Given a read and a few coordinates that describe a substring of the
 	 * read (or its reverse complement), fill in 'seq' and 'qual' objects
@@ -1730,15 +1734,15 @@ public:
 		SeedResults& sr,            // holds all the seed hits
 		const int ftabLen);         // forward index (BWT) value
 
-	void searchAllSeedsDoAll();
-	void searchAllSeedsDoBatch(uint32_t ibatch);
+	void searchAllSeedsDoAll(const Ebwt* ebwtFw);
+	void searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwtFw);
 
-	void searchAllSeedsFinalize();
+	void searchAllSeedsFinalize(const SeedResults& sr);
 
+#if 0
 	// Same value as returned by searchAllSeedsPrepare
 	uint32_t getSearchBatches() const {return (mcache_.size()+(ibatch_size-1))/ibatch_size;}
 
-#if 0
 	/**
 	 * Sanity-check a partial alignment produced during oneMmSearch.
 	 */
@@ -1752,7 +1756,6 @@ public:
 		TIndexOffU           botfw,
 		TIndexOffU           topbw,
 		TIndexOffU           botbw);
-#endif
 	/**
 	 * Do an exact-matching sweet to establish a lower bound on number of edits
 	 * and to find exact alignments.
@@ -1768,7 +1771,6 @@ public:
 		bool               repex,   // report 0mm hits?
 		SeedResults&       hits);   // holds all the seed hits (and exact hit)
 
-#if 0
 	/**
 	 * Search for end-to-end alignments with up to 1 mismatch.
 	 */
@@ -1784,9 +1786,6 @@ public:
 		SeedResults&       hits);  // holds all the seed hits (and exact hit)
 #endif
 
-protected:
-	class SeedAlignerSearchParams;
-
 	/**
 	 * Main, recursive implementation of the seed search.
 	 * Given a vector of instantiated seeds, search
@@ -1797,6 +1796,7 @@ protected:
         		uint64_t& bwops_,         // Burrows-Wheeler operations
 			const uint8_t nparams, SeedAlignerSearchParams paramVec[]);
 
+protected:
 	// helper function
 	static bool startSearchSeedBi(
 		        const Ebwt* ebwt,       // forward index (BWT)
@@ -1837,8 +1837,6 @@ protected:
 	{ prefetchNextLocsBi(seed, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
 #endif
 
-	const Ebwt*        ebwtFw; // forward index (BWT)
-
 	// Following are set in searchAllSeeds then used by searchSeed()
 	// and other protected members.
 	
@@ -1850,12 +1848,79 @@ protected:
  	*       and 32 is too big (cache trashing).
  	**/
 	static constexpr uint8_t ibatch_size = 8;
-	SeedSearchMultiCache mcache_;
-	EList<SeedAlignerSearchParams> paramVec_;
+
+	SeedSearchCache*         cacheVec_;      // not owned
+	SeedAlignerSearchParams* paramVec_;      // not owned
+	uint32_t                 seedsearches_;   // valid elements in the above buffers
 
 	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
 };
 
+class MultiSeedAligner {
+
+public:
+	MultiSeedAligner(
+		const Ebwt*       ebwtFw, // forward index (BWT)
+		MultiSeedResults& srs);
+
+	~MultiSeedAligner();
+
+	// prevent accidental copies
+	MultiSeedAligner(const MultiSeedAligner& o) = delete;
+	MultiSeedAligner& operator=(const MultiSeedAligner& o) = delete;
+
+	uint32_t n_els() const {return _srs.nSRs();}
+
+	SeedResults &getSR(uint32_t idx) { return _srs.getSR(idx);}
+	const SeedResults &getSR(uint32_t idx) const { return _srs.getSR(idx);}
+
+	SeedAligner &getAL(uint32_t idx) { return _als[idx];}
+	const SeedAligner &getAL(uint32_t idx) const { return _als[idx];}
+
+	// Update buffers, based on content of _srs
+	void reserveBuffers();
+
+	/**
+	 * Iterate through the seeds that cover the read and initiate a
+	 * search for each seed.
+	 * Assumes reserveBuffers() has been already called.
+	 *
+	 * Return number of batches
+	 */
+	uint32_t prepareSearchAllSeedsOne(
+		uint32_t             idx,      // srs/als index
+		AlignmentCacheIface& cache) {  // local cache for seed alignments
+		return _als[idx].searchAllSeedsPrepare(cache, _srs.getSR(idx), _ftabLen);
+	}
+
+	// Align the Seeds
+	// Assumes all prepareSearchAllSeeds were already called
+	void searchAllSeedsDoAll();
+
+	void searchAllSeedsOneFinalize(uint32_t idx) {
+		_als[idx].searchAllSeedsFinalize(_srs.getSR(idx));
+	}
+
+private:
+	const Ebwt*              _ebwtFw; // forward index (BWT)
+	MultiSeedResults&        _srs;
+	SeedAligner*             _als;
+
+	const int                _ftabLen;
+
+	SeedSearchCache*         _cacheVec;      // array of _bufVec_size
+	SeedAlignerSearchParams* _paramVec;      // array of _bufVec_size
+	size_t                   _bufVec_size;
+
+	/**
+ 	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.
+ 	*       2 is too small for prefetch to be fully effective, 4 seems already OK, 
+ 	*       and 32 is too big (cache trashing).
+ 	**/
+	static constexpr uint8_t ibatch_size = 8;
+
+};
+	
 #define INIT_LOCS(top, bot, tloc, bloc, e) { \
 	if(bot - top == 1) { \
 		tloc.initFromRow(top, (e).eh(), (e).ebwt()); \
