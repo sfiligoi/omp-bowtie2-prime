@@ -77,25 +77,21 @@ Constraint Constraint::editBased(int edits) {
 	return c;
 }
 
-// just an index inside the paramVec
 class SeedAlignerSearchState {
 public:
 
 	SeedAlignerSearchState()
-	: idx(0)
-	, step(0)
+	: step(0)
 	, tloc()
 	, bloc()
 	{}
 
-	void reset(uint8_t new_idx) {
-		idx = new_idx;
+	void reset() {
 		step = 0;
 		tloc.invalidate();
 		bloc.invalidate();
 	}
 
-	uint8_t idx;
 	int step;             // depth into steps[] array, i.e. step_min+step
 	SideLocus tloc;       // locus for top (perhaps unititialized)
 	SideLocus bloc;       // locus for bot (perhaps unititialized)
@@ -771,29 +767,31 @@ SeedAligner::searchSeedBi(
                         uint64_t& bwops_,         // Burrows-Wheeler operations
                         const uint8_t nparams, SeedAlignerSearchParams paramVec[])
 {
+	uint8_t idxs[SS_SIZE]; // indexes into sstateVec and paramVec
 	SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
 	assert(nparams<=SS_SIZE);
 
-	uint32_t nleft = nparams; // will keep track of how many are not done yet
+	uint8_t nleft = nparams; // will keep track of how many are not done yet
 
 	{
 	   uint8_t n=0;
            uint8_t iparam = 0; // iparam and n may diverge, if some are done at init stage
 	   while (n<nleft) {
-		SeedAlignerSearchParams& p= paramVec[iparam];
+		SeedAlignerSearchParams& p      = paramVec[iparam];
+		SeedAlignerSearchState&  sstate = sstateVec[iparam];
 		p.resetData();
-		sstateVec[n].reset(iparam);
+		sstate.reset();
+		idxs[n] = iparam;
 		iparam+=1;
-		const bool done = startSearchSeedBi(ebwt, p, sstateVec[n]);
+		const bool done = startSearchSeedBi(ebwt, p, sstate);
 		if(done) {
-		        if(sstateVec[n].step == (int)p.cs.n_seed_steps) {
+		        if(sstate.step == (int)p.cs.n_seed_steps) {
                 		// Finished aligning seed
 				p.checkCV();
 				p.set_reporting();
 			}
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 		} else {
 			n+=1;
 		}
@@ -810,17 +808,17 @@ SeedAligner::searchSeedBi(
 	   uint8_t n=0;
            // logically a for (uint32_t n=0; n<nleft; n++) but with nleft potentially changing
 	   while (n<nleft) {
-		const uint8_t iparam = sstateVec[n].idx;
+		const uint8_t iparam = idxs[n];
 
-		SeedAlignerSearchParams& p= paramVec[iparam];
+		SeedAlignerSearchParams& p      = paramVec[iparam];
+		SeedAlignerSearchState&  sstate = sstateVec[iparam];
 		const int n_seed_steps = p.cs.n_seed_steps;
-		if (sstateVec[n].step >= (int) n_seed_steps) {
+		if (sstate.step >= (int) n_seed_steps) {
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) sstateVec[n] = sstateVec[nleft];
+			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
-		SeedAlignerSearchState& sstate =  sstateVec[n];
 
 		const int seed_step_min = p.cs.seed_step_min();
 		size_t i = sstate.step; // call the stepIdx i for historical reasons
@@ -845,7 +843,7 @@ SeedAligner::searchSeedBi(
 		if(c == 4) { // couldn't handle the N
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) sstateVec[n] = sstateVec[nleft];
+			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
 		if(!sstate.bloc.valid()) {
@@ -857,7 +855,7 @@ SeedAligner::searchSeedBi(
 			if(wstate.t[c] == OFF_MASK) {
 				// done with this, swap with last and reduce nleft
 				nleft-=1;
-				if (n<nleft) sstateVec[n] = sstateVec[nleft];
+				if (n<nleft) idxs[n] = idxs[nleft];
 				continue;
 			}
 			assert_geq(wstate.t[c], ebwt->fchr()[c]);
@@ -868,7 +866,7 @@ SeedAligner::searchSeedBi(
 		if(wstate.b[c] == wstate.t[c]) {
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) sstateVec[n] = sstateVec[nleft];
+			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
 		p.bwt.set(wstate.t[c], wstate.b[c]);
@@ -877,7 +875,7 @@ SeedAligner::searchSeedBi(
 			p.set_reporting();
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) sstateVec[n] = sstateVec[nleft];
+			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
 		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, p.bwt.topf, p.bwt.botf);
