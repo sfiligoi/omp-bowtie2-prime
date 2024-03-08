@@ -105,7 +105,7 @@ public:
 	public:
 		CacheAndSeed()
 		: seq(NULL), n_seed_steps(0)
-		, hasi0(false), fwi0(0), pcache(NULL) {}
+		, hasi0(false), fwi0(0) {}
 
 		CacheAndSeed(
 			SeedSearchCache &_cache,         // local seed alignment cache
@@ -113,7 +113,7 @@ public:
 		        const int ftabLen                // forward index (BWT) value
 
 		) : seq(NULL), n_seed_steps(0)
-		, hasi0(false), fwi0(0), pcache(NULL) // just set a default
+		, hasi0(false), fwi0(0) // just set a default
 		{ reset(_cache, _seed, ftabLen); }
 
 		void reset(
@@ -136,7 +136,6 @@ public:
 				fwi0 = Ebwt::ftabSeqToInt(ftabLen, true, seq, off, false);
 				// Note: No prefetching as prepare and do are often separate
 			}
-			pcache = &_cache; //  keep track of the big object
 		}
 
 		CacheAndSeed(CacheAndSeed &other) = default;
@@ -157,7 +156,6 @@ public:
 		int n_seed_steps;               // steps in the current instantiated seed
 		bool hasi0;
 		TIndexOffU fwi0;                // Idx of fw ftab
-		SeedSearchCache *pcache; //  keep track of the big object
 	};
 
 	// create an empty bwt
