@@ -393,7 +393,8 @@ struct InstantiatedSeed {
 
 	void invalidate() {n_steps=-1;}
 
-	bool isValid() const {return n_steps>=0;}
+	// Technically, n_steps==0 is valid, but still useless
+	bool isValid() const {return n_steps>0;}
 
 	/**
 	 * Given a read, depth and orientation, extract a seed data structure
@@ -1648,33 +1649,6 @@ public:
 			const uint8_t nparams, SeedAlignerSearchParams paramVec[]);
 
 protected:
-	// helper function
-	static bool startSearchSeedBi(
-		        const Ebwt* ebwt,       // forward index (BWT)
-			SeedAlignerSearchParams &p,
-                        SeedAlignerSearchState &sstate);
-
-	/**
-	 * Get tloc and bloc ready for the next step.
-	 */
-	static void nextLocsBi(
-	        const Ebwt* ebwt,           // forward index (BWT)
-	        const int seed_step,         // current instantiated seed step
-		SideLocus& tloc,            // top locus
-		SideLocus& bloc,            // bot locus
-		TIndexOffU topf,            // top in BWT
-		TIndexOffU botf);           // bot in BWT
-	
-	static void nextLocsBi(
-	        const Ebwt* ebwt,           // forward index (BWT)
-	        const int seed_step,          // current instantiated seed step
-		SideLocus& tloc,            // top locus
-		SideLocus& bloc,            // bot locus
-		const BwtTopBotFw &bwt)       // The 4 BWT idxs
-	{ nextLocsBi(ebwt, seed_step, tloc, bloc, bwt.topf, bwt.botf); }
-
-	// Following are set in searchAllSeeds then used by searchSeed()
-	// and other protected members.
 	
 	uint64_t bwops_;           // Burrows-Wheeler operations
 

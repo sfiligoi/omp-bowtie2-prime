@@ -782,10 +782,8 @@ inline bool exactSweepStep(
  * Get tloc, bloc ready for the next step.  If the new range is under
  * the ceiling.
  */
-inline void
-SeedAligner::nextLocsBi(
-        const Ebwt* ebwt,             // forward index (BWT)
-	const int seed_step,          // current instantiated seed step
+inline void nextLocsBi(
+	const Ebwt* ebwt,       // forward index (BWT)
 	SideLocus& tloc,              // top locus
 	SideLocus& bloc,              // bot locus
 	TIndexOffU topf,              // top in BWT
@@ -810,22 +808,16 @@ SeedAligner::nextLocsBi(
 }
 
 // return true, if we are already done
-bool
-SeedAligner::startSearchSeedBi(
-                        const Ebwt* ebwt,       // forward index (BWT)
-			SeedAlignerSearchParams &p,
-			SeedAlignerSearchState &sstate)
+inline bool startSearchSeedBi(
+	const Ebwt* ebwt,       // forward index (BWT)
+	SeedAlignerSearchParams &p,
+	SeedAlignerSearchState &sstate)
 {
-	const char *seq = p.cs.seq;
-	const int n_seed_steps = p.cs.n_seed_steps;
 
-	assert_gt(n_seed_steps, 0);
-	if(sstate.step == n_seed_steps) {
-		return true;
-	}
-	if(sstate.step == 0) {
+	assert_eq(sstate.step, 0);
+	assert_gt(p.cs.n_seed_steps, 0);
+	{
 		// Just starting
-		assert(p.prevEdit == NULL);
 		assert(!sstate.tloc.valid());
 		assert(!sstate.bloc.valid());
 		const int seed_step_min = p.cs.seed_step_min();
@@ -838,7 +830,8 @@ SeedAligner::startSearchSeedBi(
 			sstate.step += ftabLen;
 		} else if(p.cs.maxjump() > 0) {
 			// Use fchr
-			int c = seq[off];
+			const char *seq = p.cs.seq;
+			const int c = seq[off];
 			assert_range(0, 3, c);
 			p.bwt.topf = ebwt->fchr()[c];
 			p.bwt.botf = ebwt->fchr()[c+1];
@@ -849,12 +842,12 @@ SeedAligner::startSearchSeedBi(
 			p.bwt.topf = 0;
 			p.bwt.botf = ebwt->fchr()[4];
 		}
-		if(sstate.step == n_seed_steps) {
+		if(sstate.step == p.cs.n_seed_steps) {
 			return true;
 		}
-		nextLocsBi(ebwt, seed_step_min+sstate.step, sstate.tloc, sstate.bloc, p.bwt);
+		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, p.bwt.topf, p.bwt.botf);
 		assert(sstate.tloc.valid());
-	} else assert(p.prevEdit != NULL);
+	} 
 	assert(sstate.tloc.valid());
 	assert(p.bwt.botf - p.bwt.topf == 1 ||  sstate.bloc.valid());
 	assert(p.bwt.botf - p.bwt.topf > 1  || !sstate.bloc.valid());
@@ -862,36 +855,6 @@ SeedAligner::startSearchSeedBi(
 
 	return false;
 }
-
-class SeedAlignerSearchSave {
-public:
-	SeedAlignerSearchSave(
-		Constraint &cons, Constraint &ovCons,
-		SideLocus &tloc, SideLocus &bloc)
-	: orgCons(cons), orgOvCons(ovCons)
-	, orgTloc(tloc), orgBloc(bloc)
-	, oldCons(cons), oldOvCons(ovCons)
-	, oldTloc(tloc), oldBloc(bloc)
-	{}
-
-	~SeedAlignerSearchSave() {
-		orgCons = oldCons; orgOvCons = oldOvCons;
-		orgTloc = oldTloc; orgBloc = oldBloc;
-	}
-
-private:
-	// reference to the original variables
-	Constraint &orgCons;
-	Constraint &orgOvCons;
-	SideLocus &orgTloc;
-	SideLocus &orgBloc;
-
-	// copy of the originals
-	const Constraint oldCons;
-	const Constraint oldOvCons;
-	const SideLocus oldTloc;
-	const SideLocus oldBloc;
-};
 
 /**
  * Given a seed, search.  Assumes zone 0 = no backtracking.
@@ -1016,7 +979,7 @@ SeedAligner::searchSeedBi(
 			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 			continue;
 		}
-		nextLocsBi(ebwt, seed_step_min+i+1, sstate.tloc, sstate.bloc, p.bwt);
+		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, p.bwt.topf, p.bwt.botf);
 		// not done, move to the next element
 		n+=1;
 	   } // while n
