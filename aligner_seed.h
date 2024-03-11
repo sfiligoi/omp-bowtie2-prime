@@ -604,12 +604,9 @@ public:
 	 */
 	void add(
 		const QVal& qv,           // range of ranges in cache
-		const AlignmentCache& ac, // cache
 		uint32_t seedIdx,         // seed index (from 5' end)
 		bool     seedFw)          // whether seed is from forward read
 	{
-		assert(qv.repOk(ac));
-		assert(repOk(&ac));
 		assert_lt(seedIdx, hitsFw_.size());
 		assert_gt(numOffs_, 0); // if this fails, probably failed to call reset
 		if(qv.empty()) return;
@@ -638,7 +635,6 @@ public:
 				repTotS_[seedFw ? 0 : 1]++;
 			}
 		}
-		assert(repOk(&ac));
 	}
 
 	/**
@@ -1504,10 +1500,8 @@ public:
 		) {
 		if(qv.valid()) {
 			assert(srp!=NULL);
-			assert(cachep!=NULL);
 			srp->add(
 				qv,   // range of ranges in cache
-				cachep->current(), // cache
 				seedoffidx,     // seed index (from 5' end)
 				fw);   // whether seed is from forward read
 		}
