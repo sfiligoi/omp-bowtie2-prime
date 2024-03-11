@@ -77,65 +77,33 @@ Constraint Constraint::editBased(int edits) {
 	return c;
 }
 
-class SeedAlignerSearchState {
-public:
-
-	SeedAlignerSearchState()
-	: step(0)
-	, tloc()
-	, bloc()
-	{}
-
-	void reset() {
-		step = 0;
-		tloc.invalidate();
-		bloc.invalidate();
-	}
-
-	int step;             // depth into steps[] array, i.e. step_min+step
-	SideLocus tloc;       // locus for top (perhaps unititialized)
-	SideLocus bloc;       // locus for bot (perhaps unititialized)
-};
-
-
 // Input to seachSeedBi
 class SeedAlignerSearchParams {
 public:
 	class CacheAndSeed {
 	public:
 		CacheAndSeed()
-		: seq(NULL), n_seed_steps(0)
-		, hasi0(false), fwi0(0) {}
+		: seq(NULL), seq_len(0), n_seed_steps(0)  {}
 
 		CacheAndSeed(
-			const char *_seq,                // sequence of the local seed alignment cache
-			const InstantiatedSeed& _seed,   // current instantiated seed
-		        const int ftabLen                // forward index (BWT) value
-
-		) : seq(NULL), n_seed_steps(0)
-		, hasi0(false), fwi0(0) // just set a default
-		{ reset(_seq, _seed, ftabLen); }
+			const char *   _seq,             // sequence of the local seed alignment cache
+			const uint32_t _seq_len,         // and its length
+			const InstantiatedSeed& _seed    // current instantiated seed
+		)
+		: seq(NULL), seq_len(0), n_seed_steps(0)  // just set a default
+		{ reset(_seq, _seq_len, _seed); }
 
 		void reset(
-			const char *_seq,                // sequence of the local seed alignment cache
-			const InstantiatedSeed& _seed,   // current instantiated seed
-		        const int ftabLen  	         // forward index (BWT) value
+			const char *   _seq,             // sequence of the local seed alignment cache
+			const uint32_t _seq_len,         // and its length
+			const InstantiatedSeed& _seed    // current instantiated seed
 		)
 		{
 			seq = _seq;
+			if (_seq_len>127) {printf("Unexpected seq_len %i\n",int(seq_len)); throw 1;}
+			seq_len = _seq_len;
+			if (abs(_seed.n_steps)>127) {printf("Unexpected n_seed_steps %i\n",int(_seed.n_steps)); throw 1;}
 			n_seed_steps = _seed.n_steps;
-
-	                constexpr bool ltr = false; // seed_step_min > 0 i.e. n_seed_steps<0
-        	        int off = abs(seed_step_min())-1;
-			hasi0 = (ftabLen > 1 && ftabLen <= maxjump());
-			if(hasi0) {
-				if(!ltr) {
-					assert_geq(off+1, ftabLen-1);
-					off = off - ftabLen + 1;
-				}
-				fwi0 = Ebwt::ftabSeqToInt(ftabLen, true, seq, off, false);
-				// Note: No prefetching as prepare and do are often separate
-			}
 		}
 
 		CacheAndSeed(CacheAndSeed &other) = default;
@@ -152,20 +120,19 @@ public:
 		int maxjump() const {return n_seed_steps;}
 	
 		// Use pointers, so they can be changed 
-		const char *seq;                // sequence of the local seed alignment cache
-		int n_seed_steps;               // steps in the current instantiated seed
-		bool hasi0;
-		TIndexOffU fwi0;                // Idx of fw ftab
+		const char *seq;
+		uint8_t seq_len;
+		int8_t n_seed_steps;               // steps in the current instantiated seed
 	};
 
 	// create an empty bwt
 	// and constratins from seed, for initial searchSeedBi invocation
 	SeedAlignerSearchParams(
-		const char *seq,                // sequence of the local seed alignment cache
-		const InstantiatedSeed& seed,   // current instantiated seed
-	        const int ftabLen                // forward index (BWT) value
+		const char *   _seq,             // sequence of the local seed alignment cache
+		const uint32_t _seq_len,         // and its length
+		const InstantiatedSeed& _seed    // current instantiated seed
 	)
-	: cs(seq, seed, ftabLen)
+	: cs(_seq,_seq_len,_seed)
 	{}
 
 	// create an empty bwt
@@ -177,12 +144,12 @@ public:
 	SeedAlignerSearchParams& operator=(const SeedAlignerSearchParams& other) = default;
 
 	void reset(
-		const char *seq,                // sequence of the local seed alignment cache
-		const InstantiatedSeed& seed,   // current instantiated seed
-	        const int ftabLen                // forward index (BWT) value
+		const char *   _seq,             // sequence of the local seed alignment cache
+		const uint32_t _seq_len,         // and its length
+		const InstantiatedSeed& _seed    // current instantiated seed
 	)
 	{
-	  cs.reset(seq, seed, ftabLen);
+	  cs.reset(_seq,_seq_len,_seed);
 	}
 
 	// A sub-class for historical reasons
@@ -196,21 +163,48 @@ public:
 	// and constratins from seed, for initial searchSeedBi invocation
 	SeedAlignerSearchData()
 	: bwt()
+	, sak()
 	, need_reporting(false)
 	{}
 
 	SeedAlignerSearchData& operator=(const SeedAlignerSearchData& other) = default;
 
-	void resetData() {
+	void resetData(
+		const char *   seq,            // sequence of the local seed alignment cache
+		const uint8_t seq_len          // and its length
+	) {
 	  bwt.set(0,0);
+	  sak.init(seq, seq_len);
 	  need_reporting = false;
 	}
 
 	void set_reporting() { need_reporting = true; }
 
 	BwtTopBotFw bwt;      // The 2 BWT idxs
+	SAKey       sak;      // seed key
 	bool need_reporting;
 };
+
+class SeedAlignerSearchState {
+public:
+
+	SeedAlignerSearchState()
+	: tloc()
+	, bloc()
+	, step(0)
+	{}
+
+	void reset() {
+		tloc.invalidate();
+		bloc.invalidate();
+		step = 0;
+	}
+
+	SideLocus tloc;       // locus for top (perhaps unititialized)
+	SideLocus bloc;       // locus for bot (perhaps unititialized)
+	int step;             // depth into steps[] array, i.e. step_min+step
+};
+
 
 
 //
@@ -475,6 +469,7 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 	uint32_t seedsearches = 0;
 
 	SeedAlignerSearchParams* paramVec = paramVec_;
+	const auto seqs_len = sr.seqs_len();
 
 	// Build the support structures
 	// the order is arbirtrary
@@ -493,7 +488,7 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 			{
 					assert_eq(fw, is.fw);
 					assert_eq(i, (int)is.seedoffidx);
-					paramVec[seedsearches].reset(seq, is, ftabLen);
+					paramVec[seedsearches].reset(seq, seqs_len, is);
 			}
 			seedsearches++;
 		} // for i
@@ -559,11 +554,10 @@ void SeedAligner::searchAllSeedsFinalize(
 				// Cache hit in an across-read cache
 				continue;
 			}
-			SAKey sak(sr.seqs(fw,i), sr.seqs_len());
-			SeedSearchCache srcache(sak,cache,sr);
-
 			const SeedAlignerSearchData& sdata= dataVec[seedsearches];
 			seedsearches++;
+
+			SeedSearchCache srcache(sdata.sak,cache,sr);
 
 			// Tell the cache that we've started aligning, so the cache can
 			// expect a series of on-the-fly updates
@@ -714,6 +708,7 @@ inline bool startSearchSeedBi(
 	assert_eq(sstate.step, 0);
 	assert_gt(p.cs.n_seed_steps, 0);
 	{
+		const char *seq = p.cs.seq;
 		// Just starting
 		assert(!sstate.tloc.valid());
 		assert(!sstate.bloc.valid());
@@ -721,13 +716,13 @@ inline bool startSearchSeedBi(
 		int off = abs(seed_step_min)-1;
 		// Check whether/how far we can jump using ftab or fchr
 		int ftabLen = ebwt->eh().ftabChars();
-		if(p.cs.hasi0) { //if(ftabLen > 1 && ftabLen <= p.cs.maxjump)
-			ebwt->ftabLoHi(p.cs.fwi0, sdata.bwt.topf, sdata.bwt.botf);
+		if (ftabLen > 1 && ftabLen <= p.cs.maxjump()) {
+			TIndexOffU fwi0 = Ebwt::ftabSeqToInt(ftabLen, true, seq, off - ftabLen + 1, false);
+			ebwt->ftabLoHi(fwi0, sdata.bwt.topf, sdata.bwt.botf);
 			if(sdata.bwt.botf - sdata.bwt.topf == 0) return true;
 			sstate.step += ftabLen;
 		} else if(p.cs.maxjump() > 0) {
 			// Use fchr
-			const char *seq = p.cs.seq;
 			const int c = seq[off];
 			assert_range(0, 3, c);
 			sdata.bwt.topf = ebwt->fchr()[c];
@@ -782,7 +777,7 @@ SeedAligner::searchSeedBi(
 		const SeedAlignerSearchParams& p = paramVec[iparam];
 		SeedAlignerSearchData&   sdata   = dataVec[iparam];
 		SeedAlignerSearchState&  sstate  = sstateVec[iparam];
-		sdata.resetData();
+		sdata.resetData(p.cs.seq, p.cs.seq_len);
 		sstate.reset();
 		idxs[n] = iparam;
 		iparam+=1;
