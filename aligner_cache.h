@@ -711,7 +711,6 @@ public:
 		AlignmentCache *current):
 		qk_(),
 		qv_(NULL),
-		cacheable_(false),
 		rangen_(0),
 		eltsn_(0),
 		current_(current)
@@ -737,24 +736,23 @@ public:
 	 */
 	int beginAlign(
                 const char *   seq,     // reference sequence close to read seq - content
-                const uint32_t seq_len, // reference sequence close to read seq - length
-		QVal& qv)              // out: filled in if we find it in the cache
+                const uint32_t seq_len) // reference sequence close to read seq - length
 	{
 		assert(repOk());
 		QKey qk(seq, seq_len ASSERT_ONLY(, tmpdnastr_));
-		return beginAlign(qk, qv);
+		return beginAlign(qk);
 	}
 
 	int beginAlign(
-		const QKey&    qk,
-		QVal& qv)              // out: filled in if we find it in the cache
+		const QKey&    qk)
 	{
 		assert(repOk());
 		if(qk.cacheable()) {
 			// Make a QNode for this key and possibly add the QNode to the
 			// Red-Black map; but if 'seq' isn't cacheable, just create the
 			// QNode (without adding it to the map).
-			qv_ = current_->add(qk, &cacheable_);
+			bool added = false;
+			qv_ = current_->add(qk, &added);
 		} else {
 			qv_ = &qvbuf_;
 		}
@@ -918,7 +916,6 @@ protected:
 	 * Reset fields encoding info about the in-process read.
 	 */
 	void resetRead() {
-		cacheable_ = false;
 		rangen_ = eltsn_ = 0;
 		qv_ = NULL;
 	}
@@ -926,7 +923,6 @@ protected:
 	QKey qk_;  // key representation for current read substring
 	QVal *qv_; // pointer to value representation for current read substring
 	QVal qvbuf_; // buffer for when key is uncacheable but we need a qv
-	bool cacheable_; // true iff the read substring currently being aligned is cacheable
 
 	size_t rangen_; // number of ranges since last alignment job began
 	size_t eltsn_;  // number of elements since last alignment job began

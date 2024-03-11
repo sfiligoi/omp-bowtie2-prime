@@ -562,7 +562,7 @@ void SeedAligner::searchAllSeedsFinalize(
 
 			// Tell the cache that we've started aligning, so the cache can
 			// expect a series of on-the-fly updates
-			int ret = cache.beginAlign(sak, qv);
+			int ret = cache.beginAlign(sak);
 			if(ret == -1) {
 				// Out of memory when we tried to add key to map
 				ooms++;
