@@ -60,6 +60,13 @@
 #include "processor_support.h"
 #endif
 
+#ifndef ASM_PREFETCH
+#define force_prefetch(PTR) __builtin_prefetch(PRT)
+#else
+// This is NVIDA HPC SDK syntax
+#define force_prefetch(PTR) asm("prefetcht0 %0" : /**/ : "m"(PTR) : /**/ );
+#endif
+
 #if __cplusplus <= 199711L
 #define unique_ptr auto_ptr
 #endif
@@ -374,10 +381,10 @@ struct SideLocus {
 		_charOff                  = charOff;
 		const TIndexOffU sByteOff = sideNum * sideSz;
 		if (prefetch) {
-			__builtin_prefetch(ebwt + sByteOff);
-			__builtin_prefetch(ebwt + sByteOff + 64); //64 byte cache lines
+			force_prefetch(ebwt + sByteOff);
+			force_prefetch(ebwt + sByteOff + 64); //64 byte cache lines
 #if (OFF_SIZE>4)
-			__builtin_prefetch(ebwt + sByteOff + 2*64);
+			force_prefetch(ebwt + sByteOff + 2*64);
 #endif
                 }
 
@@ -399,18 +406,18 @@ struct SideLocus {
 		// to do clever things to accelerate / and %.
 		const TIndexOffU sideNum     = row / (48*OFF_SIZE);
 		const TIndexOffU sideByteOff = sideNum * sideSz;
-		__builtin_prefetch(ebwt + sideByteOff);
-		__builtin_prefetch(ebwt + sideByteOff + 64); //64 byte cache lines
+		force_prefetch(ebwt + sideByteOff);
+		force_prefetch(ebwt + sideByteOff + 64); //64 byte cache lines
 #if (OFF_SIZE>4)
-		__builtin_prefetch(ebwt + sideByteOff + 2*64);
+		force_prefetch(ebwt + sideByteOff + 2*64);
 #endif
 	}
 
 	void prefetch(const uint8_t* ebwt) const {
-                __builtin_prefetch(ebwt + _sideByteOff);
-                __builtin_prefetch(ebwt + _sideByteOff + 64); //64 byte cache lines
+                force_prefetch(ebwt + _sideByteOff);
+                force_prefetch(ebwt + _sideByteOff + 64); //64 byte cache lines
 #if (OFF_SIZE>4)
-                __builtin_prefetch(ebwt + _sideByteOff + 2*64);
+                force_prefetch(ebwt + _sideByteOff + 2*64);
 #endif
 	}
 
@@ -1355,16 +1362,17 @@ public:
 	 * length equal to the index's 'ftabChars' into an int that can be
 	 * used to index into the ftab array.
 	 */
-	TIndexOffU ftabSeqToInt(
+	static TIndexOffU ftabSeqToInt(
+		const int fc,
+		const bool fw,
 		const char *seq,
 		size_t off,
-		bool rev) const
+		bool rev)
 		{
-			int fc = _eh._ftabChars;
 			size_t lo = off, hi = lo + fc;
 			TIndexOffU ftabOff = 0;
 			for(int i = 0; i < fc; i++) {
-				bool fwex = fw();
+				bool fwex = fw;
 				if(rev) fwex = !fwex;
 				// We add characters to the ftabOff in the order they would
 				// have been consumed in a normal search.  For BWT, this
@@ -1378,6 +1386,15 @@ public:
 				ftabOff |= c;
 			}
 			return ftabOff;
+		}
+
+	TIndexOffU ftabSeqToInt(
+		const char *seq,
+		size_t off,
+		bool rev) const
+		{
+			int fc = _eh._ftabChars;
+			return ftabSeqToInt(fc, fw(), seq, off, rev);
 		}
 
 	/**
@@ -1430,7 +1447,7 @@ public:
 		const TIndexOffU *ftab,
 		TIndexOffU i)
 		{
-			__builtin_prefetch(&(ftab[i]));
+			force_prefetch(&(ftab[i]));
 		}
 
 	/**
@@ -1540,7 +1557,7 @@ public:
 		const TIndexOffU *ftab,
 		TIndexOffU i)
 		{
-			__builtin_prefetch(&(ftab[i]));
+			force_prefetch(&(ftab[i]));
 		}
 
 	/**

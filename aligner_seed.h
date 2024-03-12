@@ -393,7 +393,8 @@ struct InstantiatedSeed {
 
 	void invalidate() {n_steps=-1;}
 
-	bool isValid() const {return n_steps>=0;}
+	// Technically, n_steps==0 is valid, but still useless
+	bool isValid() const {return n_steps>0;}
 
 	/**
 	 * Given a read, depth and orientation, extract a seed data structure
@@ -402,7 +403,6 @@ struct InstantiatedSeed {
 	 */
 	bool instantiateExact(
 		const int seed_len,
-		const Read& read,
 		const char *seq); // seed read sequence
 
 	// Steps map.  There are as many steps as there are positions in
@@ -418,20 +418,6 @@ struct InstantiatedSeed {
 	// its first step.  This lets the aligner know whether it can use
 	// the ftab or not.
 	int maxjump() const {return n_steps;}
-	
-	// Nucleotide sequence covering the seed, extracted from read
-	BTDnaString *seq;
-	
-	// Offset of seed from 5' end of read
-	//int seedoff;
-
-	// Id for seed offset; ids are such that the smallest index is the
-	// closest to the 5' end and consecutive ids are adjacent (i.e.
-	// there are no intervening offsets with seeds)
-	//int seedoffidx;
-	
-	// Seed comes from forward-oriented read?
-	//bool fw;
 	
 #ifndef NDEBUG
 	/**
@@ -581,15 +567,13 @@ class SeedResults {
 
 public:
 	SeedResults() :
-		seqBuf_(AL_CAT),
-		seedsBuf_(AL_CAT),
 		hitsFw_(AL_CAT),
 		hitsRc_(AL_CAT),
 		sortedFw_(AL_CAT),
 		sortedRc_(AL_CAT),
-		offIdx2off_(AL_CAT),
 		rankOffs_(AL_CAT),
 		rankFws_(AL_CAT),
+		numOffs_(0),
 		mm1Hit_(AL_CAT)
 	{
 		clear();
@@ -599,13 +583,10 @@ public:
 	SeedResults& operator=(const SeedResults& other) = delete;
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		seqBuf_.set_alloc(alloc, propagate_alloc);
-		seedsBuf_.set_alloc(alloc, propagate_alloc);
 		hitsFw_.set_alloc(alloc, propagate_alloc);
 		hitsRc_.set_alloc(alloc, propagate_alloc);
 		sortedFw_.set_alloc(alloc, propagate_alloc);
 		sortedRc_.set_alloc(alloc, propagate_alloc);
-		offIdx2off_.set_alloc(alloc, propagate_alloc);
 		rankOffs_.set_alloc(alloc, propagate_alloc);
 		rankFws_.set_alloc(alloc, propagate_alloc);
 		mm1Hit_.set_alloc(alloc, propagate_alloc);
@@ -623,12 +604,9 @@ public:
 	 */
 	void add(
 		const QVal& qv,           // range of ranges in cache
-		const AlignmentCache& ac, // cache
 		uint32_t seedIdx,         // seed index (from 5' end)
 		bool     seedFw)          // whether seed is from forward read
 	{
-		assert(qv.repOk(ac));
-		assert(repOk(&ac));
 		assert_lt(seedIdx, hitsFw_.size());
 		assert_gt(numOffs_, 0); // if this fails, probably failed to call reset
 		if(qv.empty()) return;
@@ -657,7 +635,6 @@ public:
 				repTotS_[seedFw ? 0 : 1]++;
 			}
 		}
-		assert(repOk(&ac));
 	}
 
 	/**
@@ -666,15 +643,12 @@ public:
 	 */
 protected:
 	void resetNoOff(
-		const size_t numOffs,
-		const uint32_t seqLen)
+		char*              seqBuf,      // content of all the seqs, no separators
+		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
 	{
-		assert_gt(numOffs, 0);
-		clearSeeds();
-		numOffs_ = numOffs;
-		seqLen_ = seqLen;
-		seqBuf_.resize(2*numOffs*seqLen);
-		seedsBuf_.resize(2*numOffs);
+		const size_t numOffs = numOffs_;
+		seqBuf_ = seqBuf;     // must be be at least getSeqSize()
+		seedsBuf_ = seedsBuf; // must be be at least getSeedsSize()
 		for(size_t i = 0; i < 2*numOffs; i++) {
 			seedsBuf_[i].invalidate();
 		}
@@ -692,41 +666,48 @@ protected:
 	}
 
 public:
-	void reset(
-		const EList<uint32_t>& offIdx2off,
-		size_t numOffs,   
-                const uint32_t seqLen)
-	{
-		resetNoOff(numOffs,seqLen);
-		offIdx2off_ = offIdx2off;
+
+	size_t getSeqSize() const { return 2*numOffs_*seqLen_; }
+
+	size_t getSeedsSize() const { return 2*numOffs_; };
+
+	void invalidate() {
+		numOffs_ = 0;
 	}
 
-	void reset(
+	void prepare(
 		const size_t off,                // offset into read to start extracting
 		const int per,                   // interval between seeds
 		size_t numOffs,   
                 const uint32_t seqLen)
 	{
-		resetNoOff(numOffs,seqLen);
-		offIdx2off_.clear();
-		for(int i = 0; i < numOffs; i++) {
-			offIdx2off_.push_back(per * i + (int)off);
-                }
+		assert_gt(numOffs, 0);
+		clearSeeds();
+		numOffs_ = numOffs;
+		seqLen_ = seqLen;
+		off_ = off;
+		per_ = per;
 	}
+
+	// expects prepare to have been called first
+	void reset(
+		char*              seqBuf,      // content of all the seqs, no separators
+		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
+	{
+		resetNoOff(seqBuf,seedsBuf);
+	}
+
 	
 	/**
 	 * Clear seed-hit state.
 	 */
 	void clearSeeds() {
-		seedsBuf_.clear();
 		sortedFw_.clear();
 		sortedRc_.clear();
 		rankOffs_.clear();
 		rankFws_.clear();
-		offIdx2off_.clear();
 		hitsFw_.clear();
 		hitsRc_.clear();
-		seqBuf_.clear();
 		nonzTot_ = 0;
 		uniTot_ = uniTotS_[0] = uniTotS_[1] = 0;
 		repTot_ = repTotS_[0] = repTotS_[1] = 0;
@@ -810,6 +791,9 @@ public:
 		}
 	}
 	
+	bool isValid() const {return numOffs_ > 0; }
+
+
 	/**
 	 * Return average number of hits per seed.
 	 */
@@ -930,8 +914,8 @@ public:
 	/**
 	 * Given an offset index, return the offset that has that index.
 	 */
-	size_t idx2off(size_t off) const {
-		return offIdx2off_[off];
+	size_t idx2off(size_t idx) const {
+		return per_ * idx + off_;
 	}
 	
 	/**
@@ -958,10 +942,19 @@ public:
 		return seedsBuf_[seedoffidx + (fw ? 0: numOffs_)];
 	}
 	
+	const InstantiatedSeed& instantiatedSeed(bool fw, size_t seedoffidx) const {
+		assert_lt(seedoffidx, numOffs_);
+		assert(repOk(NULL));
+		return seedsBuf_[seedoffidx + (fw ? 0: numOffs_)];
+	}
+	
 	/**
 	 * Return the number of different seed offsets possible.
 	 */
 	size_t numOffs() const { return numOffs_; }
+
+	int getOffset() const { return off_; }
+	int getInterval() const { return per_; }
 	
 #ifndef NDEBUG
 	/**
@@ -1143,15 +1136,13 @@ public:
 		if(rankFws_[r]) {
 			fw = true;
 			offidx = rankOffs_[r];
-			assert_lt(offidx, offIdx2off_.size());
-			off = offIdx2off_[offidx];
+			off = idx2off(offidx);
 			seedlen = seqLen_;
 			return hitsFw_[rankOffs_[r]];
 		} else {
 			fw = false;
 			offidx = rankOffs_[r];
-			assert_lt(offidx, offIdx2off_.size());
-			off = offIdx2off_[offidx];
+			off = idx2off(offidx);
 			seedlen = seqLen_;
 			return hitsRc_[rankOffs_[r]];
 		}
@@ -1162,13 +1153,13 @@ public:
 	 * the forward or reverse strand.
 	 */
 	char * seqs(bool fw, size_t i) { 
-		char * base = seqBuf_.ptr();
+		char * base = seqBuf_;
 		if (!fw) base += seqLen_*numOffs_;
 		return base + (i*seqLen_);
 	}
 
 	const char * seqs(bool fw, size_t i) const { 
-		const char * base = seqBuf_.ptr();
+		const char * base = seqBuf_;
 		if (!fw) base += seqLen_*numOffs_;
 		return base + (i*seqLen_);
 	}
@@ -1303,8 +1294,9 @@ protected:
 
 	// As seed hits and edits are added they're sorted into these
 	// containers
-	EList<char>         seqBuf_;      // content of all the seqs, no separators
-	EList<InstantiatedSeed> seedsBuf_; // all the instantiated seeds, both fw and rc
+	char*               seqBuf_;      // not owned, content of all the seqs, no separators
+	InstantiatedSeed*   seedsBuf_;    // not owned, all the instantiated seeds, both fw and rc
+
 	EList<QVal>         hitsFw_;      // hits for forward read
 	EList<QVal>         hitsRc_;      // hits for revcomp read
 	EList<bool>         sortedFw_;    // true iff fw QVal was sorted/ranked
@@ -1323,8 +1315,6 @@ protected:
 	size_t              numRangesRc_; // # ranges added for rc seeds
 	size_t              numEltsRc_;   // # elements added for rc seeds
 
-	EList<uint32_t>     offIdx2off_;// map from offset indexes to offsets from 5' end
-
 	// When the sort routine is called, the seed hits collected so far
 	// are sorted into another set of containers that allow easy access
 	// to hits from the lowest-ranked offset (the one with the fewest
@@ -1337,6 +1327,8 @@ protected:
 	// These fields set once per read
 	size_t              numOffs_;   // # different seed offsets possible
 	uint32_t            seqLen_;    // # length of each seq
+	int		    off_;       // offset into read to start extracting
+	int		    per_;       // interval between seeds
 	
 	EEHit               exactFwHit_; // end-to-end exact hit for fw read
 	EEHit               exactRcHit_; // end-to-end exact hit for rc read
@@ -1347,231 +1339,80 @@ protected:
 	EList<size_t> tmpMedian_; // temporary storage for calculating median
 };
 
+class MultiSeedResults {
+public:
+	MultiSeedResults(
+		uint32_t n_els,            // number of seed elements
+	        const int seed_len,        // search seed length
+	        bool nofw,                 // don't align forward read
+	        bool norc)                 // don't align revcomp read
+ 
+	: _n_sr(n_els)
+	, _srs(new SeedResults[n_els])
+	, _seed_len(seed_len)
+	, _nofw(nofw)
+	, _norc(norc)
+	, _bufOffs(new TBufOffs[n_els])
+	, _seqBuf(NULL),   _seedsBuf(NULL)
+	, _seqBuf_size(0), _seedsBuf_size(0)
+	{}
+
+	~MultiSeedResults() {
+		if (_seedsBuf!=NULL) delete[] _seedsBuf;
+		if (_seqBuf!=NULL) delete[] _seqBuf;
+		delete[] _bufOffs;
+		delete[] _srs;
+	}
+
+	// prevent acidental copies (due to managed pointer)
+	MultiSeedResults(const MultiSeedResults& o) = delete;
+	MultiSeedResults& operator=(const MultiSeedResults& o) = delete;
+
+	uint32_t nSRs() const {return _n_sr;}
+
+	SeedResults &getSR(uint32_t idx) { return _srs[idx];}
+	const SeedResults &getSR(uint32_t idx) const { return _srs[idx];}
+
+	void clearOneSeed(uint32_t idx) {
+		_srs[idx].clear();
+	}
+
+	void clearSeeds() {
+		for (uint32_t i=0; i<_n_sr; i++) _srs[i].clear();
+	}
+
+	// thread-safe on separate indexes
+	void prepareOneSeed(
+		uint32_t idx,              // index in the multi-seed array
+	        size_t off,                // offset into read to start extracting
+	        int per,                   // interval between seeds
+	        const Read* pread);        // read to align
+
+	// Expects prepareOneSeed has been called on all the valid elements
+	size_t instantiateSeeds(const Read* preads[]);
+
+
+private:
+	const uint32_t   _n_sr;
+	SeedResults *    _srs; // array of size n_sr
+	const int        _seed_len;        // search seed length
+	const bool       _nofw;                 // don't align forward read
+	const bool       _norc;                 // don't align revcomp read
+
+	// offsets into _seqBuf and _seedsBuf
+	typedef std::pair<size_t,size_t> TBufOffs;
+	TBufOffs *         _bufOffs; // array of size n_sr
+	// these pointers can be updated during the life of the object
+	char*              _seqBuf;      // content of all the seqs, no separators
+	InstantiatedSeed*  _seedsBuf;    // all the instantiated seeds, both fw and rc
+	size_t             _seqBuf_size;
+	size_t             _seedsBuf_size;
+};
+
 
 // Forward decl
 class Ebwt;
 struct SideLocus;
-
-/**
- * Wrap the search cache with all the relevant objects
- */
-class SeedSearchCache {
-
-public:
-	SeedSearchCache(
-                const char *   rfseq,        // reference sequence close to read seq - content
-		AlignmentCacheIface& cache,  // local cache for seed alignments
-		SeedResults& sr              // holds all the seed hits
-		)
-		: qv()
-		, seq(rfseq)
-		, cachep(&cache)
-		, srp(&sr)
-	{
-	}
-
-	SeedSearchCache()
-		: qv()
-		, seq(NULL)
-		, cachep(NULL)
-		, srp(NULL)
-	{
-	}
-
-	SeedSearchCache& operator=(const SeedSearchCache& other) = default;
-
-	void reset(
-                const char *   rfseq,        // reference sequence close to read seq - content
-		AlignmentCacheIface& cache,  // local cache for seed alignments
-		SeedResults& sr              // holds all the seed hits
-		)
-	{
-		seq = rfseq;
-		cachep = &cache;
-		srp = &sr;
-	}
-
-	/**
-	 * This function is called whenever we start to align a new read or
-	 * read substring.
-	 *
-	 * See AlignmentCacheIface::beginAlign for details
-	 */
-	int beginAlign() 
-	{
-		assert(srp!=NULL);
-		assert(cachep!=NULL);
-		const uint32_t seq_len = srp->seqs_len();
-		int ret = cachep->beginAlign(seq, seq_len, qv);
-		return ret;
-	}
-
-	/**
-         * Called when is finished aligning a read (and so is finished
-         * adding associated reference strings).  Returns a copy of the
-         * final QVal object and resets the alignment state of the
-         * current-read cache.
-         *
-         * Also, if the alignment is cacheable, it commits it to the next
-         * cache up in the cache hierarchy.
-         */
-        void finishAlign() 
-	{ 
-		assert(cachep!=NULL);
-		qv = cachep->finishAlign(); 
-	}
-
-        /**
-         * Add an alignment to the running list of alignments being
-         * compiled for the current read in the local memory buffer.
-         */
-        bool addOnTheFly(
-                const char *   rfseq,     // reference sequence close to read seq - content
-                TIndexOffU topf,            // top in BWT index
-                TIndexOffU botf)            // bot in BWT index
-	{
-		if (!aligning()) return false;
-		assert(srp!=NULL);
-		assert(cachep!=NULL);
-		const uint32_t seq_len = srp->seqs_len();
-		SAKey sak(rfseq, seq_len ASSERT_ONLY(, tmp));
-		return cachep->addOnTheFly(sak, topf, botf);
-	}
-
-	void addToCache(
-		int seedoffidx,          // seed index
-		bool fw                  // is it fw?
-		) {
-		if(qv.valid()) {
-			assert(srp!=NULL);
-			assert(cachep!=NULL);
-			srp->add(
-				qv,   // range of ranges in cache
-				cachep->current(), // cache
-				seedoffidx,     // seed index (from 5' end)
-				fw);   // whether seed is from forward read
-		}
-	}
-
-	/**
-	 * Return true iff we're in the middle of aligning a sequence.
-	 */
-	bool aligning() const { return ((cachep!=NULL) && (cachep->aligning())); }
-
-	bool qvValid() const { return qv.valid();}
-
-	const QVal&          getQv() const {return qv;}
-	const char *         getSeq() const {return seq;}
-	
-
-protected:
-	QVal                 qv;
-	const char*          seq;       // sequence of current seed - content
-
-	AlignmentCacheIface*  cachep;  // local alignment cache for seed alignment
-	SeedResults*          srp;      // // holds all the seed hits
-};
-
-/**
- * Wrap the search cache with all the relevant objects
- */
-class SeedSearchMultiCache {
-
-public:
-	SeedSearchMultiCache(
-		) 
-		: cacheVec()
-	{}
-
-	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		cacheVec.set_alloc(alloc, propagate_alloc);
-	}
-
-	void emplace_back( 
-		AlignmentCacheIface& cache,  // local cache for seed alignments
-		SeedResults& sr,             // holds all the seed hits
-		int seedoffidx,          // seed index
-		bool fw                  // is it fw?
-		)
-	{
-		cacheVec.expand();
-		cacheVec.back().reset(cache, sr, seedoffidx, fw);
-	}
-
-	void emplace_back_noresize( 
-		AlignmentCacheIface& cache,  // local cache for seed alignments
-		SeedResults& sr,             // holds all the seed hits
-		int seedoffidx,          // seed index
-		bool fw                  // is it fw?
-		)
-	{
-		cacheVec.expand_noresize();
-		cacheVec.back().reset(cache, sr, seedoffidx, fw);
-	}
-
-	// Same semantics as std::vector
-	void reserve(size_t new_cap) {
-		cacheVec.reserve(new_cap);
-		// force allocation (lazy, else)
-		cacheVec.expand();
-		cacheVec.clear();
-	}
-
-	size_t size() const {return cacheVec.size(); }
-	void clear() { cacheVec.clear(); }
-	void pop_back() { cacheVec.pop_back(); }
-
-	// Access one of the search caches
-	const SeedSearchCache& operator[](size_t idx) const { return cacheVec[idx].srcache; }
-	SeedSearchCache& operator[](size_t idx) { return cacheVec[idx].srcache; }
-
-	int getSeedOffIdx(size_t idx) const { return cacheVec[idx].seedoffidx; }
-	bool getFw(size_t idx) const { return cacheVec[idx].fw; }
-
-	void addToMainCache(size_t idx) {cacheVec[idx].addToCache();} 
-
-protected:
-	class CacheEl {
-	public:
-		CacheEl(
-			AlignmentCacheIface& cache,  // local cache for seed alignments
-			SeedResults& sr,             // holds all the seed hits
-			const int _seedoffidx,          // seed index
-			const bool _fw                  // is it fw?
-			)
-			: srcache(sr.seqs(_fw,_seedoffidx), cache,sr)
-			, seedoffidx(_seedoffidx)
-			, fw(_fw) {}
-		
-		CacheEl()
-			: srcache()
-			, seedoffidx(0), fw(true) // just to have a default
-			{}
-
-		void reset(
-			AlignmentCacheIface& cache,  // local cache for seed alignments
-			SeedResults& sr,             // holds all the seed hits
-			const int _seedoffidx,          // seed index
-			const bool _fw                  // is it fw?
-			) {
-				const char *   seq = sr.seqs(_fw,_seedoffidx);
-				srcache.reset(seq,cache,sr);
-				seedoffidx = _seedoffidx;
-				fw = _fw;
-			}
-	
-		void addToCache() { srcache.addToCache(seedoffidx,fw);}
-
-		SeedSearchCache     srcache;   // search wrapper
-		int                 seedoffidx; // seed index
-		bool                fw;      // is it fw?
-	};
-
-	EList<CacheEl> cacheVec;
-};
-
-// just an index inside the paramVec
-typedef uint32_t SeedAlignerSearchState;
 
 class SeedAlignerSearchWorkState {
 public:
@@ -1598,6 +1439,10 @@ public:
 
 };
 
+class SeedAlignerSearchState;
+class SeedAlignerSearchParams;
+class SeedAlignerSearchData;
+
 /**
  * Given an index and a seeding scheme, searches for seed hits.
  */
@@ -1608,29 +1453,23 @@ public:
 	/**
 	 * Initialize with index.
 	 */
-	SeedAligner(
-		const Ebwt* ebwtFw_          // BWT index
-	) : ebwtFw(ebwtFw_) {}
+	SeedAligner() {}
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		tmprfdnastr_.set_alloc(alloc, propagate_alloc);
-		tmpdnastr_.set_alloc(alloc, propagate_alloc);
-		mcache_.set_alloc(alloc, propagate_alloc);
-		paramVec_.set_alloc(alloc, propagate_alloc);
-
-		// this is a good time to reserve the space
-                mcache_.reserve(ibatch_size);
-                paramVec_.reserve(ibatch_size);
-
-		// force memory allocation(lazy, else)
-		paramVec_.expand(); paramVec_.clear();
-		// mcache_.reserve is not lazy
 	}
 
-	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		set_alloc(arg.first,arg.second);
+	// Update bufsSize
+	uint32_t computeValidInstantiatedSeeds(const SeedResults& sr);
+
+	// Set buffers needed by searchAllSeeds
+	void setBufs(
+		SeedAlignerSearchParams* paramVec,
+		SeedAlignerSearchData*   dataVec) {
+		paramVec_ = paramVec;
+		dataVec_  = dataVec;
 	}
 	
+	uint32_t getBufsSize() const {return seedsearches_;}
 	/**
 	 * Given a read and a few coordinates that describe a substring of the
 	 * read (or its reverse complement), fill in 'seq' and 'qual' objects
@@ -1647,15 +1486,20 @@ public:
 	 * Iterate through the seeds that cover the read and initiate a
 	 * search for each seed.
 	 */
-	static void instantiateSeeds(
+	static void prepareSeed(
 		const int seed_len,        // search seed length
-		size_t off,                 // offset into read to start extracting
-		int per,                    // interval between seeds
-		const Read& read,           // read to align
-		bool nofw,                  // don't align forward read
-		bool norc,                  // don't align revcomp read
-		SeedResults& sr,            // holds all the seed hits
-		int insts[3]);              // counters
+		size_t off,                // offset into read to start extracting
+		int per,                   // interval between seeds
+		const Read& read,          // read to align
+		SeedResults& sr);          // holds all the seed hits
+
+	static size_t instantiateSeed(
+		char*              seqBuf,      // content of all the seqs, no separators
+		InstantiatedSeed*  seedsBuf,    // all the instantiated seeds, both fw and rc
+		const Read& read,          // read to align
+		bool nofw,                 // don't align forward read
+		bool norc,                 // don't align revcomp read
+		SeedResults& sr);           // holds all the seed hits
 
 	/**
 	 * Iterate through the seeds that cover the read and initiate a
@@ -1664,64 +1508,15 @@ public:
 	 * Return number of batches
 	 */
 	uint32_t searchAllSeedsPrepare(
+		const SeedResults& sr,      // holds all the seed hits
+		const int ftabLen);         // forward index (BWT) value
+
+	void searchAllSeedsDoAll(const Ebwt* ebwtFw);
+	void searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwtFw);
+
+	void searchAllSeedsFinalize(
 		AlignmentCacheIface& cache,  // local cache for seed alignments
 		SeedResults& sr);            // holds all the seed hits
-
-	void searchAllSeedsDoAll();
-	void searchAllSeedsDoBatch(uint32_t ibatch);
-
-	void searchAllSeedsFinalize();
-
-	// Same value as returned by searchAllSeedsPrepare
-	uint32_t getSearchBatches() const {return (mcache_.size()+(ibatch_size-1))/ibatch_size;}
-
-	/**
-	 * Sanity-check a partial alignment produced during oneMmSearch.
-	 */
-	bool sanityPartial(
-		const Ebwt*        ebwtBw, // BWT' index
-		const BTDnaString& seq,
-		size_t             dep,
-		size_t             len,
-		bool               do1mm,
-		TIndexOffU           topfw,
-		TIndexOffU           botfw,
-		TIndexOffU           topbw,
-		TIndexOffU           botbw);
-
-	/**
-	 * Do an exact-matching sweet to establish a lower bound on number of edits
-	 * and to find exact alignments.
-	 */
-	size_t exactSweep(
-		const Read&        read,    // read to align
-		const Scoring&     sc,      // scoring scheme
-		bool               nofw,    // don't align forward read
-		bool               norc,    // don't align revcomp read
-		size_t             mineMax, // don't care about edit bounds > this
-		size_t&            mineFw,  // minimum # edits for forward read
-		size_t&            mineRc,  // minimum # edits for revcomp read
-		bool               repex,   // report 0mm hits?
-		SeedResults&       hits);   // holds all the seed hits (and exact hit)
-
-#if 0
-	/**
-	 * Search for end-to-end alignments with up to 1 mismatch.
-	 */
-	bool oneMmSearch(
-		const Ebwt*        ebwtBw, // BWT' index
-		const Read&        read,   // read to align
-		const Scoring&     sc,     // scoring
-		int64_t            minsc,  // minimum score
-		bool               nofw,   // don't align forward read
-		bool               norc,   // don't align revcomp read
-		bool               repex,  // report 0mm hits?
-		bool               rep1mm, // report 1mm hits?
-		SeedResults&       hits);  // holds all the seed hits (and exact hit)
-#endif
-
-protected:
-	class SeedAlignerSearchParams;
 
 	/**
 	 * Main, recursive implementation of the seed search.
@@ -1729,57 +1524,15 @@ protected:
 	 */
 	template<uint8_t SS_SIZE>
 	static void searchSeedBi(
-		        const Ebwt* ebwt,       // forward index (BWT)
+		        const Ebwt* ebwt,         // forward index (BWT)
         		uint64_t& bwops_,         // Burrows-Wheeler operations
-			const uint8_t nparams, SeedAlignerSearchParams paramVec[]);
+			const uint8_t nparams,    // must be leq SS_SIZE
+			const SeedAlignerSearchParams paramVec[],
+			SeedAlignerSearchData         dataVec[]);
 
-	// helper function
-	static bool startSearchSeedBi(
-		        const Ebwt* ebwt,       // forward index (BWT)
-			SeedAlignerSearchParams &p);
-
-	/**
-	 * Get tloc and bloc ready for the next step.
-	 */
-	static void nextLocsBi(
-	        const Ebwt* ebwt,           // forward index (BWT)
-	        const int seed_step,         // current instantiated seed step
-		SideLocus& tloc,            // top locus
-		SideLocus& bloc,            // bot locus
-		TIndexOffU topf,            // top in BWT
-		TIndexOffU botf);           // bot in BWT
-	
-	static void nextLocsBi(
-	        const Ebwt* ebwt,           // forward index (BWT)
-	        const int seed_step,          // current instantiated seed step
-		SideLocus& tloc,            // top locus
-		SideLocus& bloc,            // bot locus
-		const BwtTopBotFw &bwt)       // The 4 BWT idxs
-	{ nextLocsBi(ebwt, seed_step, tloc, bloc, bwt.topf, bwt.botf); }
-
-#if 0
-	void prefetchNextLocsBi(
-		const InstantiatedSeed& seed, // current instantiated seed
-		TIndexOffU topf,              // top in BWT
-		TIndexOffU botf,              // bot in BWT
-		TIndexOffU topb,              // top in BWT'
-		TIndexOffU botb,              // bot in BWT'
-		int step);                  // step to get ready for
-
-	void prefetchNextLocsBi(
-		const InstantiatedSeed& seed, // current instantiated seed
-		const BwtTopBot &bwt,       // The 4 BWT idxs
-		int step)                   // step to get ready for
-	{ prefetchNextLocsBi(seed, bwt.topf, bwt.botf, bwt.topb, bwt.botb, step); }
-#endif
-
-	const Ebwt*        ebwtFw; // forward index (BWT)
-
-	// Following are set in searchAllSeeds then used by searchSeed()
-	// and other protected members.
+protected:
 	
 	uint64_t bwops_;           // Burrows-Wheeler operations
-	BTDnaString tmprfdnastr_;  // used in reportHit
 
 	/**
  	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.
@@ -1787,13 +1540,79 @@ protected:
  	*       and 32 is too big (cache trashing).
  	**/
 	static constexpr uint8_t ibatch_size = 8;
-	SeedSearchMultiCache mcache_;
-	EList<SeedAlignerSearchParams> paramVec_;
+
+	SeedAlignerSearchParams* paramVec_;      // not owned
+	SeedAlignerSearchData*   dataVec_;       // not owned
+	uint32_t                 seedsearches_;   // valid elements in the above buffers
 
 	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
-	BTDnaString tmpdnastr_;
 };
 
+class MultiSeedAligner {
+
+public:
+	MultiSeedAligner(
+		const Ebwt*       ebwtFw, // forward index (BWT)
+		MultiSeedResults& srs);
+
+	~MultiSeedAligner();
+
+	// prevent accidental copies
+	MultiSeedAligner(const MultiSeedAligner& o) = delete;
+	MultiSeedAligner& operator=(const MultiSeedAligner& o) = delete;
+
+	uint32_t n_els() const {return _srs.nSRs();}
+
+	SeedResults &getSR(uint32_t idx) { return _srs.getSR(idx);}
+	const SeedResults &getSR(uint32_t idx) const { return _srs.getSR(idx);}
+
+	SeedAligner &getAL(uint32_t idx) { return _als[idx];}
+	const SeedAligner &getAL(uint32_t idx) const { return _als[idx];}
+
+	// Update buffers, based on content of _srs
+	void reserveBuffers();
+
+	/**
+	 * Iterate through the seeds that cover the read and initiate a
+	 * search for each seed.
+	 * Assumes reserveBuffers() has been already called.
+	 *
+	 * Return number of batches
+	 */
+	uint32_t prepareSearchAllSeedsOne(uint32_t idx) {
+		return _als[idx].searchAllSeedsPrepare(_srs.getSR(idx), _ftabLen);
+	}
+
+	// Align the Seeds
+	// Assumes all prepareSearchAllSeeds were already called
+	void searchAllSeedsDoAll();
+
+	void searchAllSeedsOneFinalize(
+		uint32_t             idx,      // srs/als index
+		AlignmentCacheIface& cache) {  // local cache for seed alignments
+		_als[idx].searchAllSeedsFinalize(cache, _srs.getSR(idx));
+	}
+
+private:
+	const Ebwt*              _ebwtFw; // forward index (BWT)
+	MultiSeedResults&        _srs;
+	SeedAligner*             _als;
+
+	const int                _ftabLen;
+
+	SeedAlignerSearchParams* _paramVec;      // array of _bufVec_size
+	SeedAlignerSearchData*   _dataVec;       // array of _bufVec_size
+	size_t                   _bufVec_size;
+
+	/**
+ 	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.
+ 	*       2 is too small for prefetch to be fully effective, 4 seems already OK, 
+ 	*       and 32 is too big (cache trashing).
+ 	**/
+	static constexpr uint8_t ibatch_size = 8;
+
+};
+	
 #define INIT_LOCS(top, bot, tloc, bloc, e) { \
 	if(bot - top == 1) { \
 		tloc.initFromRow(top, (e).eh(), (e).ebwt()); \

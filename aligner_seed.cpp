@@ -18,6 +18,7 @@
  */
 
 #include <array>
+#include <execution>
 #include "aligner_cache.h"
 #include "aligner_seed.h"
 #include "search_globals.h"
@@ -77,46 +78,32 @@ Constraint Constraint::editBased(int edits) {
 }
 
 // Input to seachSeedBi
-class SeedAligner::SeedAlignerSearchParams {
+class SeedAlignerSearchParams {
 public:
 	class CacheAndSeed {
 	public:
 		CacheAndSeed()
-		: seq(NULL), n_seed_steps(0)
-		, hasi0(false), fwi0(0), pcache(NULL) {}
+		: seq(NULL), seq_len(0), n_seed_steps(0)  {}
 
 		CacheAndSeed(
-			SeedSearchCache &_cache,         // local seed alignment cache
-			const InstantiatedSeed& _seed,   // current instantiated seed
-		        const Ebwt* ebwtFw 	         // forward index (BWT)
-
-		) : seq(NULL), n_seed_steps(0)
-		, hasi0(false), fwi0(0), pcache(NULL) // just set a default
-		{ reset(_cache,_seed,ebwtFw); }
+			const char *   _seq,             // sequence of the local seed alignment cache
+			const uint32_t _seq_len,         // and its length
+			const InstantiatedSeed& _seed    // current instantiated seed
+		)
+		: seq(NULL), seq_len(0), n_seed_steps(0)  // just set a default
+		{ reset(_seq, _seq_len, _seed); }
 
 		void reset(
-			SeedSearchCache &_cache,         // local seed alignment cache
-			const InstantiatedSeed& _seed,   // current instantiated seed
-		        const Ebwt* ebwtFw  	         // forward index (BWT)
+			const char *   _seq,             // sequence of the local seed alignment cache
+			const uint32_t _seq_len,         // and its length
+			const InstantiatedSeed& _seed    // current instantiated seed
 		)
 		{
-			seq = _cache.getSeq();
+			seq = _seq;
+			if (_seq_len>127) {printf("Unexpected seq_len %i\n",int(seq_len)); throw 1;}
+			seq_len = _seq_len;
+			if (abs(_seed.n_steps)>127) {printf("Unexpected n_seed_steps %i\n",int(_seed.n_steps)); throw 1;}
 			n_seed_steps = _seed.n_steps;
-
-	                constexpr bool ltr = false; // seed_step_min > 0 i.e. n_seed_steps<0
-        	        int off = abs(seed_step_min())-1;
-			int ftabLen = ebwtFw->eh().ftabChars();
-			hasi0 = (ftabLen > 1 && ftabLen <= maxjump());
-			if(hasi0) {
-				if(!ltr) {
-					assert_geq(off+1, ftabLen-1);
-					off = off - ftabLen + 1;
-				}
-				// startSearchSeedBi will need them, start prefetching now
-				fwi0 = ebwtFw->ftabSeqToInt( seq, off, false);
-				ebwtFw->ftabLoHiPrefetch(fwi0);
-			}
-			pcache = &_cache; //  keep track of the big object
 		}
 
 		CacheAndSeed(CacheAndSeed &other) = default;
@@ -133,73 +120,91 @@ public:
 		int maxjump() const {return n_seed_steps;}
 	
 		// Use pointers, so they can be changed 
-		const char *seq;                // sequence os the local seed alignment cache
-		int n_seed_steps;               // steps in the current instantiated seed
-		bool hasi0;
-		TIndexOffU fwi0;                // Idx of fw ftab
-		SeedSearchCache *pcache; //  keep track of the big object
+		const char *seq;
+		uint8_t seq_len;
+		int8_t n_seed_steps;               // steps in the current instantiated seed
 	};
 
-	// create an empty bwt, tloc and bloc, with step=0
+	// create an empty bwt
 	// and constratins from seed, for initial searchSeedBi invocation
 	SeedAlignerSearchParams(
-		SeedSearchCache &cache,         // local seed alignment cache
-		const InstantiatedSeed& seed,   // current instantiated seed
-	        const Ebwt* ebwtFw) 	        // forward index (BWT)
-	: cs(cache, seed, ebwtFw)
-	, step(0)
-	, need_reporting(false)
-	, bwt()
-	, tloc()
-	, bloc()
+		const char *   _seq,             // sequence of the local seed alignment cache
+		const uint32_t _seq_len,         // and its length
+		const InstantiatedSeed& _seed    // current instantiated seed
+	)
+	: cs(_seq,_seq_len,_seed)
 	{}
 
-	// create an empty bwt, tloc and bloc, with step=0
+	// create an empty bwt
 	// and constratins from seed, for initial searchSeedBi invocation
 	SeedAlignerSearchParams()
 	: cs()
-	, step(0)
-	, need_reporting(false)
-	, bwt()
-	, tloc()
-	, bloc()
 	{}
 
 	SeedAlignerSearchParams& operator=(const SeedAlignerSearchParams& other) = default;
 
 	void reset(
-		SeedSearchCache &cache,         // local seed alignment cache
-		const InstantiatedSeed& seed,   // current instantiated seed
-	        const Ebwt* ebwtFw) 	        // forward index (BWT)
+		const char *   _seq,             // sequence of the local seed alignment cache
+		const uint32_t _seq_len,         // and its length
+		const InstantiatedSeed& _seed    // current instantiated seed
+	)
 	{
-	  cs.reset(cache, seed, ebwtFw);
-	  step = 0;
-	  need_reporting = false;
-	  bwt.set(0,0);
-	  tloc.invalidate();
-	  bloc.invalidate();
+	  cs.reset(_seq,_seq_len,_seed);
 	}
 
-	void resetData() {
-	  step = 0;
-	  need_reporting = false;
-	  bwt.set(0,0);
-	  tloc.invalidate();
-	  bloc.invalidate();
-	}
+	// A sub-class for historical reasons
+	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
+};
 
-	void checkCV() const {
+
+class SeedAlignerSearchData {
+public:
+	// create an empty bwt
+	// and constratins from seed, for initial searchSeedBi invocation
+	SeedAlignerSearchData()
+	: bwt()
+	, sak()
+	, need_reporting(false)
+	{}
+
+	SeedAlignerSearchData& operator=(const SeedAlignerSearchData& other) = default;
+
+	void resetData(
+		const char *   seq,            // sequence of the local seed alignment cache
+		const uint8_t seq_len          // and its length
+	) {
+	  bwt.set(0,0);
+	  sak.init(seq, seq_len);
+	  need_reporting = false;
 	}
 
 	void set_reporting() { need_reporting = true; }
 
-	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
-	int step;             // depth into steps[] array, i.e. step_min+step
-	bool need_reporting;
 	BwtTopBotFw bwt;      // The 2 BWT idxs
+	SAKey       sak;      // seed key
+	bool need_reporting;
+};
+
+class SeedAlignerSearchState {
+public:
+
+	SeedAlignerSearchState()
+	: tloc()
+	, bloc()
+	, step(0)
+	{}
+
+	void reset() {
+		tloc.invalidate();
+		bloc.invalidate();
+		step = 0;
+	}
+
 	SideLocus tloc;       // locus for top (perhaps unititialized)
 	SideLocus bloc;       // locus for bot (perhaps unititialized)
+	int step;             // depth into steps[] array, i.e. step_min+step
 };
+
 
 
 //
@@ -212,110 +217,12 @@ public:
  * contains the sequence and quality values.
  */
 
-#if 0
-bool
-Seed::instantiate(
-	const Read& read,
-	const char *seq, // seed read sequence
-	const Scoring& pens,
-	int depth,
-	int seedoffidx,
-	bool fw,
-	InstantiatedSeed& is) const
-{
-	assert(overall != NULL);
-	int seedlen = len;
-	if((int)read.length() < seedlen) {
-		// Shrink seed length to fit read if necessary
-		seedlen = (int)read.length();
-	}
-	assert_gt(seedlen, 0);
-	is.n_steps = seedlen;
-	// Fill in 'steps' and 'zones'
-	//
-	// The 'steps' list indicates which read character should be
-	// incorporated at each step of the search process.  Often we will
-	// simply proceed from one end to the other, in which case the
-	// 'steps' list is ascending or descending.  In some cases (e.g.
-	// the 2mm case), we might want to switch directions at least once
-	// during the search, in which case 'steps' will jump in the
-	// middle.  When an element of the 'steps' list is negative, this
-	// indicates that the next
-	//
-	// The 'zones' list indicates which zone constraint is active at
-	// each step.  Each element of the 'zones' list is a pair; the
-	// first pair element indicates the applicable zone when
-	// considering either mismatch or delete (ref gap) events, while
-	// the second pair element indicates the applicable zone when
-	// considering insertion (read gap) events.  When either pair
-	// element is a negative number, that indicates that we are about
-	// to leave the zone for good, at which point we may need to
-	// evaluate whether we have reached the zone's budget.
-	//
-	switch(type) {
-		case SEED_TYPE_EXACT: {
-			is.step_min = -seedlen;
-			break;
-		}
-		case SEED_TYPE_LEFT_TO_RIGHT: {
-			is.step_min = 1;
-			break;
-		}
-		case SEED_TYPE_RIGHT_TO_LEFT: {
-			is.step_min = -seedlen;
-			break;
-		}
-		case SEED_TYPE_INSIDE_OUT: {
-			fprintf(stderr,"Unsupported SEED_TYPE_INSIDE_OUT\n");
-			throw 1;
-		}
-		default:
-			throw 1;
-	}
-	// Take a sweep through the seed sequence.  Consider where the Ns
-	// occur and how zones are laid out.  Calculate the maximum number
-	// of positions we can jump over initially (e.g. with the ftab) and
-	// perhaps set this function's return value to false, indicating
-	// that the arrangements of Ns prevents the seed from aligning.
-	bool streak = true;
-	is.maxjump = 0;
-	bool ret = true;
-	bool ltr = (is.step_min > 0); // true -> left-to-right
-	for(size_t i = 0; i < seedlen; i++) {
-		const int stepi = is.step_min+i;
-		assert_neq(0, stepi);
-		int off = abs(stepi)-1;
-		int c = seq[off];  assert_range(0, 4, c);
-		if(ltr != (stepi > 0)) // changed direction
-		{
-			streak = false;
-		}
-		if(c == 4) {
-			// cons.canN always false since mms and edit both ==0
-			// Seed disqualified due to arrangement of Ns
-			return false;
-		}
-		if(streak) is.maxjump++;
-	}
-	is.seedoff = depth;
-	is.seedoffidx = seedoffidx;
-	is.fw = fw;
-	is.s = *this;
-	return ret;
-}
-#endif
-
 bool
 InstantiatedSeed::instantiateExact(
 	const int seed_len,
-	const Read& read,
 	const char *seq) // seed read sequence
 {
 	int seedlen = seed_len;
-	if((int)read.length() < seedlen) {
-		// Shrink seed length to fit read if necessary
-		seedlen = (int)read.length();
-	}
 	assert_gt(seedlen, 0);
 	n_steps = seedlen;
 	//step_min = -seedlen;
@@ -357,81 +264,6 @@ Seed::zeroMmSeed(int ln, Seed& pol) {
 	pol.len = ln;
 	pol.type = SEED_TYPE_EXACT;
 }
-
-#if 0
-/**
- * Return a set of 2 seeds encapsulating a half-and-half 1mm strategy.
- */
-void
-Seed::oneMmSeeds(int ln, EList<Seed>& pols, Constraint& oall) {
-	oall.init();
-	// Seed policy 1: left-to-right search
-	pols.expand();
-	pols.back().len = ln;
-	pols.back().type = SEED_TYPE_LEFT_TO_RIGHT;
-	pols.back().zones[0] = Constraint::exact();
-	pols.back().zones[1] = Constraint::mmBased(1);
-	pols.back().zones[2] = Constraint::exact(); // not used
-	pols.back().overall = &oall;
-	// Seed policy 2: right-to-left search
-	pols.expand();
-	pols.back().len = ln;
-	pols.back().type = SEED_TYPE_RIGHT_TO_LEFT;
-	pols.back().zones[0] = Constraint::exact();
-	pols.back().zones[1] = Constraint::mmBased(1);
-	pols.back().zones[1].mmsCeil = 0;
-	pols.back().zones[2] = Constraint::exact(); // not used
-	pols.back().overall = &oall;
-}
-
-/**
- * Return a set of 3 seeds encapsulating search roots for:
- *
- * 1. Starting from the left-hand side and searching toward the
- *    right-hand side allowing 2 mismatches in the right half.
- * 2. Starting from the right-hand side and searching toward the
- *    left-hand side allowing 2 mismatches in the left half.
- * 3. Starting (effectively) from the center and searching out toward
- *    both the left and right-hand sides, allowing one mismatch on
- *    either side.
- *
- * This is not exhaustive.  There are 2 mismatch cases mised; if you
- * imagine the seed as divided into four successive quarters A, B, C
- * and D, the cases we miss are when mismatches occur in A and C or B
- * and D.
- */
-void
-Seed::twoMmSeeds(int ln, EList<Seed>& pols, Constraint& oall) {
-	oall.init();
-	// Seed policy 1: left-to-right search
-	pols.expand();
-	pols.back().len = ln;
-	pols.back().type = SEED_TYPE_LEFT_TO_RIGHT;
-	pols.back().zones[0] = Constraint::exact();
-	pols.back().zones[1] = Constraint::mmBased(2);
-	pols.back().zones[2] = Constraint::exact(); // not used
-	pols.back().overall = &oall;
-	// Seed policy 2: right-to-left search
-	pols.expand();
-	pols.back().len = ln;
-	pols.back().type = SEED_TYPE_RIGHT_TO_LEFT;
-	pols.back().zones[0] = Constraint::exact();
-	pols.back().zones[1] = Constraint::mmBased(2);
-	pols.back().zones[1].mmsCeil = 1; // Must have used at least 1 mismatch
-	pols.back().zones[2] = Constraint::exact(); // not used
-	pols.back().overall = &oall;
-	// Seed policy 3: inside-out search
-	pols.expand();
-	pols.back().len = ln;
-	pols.back().type = SEED_TYPE_INSIDE_OUT;
-	pols.back().zones[0] = Constraint::exact();
-	pols.back().zones[1] = Constraint::mmBased(1);
-	pols.back().zones[1].mmsCeil = 0; // Must have used at least 1 mismatch
-	pols.back().zones[2] = Constraint::mmBased(1);
-	pols.back().zones[2].mmsCeil = 0; // Must have used at least 1 mismatch
-	pols.back().overall = &oall;
-}
-#endif
 
 /**
  * Types of actions that can be taken by the SeedAligner.
@@ -475,15 +307,12 @@ SeedAligner::instantiateSeq(
  *
  * For each seed, instantiate the seed, retracting if necessary.
  */
-void SeedAligner::instantiateSeeds(
+void SeedAligner::prepareSeed(
 	const int seed_len,        // search seed length
 	size_t off,                // offset into read to start extracting
 	int per,                   // interval between seeds
 	const Read& read,          // read to align
-	bool nofw,                 // don't align forward read
-	bool norc,                 // don't align revcomp read
-	SeedResults& sr,           // holds all the seed hits
-	int insts[3])              // counters
+	SeedResults& sr)           // holds all the seed hits
 {
 	assert_gt(read.length(), 0);
 	// Check whether read has too many Ns
@@ -493,11 +322,28 @@ void SeedAligner::instantiateSeeds(
 	if((int)read.length() - (int)off > len) {
 		nseeds += ((int)read.length() - (int)off - len) / per;
 	}
-	insts[0] = insts[1] = insts[2] = 0;
 
 	const int min_len = std::min<int>(len, (int)read.length());
-	sr.reset(off, per, nseeds, min_len);
+	sr.prepare(off, per, nseeds, min_len);
+}
 
+size_t SeedAligner::instantiateSeed(
+	char*              seqBuf,      // content of all the seqs, no separators
+	InstantiatedSeed*  seedsBuf,    // all the instantiated seeds, both fw and rc
+	const Read& read,          // read to align
+	bool nofw,                 // don't align forward read
+	bool norc,                 // don't align revcomp read
+	SeedResults& sr)           // holds all the seed hits
+{
+	int insts[3];
+	insts[0] = insts[1] = insts[2] = 0;
+
+	const int nseeds = sr.numOffs();
+	const int min_len = sr.seqs_len();
+	sr.reset(seqBuf, seedsBuf);
+
+	const int off = sr.getOffset();
+	const int per = sr.getInterval();
 	// For each seed position
 	for(int fwi = 0; fwi < 2; fwi++) {
 		bool fw = (fwi == 0);
@@ -507,7 +353,7 @@ void SeedAligner::instantiateSeeds(
 		}
 		// For each seed position
 		for(int i = 0; i < nseeds; i++) {
-			int depth = i * per + (int)off;
+			int depth = i * per + off;
 			// Extract the seed sequence at this offset
 			// If fw == true, we extract the characters from i*per to
 			// i*(per-1) (exclusive).  If fw == false, 
@@ -521,8 +367,7 @@ void SeedAligner::instantiateSeeds(
 			InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			{
 				if(is.instantiateExact(
-					seed_len,
-					read,
+					min_len,
 					sr.seqs(fw,i)))
 				{
 					// Can we fill this seed hit in from the cache?
@@ -532,6 +377,78 @@ void SeedAligner::instantiateSeeds(
 			}
 		}
 	}
+
+	return insts[0];
+}
+
+void MultiSeedResults::prepareOneSeed(
+		uint32_t idx,              // index in the multi-seed array
+	        size_t off,                // offset into read to start extracting
+	        int per,                   // interval between seeds
+	        const Read* pread)         // read to align
+{
+	SeedAligner::prepareSeed(
+			_seed_len,    // length of a multiseed seed
+			off,          // offset to begin extracting
+			per,          // interval between seeds
+			*pread,       // read to align
+			_srs[idx]);
+}
+
+size_t MultiSeedResults::instantiateSeeds(const Read* preads[])
+{
+	size_t seq_total_size = 0;
+	size_t seeds_total_size = 0;
+
+	for (uint32_t i=0; i<_n_sr; i++) {
+		_bufOffs[i].first  = seq_total_size;
+		_bufOffs[i].second = seeds_total_size;
+		seq_total_size+=_srs[i].getSeqSize();
+		seeds_total_size+=_srs[i].getSeedsSize();
+	}
+
+	if (_seqBuf_size<seq_total_size) {
+		// need more space
+		delete[] _seqBuf;
+		_seqBuf = new char[seq_total_size];
+		_seqBuf_size = seq_total_size;
+	}
+
+	if (_seedsBuf_size<seeds_total_size) {
+		// need more space
+		delete[] _seedsBuf;
+		_seedsBuf = new InstantiatedSeed[seeds_total_size];
+		_seedsBuf_size = seeds_total_size;
+	}
+
+	size_t tries = 0;
+#pragma omp parallel for reduction(+:tries) default(shared) schedule(dynamic,8)
+	for (uint32_t i=0; i<_n_sr; i++) {
+		tries += SeedAligner::instantiateSeed(
+			_seqBuf + _bufOffs[i].first, _seedsBuf + _bufOffs[i].second,
+			*preads[i], _nofw, _norc,
+			_srs[i]);
+	}
+
+	return tries;
+}
+
+uint32_t SeedAligner::computeValidInstantiatedSeeds(
+				const SeedResults& sr)
+ {
+	uint32_t seedsearches = 0;
+	for(int fwi = 0; fwi < 2; fwi++) {
+		const bool fw = (fwi == 0);
+		// For each instantiated seed
+		// start aligning and find list of seeds to search
+		for(size_t i =0; i < sr.numOffs(); i++) {
+			const InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
+			if(is.isValid()) seedsearches++;
+			// else, Cache hit in an across-read cache
+		}
+	}
+	seedsearches_ = seedsearches;
+	return seedsearches;
 }
 
 /**
@@ -545,20 +462,14 @@ void SeedAligner::instantiateSeeds(
  * Return number of batches
  */
 uint32_t SeedAligner::searchAllSeedsPrepare(
-	AlignmentCacheIface& cache,  // local cache for seed alignments
-	SeedResults& sr)             // holds all the seed hits
+	const SeedResults& sr,
+	const int ftabLen)           // forward index (BWT) value
 {
-	assert(ebwtFw != NULL);
-	assert(ebwtFw->isInMemory());
 	assert(sr.repOk(&cache.current()));
-	uint32_t possearches = 0;
 	uint32_t seedsearches = 0;
 
-	SeedSearchMultiCache& mcache = mcache_;
-	auto& paramVec = paramVec_;
-
-	mcache.clear();
-	paramVec.clear();
+	SeedAlignerSearchParams* paramVec = paramVec_;
+	const auto seqs_len = sr.seqs_len();
 
 	// Build the support structures
 	// the order is arbirtrary
@@ -568,673 +479,203 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 		// start aligning and find list of seeds to search
 		for(size_t i =0; i < sr.numOffs(); i++) {
 			assert(sr.repOk(&cache.current()));
-			InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
+			const InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			if(!is.isValid()) {
 				// Cache hit in an across-read cache
 				continue;
 			}
-			mcache.emplace_back(cache, sr, i, fw);
-			const size_t mnr = mcache.size()-1;
-			SeedSearchCache &srcache = mcache[mnr];
+			const char *   seq = sr.seqs(fw,i);
 			{
-				possearches++;
-				{
-					// Set seq and qual appropriately, using the seed sequences
-					// and qualities already installed in SeedResults
 					assert_eq(fw, is.fw);
 					assert_eq(i, (int)is.seedoffidx);
-					paramVec.expand();
-					paramVec.back().reset(srcache, is, ebwtFw);
-					seedsearches++;
-				}
+					paramVec[seedsearches].reset(seq, seqs_len, is);
 			}
+			seedsearches++;
 		} // for i
 	} // for fwi
 	bwops_ = 0;
+	assert_eq(seedsearches_,seedsearches);
+
 	// return number of batches (rounded up)
-	return (mcache.size()+(ibatch_size-1))/ibatch_size;
+	return (seedsearches+(ibatch_size-1))/ibatch_size;
 }
 
-void SeedAligner::searchAllSeedsDoAll()
+inline void SeedAligner::searchAllSeedsDoAll(const Ebwt* ebwtFw)
 {
 	assert(ebwtFw != NULL);
 	assert(ebwtFw->isInMemory());
 
-	SeedSearchMultiCache& mcache = mcache_;
-	auto& paramVec = paramVec_;
+	const SeedAlignerSearchParams* paramVec = paramVec_;
+	SeedAlignerSearchData*         dataVec = dataVec_;
+	const size_t seedsearches = seedsearches_;
 
 	// do the searches in batches
-	for (size_t mnr=0; mnr<mcache.size(); mnr+=ibatch_size) {
-		const size_t ibatch_max = std::min(mnr+ibatch_size,mcache.size());
-		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec[mnr]));
+	for (size_t mnr=0; mnr<seedsearches; mnr+=ibatch_size) {
+		const size_t ibatch_max = std::min(mnr+ibatch_size,seedsearches);
+		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec[mnr]), &(dataVec[mnr]) );
 	} // mnr loop
 
 }
 
-void SeedAligner::searchAllSeedsDoBatch(uint32_t ibatch)
+inline void SeedAligner::searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwtFw)
 {
-	size_t mnr = ibatch*ibatch_size;
-	const size_t ibatch_max = std::min(mnr+ibatch_size,mcache_.size());
+	const size_t mnr = ibatch*ibatch_size;
+	const size_t seedsearches = seedsearches_;
+	const size_t ibatch_max = std::min(mnr+ibatch_size,seedsearches);
 	if (mnr<ibatch_max) {
 		assert(ebwtFw != NULL);
 		assert(ebwtFw->isInMemory());
 
 		// Note: Updates on bwops_ may not be atomi
 		// But a small discrepancy is acceptable, as it is only rarely used diagnostics
-		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec_[mnr]));
+		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec_[mnr]), &(dataVec_[mnr]) );
 	}
 }
 
-void SeedAligner::searchAllSeedsFinalize()
+
+void SeedAligner::searchAllSeedsFinalize(
+	AlignmentCacheIface& cache,  // local cache for seed alignments
+	SeedResults& sr)
 {
 	uint32_t ooms = 0;
 
-	SeedSearchMultiCache& mcache = mcache_;
-	auto& paramVec = paramVec_;
+	const SeedAlignerSearchData* dataVec = dataVec_;
+
+	uint32_t seedsearches = 0;
 
 	// finish aligning and add to SeedResult
-	for (size_t mnr=0; mnr<mcache.size(); mnr++) {
-			SeedSearchCache &srcache = mcache[mnr];
+	for(int fwi = 0; fwi < 2; fwi++) {
+		const bool fw = (fwi == 0);
+		// For each instantiated seed
+		// start aligning and find list of seeds to search
+		for(size_t i =0; i < sr.numOffs(); i++) {
+			const InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
+			if(!is.isValid()) {
+				// Cache hit in an across-read cache
+				continue;
+			}
+			const SeedAlignerSearchData& sdata= dataVec[seedsearches];
+			seedsearches++;
+
+			QVal  qv;
+			const SAKey &sak = sdata.sak;
+
 			// Tell the cache that we've started aligning, so the cache can
 			// expect a series of on-the-fly updates
-			int ret = srcache.beginAlign();
+			int ret = cache.beginAlign(sak);
 			if(ret == -1) {
 				// Out of memory when we tried to add key to map
 				ooms++;
 				continue;
 			}
-			assert(srcache.aligning());
+			assert(cache.aligning());
 			bool success = true;
-			{
-				SeedAlignerSearchParams& p= paramVec[mnr];
-				if ( p.need_reporting ) {
-					// Finished aligning seed
-					const char *seq = p.cs.seq;
-					auto& bwt = p.bwt;
-					bool mysuccess = srcache.addOnTheFly(seq, bwt.topf, bwt.botf);
-					success &= mysuccess;
-				}
+			if ( sdata.need_reporting ) {
+				// Finished aligning seed
+				bool mysuccess = cache.addOnTheFly(sak, sdata.bwt.topf, sdata.bwt.botf);
+				success = mysuccess;
 			}
 			if(!success){
 				// Memory exhausted during copy
 				ooms++;
 				continue;
 			}
-			srcache.finishAlign();
-			assert(!srcache.aligning());
+			qv = cache.finishAlign(); 
+			assert(!cache.aligning());
 
-			mcache.addToMainCache(mnr);
-	} // mnr loop
+			if(qv.valid()) sr.add(qv,i,fw);
+		} // for i
+	} // for fwi
 	if (ooms>0) {
 		std::cerr << "WARNING: searchAllSeeds oom " << ooms << std::endl;
 	}
 }
 
-inline bool SeedAligner::sanityPartial(
-	const Ebwt*        ebwtBw, // BWT' index
-	const BTDnaString& seq,
-	size_t dep,
-	size_t len,
-	bool do1mm,
-	TIndexOffU topfw,
-	TIndexOffU botfw,
-	TIndexOffU topbw,
-	TIndexOffU botbw)
-{
-	tmpdnastr_.clear();
-	for(size_t i = dep; i < len; i++) {
-		tmpdnastr_.append(seq[i]);
-	}
-	TIndexOffU top_fw = 0, bot_fw = 0;
-	ebwtFw->contains(tmpdnastr_, &top_fw, &bot_fw);
-	assert_eq(top_fw, topfw);
-	assert_eq(bot_fw, botfw);
-	if(do1mm && ebwtBw != NULL) {
-		tmpdnastr_.reverse();
-		TIndexOffU top_bw = 0, bot_bw = 0;
-		ebwtBw->contains(tmpdnastr_, &top_bw, &bot_bw);
-		assert_eq(top_bw, topbw);
-		assert_eq(bot_bw, botbw);
-	}
-	return true;
+MultiSeedAligner::MultiSeedAligner(
+		const Ebwt*       ebwtFw, // forward index (BWT)
+		MultiSeedResults& srs)
+ 	: _ebwtFw(ebwtFw)
+	, _srs(srs)
+	, _als(new SeedAligner[srs.nSRs()])
+	, _ftabLen(ebwtFw->eh().ftabChars()) // cache the value
+	,  _paramVec(NULL), _dataVec(NULL)
+	, _bufVec_size(0)
+{}
+
+MultiSeedAligner::~MultiSeedAligner() {
+	if (_dataVec!=NULL) delete[] _dataVec;
+	if (_paramVec!=NULL) delete[] _paramVec;
+	delete[] _als;
 }
 
-inline void exactSweepInit(
-	const Ebwt&        ebwt,
-	const BTDnaString& seq,
-	const int          ftabLen,
-	const size_t       len,
-	size_t            &dep,
-	TIndexOffU        &top, 
-	TIndexOffU        &bot
-	)
+// Update buffer, based on content of _srs
+void MultiSeedAligner::reserveBuffers()
 {
-	top = bot = 0;
+	const uint32_t n_sr = _srs.nSRs();
+	size_t buf_total_size = 0;
 
-	const size_t left = len - dep;
-	assert_gt(left, 0);
-	bool doFtab = ftabLen > 1 && left >= (size_t)ftabLen;
-	if(doFtab) {
-		const size_t endi = len-dep-1;
-		// Does N interfere with use of Ftab?
-		for(size_t i = 0; i < (size_t)ftabLen; i++) {
-			int c = seq[endi-i];
-			if(c > 3) {
-				doFtab = false;
-				break;
-			}
-		}
+	// need to determine how much I actually need
+	// also compute total size first to make sure buffers are big enough
+#pragma omp parallel for reduction(+:buf_total_size) default(shared) schedule(static,8)
+	for (uint32_t i=0; i<n_sr; i++) {
+		// both update and use the size
+		buf_total_size+=_als[i].computeValidInstantiatedSeeds(_srs.getSR(i));
 	}
-	if(doFtab) {
-		// Use ftab
-		ebwt.ftabLoHi(seq.buf(), left - ftabLen, false, top, bot);
-		dep += (size_t)ftabLen;
-	} else {
-		// Use fchr
-		int c = seq[len-dep-1];
-		if(c < 4) {
-			top = ebwt.fchr()[c];
-			bot = ebwt.fchr()[c+1];
-		}
-		dep++;
+
+	if (_bufVec_size<buf_total_size) {
+		// need bigger buffers
+		delete[] _dataVec;
+		delete[] _paramVec;
+		_paramVec = new SeedAlignerSearchParams[buf_total_size];
+		_dataVec = new SeedAlignerSearchData[buf_total_size];
+		_bufVec_size = buf_total_size;
+	}
+
+	// now update buffers in SearchResults
+	buf_total_size = 0;
+	for (uint32_t i=0; i<n_sr; i++) {
+		_als[i].setBufs(
+			_paramVec+buf_total_size,
+			_dataVec+buf_total_size); 
+		buf_total_size+=_als[i].getBufsSize();
 	}
 }
 
-inline void exactSweepMapLF(
-	const Ebwt&        ebwt,
-	const BTDnaString& seq,
-	const size_t       len,
-	const size_t       dep,
-	const SideLocus   &tloc, 
-	const SideLocus  &bloc,
-	TIndexOffU        &top, 
-	TIndexOffU        &bot,
-	uint64_t          &bwops           // Burrows-Wheeler operations
-)
+void MultiSeedAligner::searchAllSeedsDoAll()
 {
-	int c = seq[len-dep-1];
-	if(c > 3) {
-		top = bot = 0;
-	} else {
-		if(bloc.valid()) {
-			bwops += 2;
-			top = ebwt.mapLF(tloc, c);
-			bot = ebwt.mapLF(bloc, c);
-		} else {
-			bwops++;
-			top = ebwt.mapLF1(top, tloc, c);
-			if(top == OFF_MASK) {
-				top = bot = 0;
-			} else {
-				bot = top+1;
-			}
-		}
-	}
-}
+	const Ebwt* ebwtFw= _ebwtFw;
+	const SeedAlignerSearchParams* paramVec = _paramVec;
+	SeedAlignerSearchData*         dataVec  = _dataVec;
 
-
-inline bool exactSweepStep(
-	const Ebwt&        ebwt,    // BWT index
-	const TIndexOffU   top, 
-	const TIndexOffU   bot,
-	const size_t       mineMax, // don't care about edit bounds > this
-	SideLocus         &tloc, 
-	SideLocus         &bloc,
-	size_t            &mineCnt, // minimum # edits
-	size_t            &nedit,
-	bool              &done
-	)
-{
-	if(bot <= top) {
-		nedit++;
-		if(nedit >= mineMax) {
-			mineCnt = nedit;
-			done = true;
-		}
-		return true;
-	}
-	INIT_LOCS(top, bot, tloc, bloc, ebwt);
-	return false;
-}
-
-/**
- * Sweep right-to-left and left-to-right using exact matching.  Remember all
- * the SA ranges encountered along the way.  Report exact matches if there are
- * any.  Calculate a lower bound on the number of edits in an end-to-end
- * alignment.
- */
-inline size_t SeedAligner::exactSweep(
-	const Read&        read,    // read to align
-	const Scoring&     sc,      // scoring scheme
-	bool               nofw,    // don't align forward read
-	bool               norc,    // don't align revcomp read
-	size_t             mineMax, // don't care about edit bounds > this
-	size_t&            mineFw,  // minimum # edits for forward read
-	size_t&            mineRc,  // minimum # edits for revcomp read
-	bool               repex,   // report 0mm hits?
-	SeedResults&       hits)    // holds all the seed hits (and exact hit)
-{
-	const Ebwt&  ebwt = *ebwtFw;
-	assert_gt(mineMax, 0);
-	const size_t len = read.length();
-	const int ftabLen = ebwt.eh().ftabChars();
-
-	size_t nelt = 0;
-
-	std::array<SideLocus,2> tloc;
-	std::array<SideLocus,2> bloc;
-	TIndexOffU top[2] = {0, 0};
-	TIndexOffU bot[2] = {0, 0};
-
-	size_t dep[2] = {0, 0};
-	size_t nedit[2] = {0, 0};
-	bool doInit[2] = {true, true};
-
-	size_t prefetch_count = 0;
-	bool done[2] = {nofw, norc};
-
-	for(int fwi = 0; fwi < 2; fwi++) {
-		if (!done[fwi]) {
-			bool fw = (fwi == 0);
-			const BTDnaString& seq = fw ? read.patFw : read.patRc;
-			assert(!seq.empty());
-			__builtin_prefetch(&(seq[len-1]));
-			if (len>48) __builtin_prefetch(&(seq[len-49])); // HW prefetch prediction assumes forward, help it
-		}
-	}
-
-	while( (dep[0] < len && !done[0]) || (dep[1] < len && !done[1]) ) {
-		prefetch_count++;
-		if (prefetch_count>=48) { // cache line is 64 bytes, but we may skip some deps
-			for(int fwi = 0; fwi < 2; fwi++) {
-				if (dep[fwi] < len && !done[fwi]) {
-					bool fw = (fwi == 0);
-					const BTDnaString& seq = fw ? read.patFw : read.patRc;
-					const size_t left = len-dep[fwi];
-					if (left>48) {
-						__builtin_prefetch(&(seq[left-49])); // HW prefetch prediction assumes forward, help it
-					}
-				}
-			}
-			prefetch_count=0;
-		}
-		// by doing both fw in the internal loop, I give the prefetch in exactSweepStep to be effective
-		for(int fwi = 0; fwi < 2; fwi++) {
-			if (dep[fwi] < len && !done[fwi]) {
-				bool fw = (fwi == 0);
-				const BTDnaString& seq = fw ? read.patFw : read.patRc;
-
-				if (doInit[fwi]) {
-					exactSweepInit(ebwt, seq, ftabLen, len,            // in
-							dep[fwi], top[fwi], bot[fwi]);          // out
-					if ( exactSweepStep(ebwt, top[fwi], bot[fwi], mineMax,
-							tloc[fwi], bloc[fwi],
-							fw ? mineFw : mineRc,
-							nedit[fwi], done[fwi]) ) {
-						continue;
-					}
-					doInit[fwi]=false;
-				}
-
-				if (dep[fwi]< len) {
-					exactSweepMapLF(ebwt, seq, len, dep[fwi], tloc[fwi], bloc[fwi],
-							top[fwi], bot[fwi], bwops_);
-
-					if ( exactSweepStep(ebwt, top[fwi], bot[fwi], mineMax,
-								tloc[fwi], bloc[fwi],
-								fw ? mineFw : mineRc,
-								nedit[fwi], done[fwi]) ) {
-						doInit[fwi]=true;
-					}
-					dep[fwi]++;
-				}
-			}
-		}
-	}
-
-	for(int fwi = 0; fwi < 2; fwi++) {
-		if( (!done[fwi]) && (dep[fwi] >= len) ) {
-			const bool fw = (fwi == 0);
-
-			// Set the minimum # edits
-			if(fw) { mineFw = nedit[fwi]; } else { mineRc = nedit[fwi]; }
-			// Done
-			if(nedit[fwi] == 0 && bot[fwi] > top[fwi]) {
-				if(repex) {
-					// This is an exact hit
-					int64_t score = len * sc.match();
-					if(fw) {
-						hits.addExactEeFw(top[fwi], bot[fwi], NULL, NULL, fw, score);
-						assert(ebwt.contains(fw ? read.patFw : read.patRc, NULL, NULL));
-					} else {
-						hits.addExactEeRc(top[fwi], bot[fwi], NULL, NULL, fw, score);
-						assert(ebwt.contains(fw ? read.patFw : read.patRc, NULL, NULL));
-					}
-				}
-				nelt += (bot[fwi] - top[fwi]);
-			}
-		}
-	}
-	return nelt;
-}
-
-#if 0
-/**
- * Search for end-to-end exact hit for read.  Return true iff one is found.
- */
-bool SeedAligner::oneMmSearch(
-	const Ebwt*        ebwtFw, // BWT index
-	const Ebwt*        ebwtBw, // BWT' index
-	const Read&        read,   // read to align
-	const Scoring&     sc,     // scoring
-	int64_t            minsc,  // minimum score
-	bool               nofw,   // don't align forward read
-	bool               norc,   // don't align revcomp read
-	bool               repex,  // report 0mm hits?
-	bool               rep1mm, // report 1mm hits?
-	SeedResults&       hits)   // holds all the seed hits (and exact hit)
-{
-	assert(!rep1mm || ebwtBw != NULL);
-	const size_t len = read.length();
-	int nceil = sc.nCeil.f<int>((double)len);
-	size_t ns = read.ns();
-	if(ns > 1) {
-		// Can't align this with <= 1 mismatches
-		return false;
-	} else if(ns == 1 && !rep1mm) {
-		// Can't align this with 0 mismatches
-		return false;
-	}
-	assert_geq(len, 2);
-	assert(!rep1mm || ebwtBw->eh().ftabChars() == ebwtFw->eh().ftabChars());
-#ifndef NDEBUG
-	if(ebwtBw != NULL) {
-		for(int i = 0; i < 4; i++) {
-			assert_eq(ebwtBw->fchr()[i], ebwtFw->fchr()[i]);
-		}
-	}
+	// do the searches in batches
+	const uint64_t total_els  = _bufVec_size;
+	const uint32_t total_batches = (total_els+(ibatch_size-1))/ibatch_size; // round up
+#ifdef FORCE_ALL_OMP
+#pragma omp parallel for
+	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
+#else
+	std::for_each_n(std::execution::par_unseq,
+		thrust::counting_iterator(0), total_batches,
+		[ebwtFw,paramVec,dataVec,total_els](uint32_t gbatch) mutable {
 #endif
-	size_t halfFw = len >> 1;
-	size_t halfBw = len >> 1;
-	if((len & 1) != 0) {
-		halfBw++;
-	}
-	assert_geq(halfFw, 1);
-	assert_geq(halfBw, 1);
-	SideLocus tloc, bloc;
-	TIndexOffU t[4], b[4];   // dest BW ranges for BWT
-	t[0] = t[1] = t[2] = t[3] = 0;
-	b[0] = b[1] = b[2] = b[3] = 0;
-	TIndexOffU tp[4], bp[4]; // dest BW ranges for BWT'
-	tp[0] = tp[1] = tp[2] = tp[3] = 0;
-	bp[0] = bp[1] = bp[2] = bp[3] = 0;
-	TIndexOffU top = 0, bot = 0, topp = 0, botp = 0;
-	// Align fw read / rc read
-	bool results = false;
-	for(int fwi = 0; fwi < 2; fwi++) {
-		bool fw = (fwi == 0);
-		if( fw && nofw) continue;
-		if(!fw && norc) continue;
-		// Align going right-to-left, left-to-right
-		int lim = rep1mm ? 2 : 1;
-		for(int ebwtfwi = 0; ebwtfwi < lim; ebwtfwi++) {
-			bool ebwtfw = (ebwtfwi == 0);
-			const Ebwt* ebwt  = (ebwtfw ? ebwtFw : ebwtBw);
-			const Ebwt* ebwtp = (ebwtfw ? ebwtBw : ebwtFw);
-			assert(rep1mm || ebwt->fw());
-			const BTDnaString& seq =
-				(fw ? (ebwtfw ? read.patFw : read.patFwRev) :
-				      (ebwtfw ? read.patRc : read.patRcRev));
-			assert(!seq.empty());
-			const BTString& qual =
-				(fw ? (ebwtfw ? read.qual    : read.qualRev) :
-				      (ebwtfw ? read.qualRev : read.qual));
-			int ftabLen = ebwt->eh().ftabChars();
-			size_t nea = ebwtfw ? halfFw : halfBw;
-			// Check if there's an N in the near portion
-			bool skip = false;
-			for(size_t dep = 0; dep < nea; dep++) {
-				if(seq[len-dep-1] > 3) {
-					skip = true;
-					break;
-				}
-			}
-			if(skip) {
-				continue;
-			}
-			size_t dep = 0;
-			// Align near half
-			if(ftabLen > 1 && (size_t)ftabLen <= nea) {
-				// Use ftab to jump partway into near half
-				bool rev = !ebwtfw;
-				ebwt->ftabLoHi(seq.buf(), len - ftabLen, rev, top, bot);
-				if(rep1mm) {
-					ebwtp->ftabLoHi(seq.buf(), len - ftabLen, rev, topp, botp);
-					assert_eq(bot - top, botp - topp);
-				}
-				if(bot - top == 0) {
-					continue;
-				}
-				int c = seq[len - ftabLen];
-				t[c] = top; b[c] = bot;
-				tp[c] = topp; bp[c] = botp;
-				dep = ftabLen;
-				// initialize tloc, bloc??
-			} else {
-				// Use fchr to jump in by 1 pos
-				int c = seq[len-1];
-				assert_range(0, 3, c);
-				top = topp = tp[c] = ebwt->fchr()[c];
-				bot = botp = bp[c] = ebwt->fchr()[c+1];
-				if(bot - top == 0) {
-					continue;
-				}
-				dep = 1;
-				// initialize tloc, bloc??
-			}
-			INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-			assert(sanityPartial(ebwt, ebwtp, seq, len-dep, len, rep1mm, top, bot, topp, botp));
-			bool do_continue = false;
-			for(; dep < nea; dep++) {
-				assert_lt(dep, len);
-				int rdc = seq[len - dep - 1];
-				tp[0] = tp[1] = tp[2] = tp[3] = topp;
-				bp[0] = bp[1] = bp[2] = bp[3] = botp;
-				if(bloc.valid()) {
-					bwops_++;
-					t[0] = t[1] = t[2] = t[3] = b[0] = b[1] = b[2] = b[3] = 0;
-					ebwt->mapBiLFEx(tloc, bloc, t, b, tp, bp);
-					SANITY_CHECK_4TUP(t, b, tp, bp);
-					top = t[rdc]; bot = b[rdc];
-					if(bot <= top) {
-						do_continue = true;
-						break;
-					}
-					topp = tp[rdc]; botp = bp[rdc];
-					assert(!rep1mm || bot - top == botp - topp);
-				} else {
-					assert_eq(bot, top+1);
-					assert(!rep1mm || botp == topp+1);
-					bwops_++;
-					top = ebwt->mapLF1(top, tloc, rdc);
-					if(top == OFF_MASK) {
-						do_continue = true;
-						break;
-					}
-					bot = top + 1;
-					t[rdc] = top; b[rdc] = bot;
-					tp[rdc] = topp; bp[rdc] = botp;
-					assert(!rep1mm || b[rdc] - t[rdc] == bp[rdc] - tp[rdc]);
-					// topp/botp stay the same
-				}
-				INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-				assert(sanityPartial(ebwt, ebwtp, seq, len - dep - 1, len, rep1mm, top, bot, topp, botp));
-			}
-			if(do_continue) {
-				continue;
-			}
-			// Align far half
-			for(; dep < len; dep++) {
-				int rdc = seq[len-dep-1];
-				int quc = qual[len-dep-1];
-				if(rdc > 3 && nceil == 0) {
-					break;
-				}
-				tp[0] = tp[1] = tp[2] = tp[3] = topp;
-				bp[0] = bp[1] = bp[2] = bp[3] = botp;
-				int clo = 0, chi = 3;
-				bool match = true;
-				if(bloc.valid()) {
-					bwops_++;
-					t[0] = t[1] = t[2] = t[3] = b[0] = b[1] = b[2] = b[3] = 0;
-					ebwt->mapBiLFEx(tloc, bloc, t, b, tp, bp);
-					SANITY_CHECK_4TUP(t, b, tp, bp);
-					match = rdc < 4;
-					top = t[rdc]; bot = b[rdc];
-					topp = tp[rdc]; botp = bp[rdc];
-				} else {
-					assert_eq(bot, top+1);
-					assert(!rep1mm || botp == topp+1);
-					bwops_++;
-					clo = ebwt->mapLF1(top, tloc);
-					match = (clo == rdc);
-					assert_range(-1, 3, clo);
-					if(clo < 0) {
-						break; // Hit the $
-					} else {
-						t[clo] = top;
-						b[clo] = bot = top + 1;
-					}
-					bp[clo] = botp;
-					tp[clo] = topp;
-					assert(!rep1mm || bot - top == botp - topp);
-					assert(!rep1mm || b[clo] - t[clo] == bp[clo] - tp[clo]);
-					chi = clo;
-				}
-				//assert(sanityPartial(ebwt, ebwtp, seq, len - dep - 1, len, rep1mm, top, bot, topp, botp));
-				if(rep1mm && (ns == 0 || rdc > 3)) {
-					for(int j = clo; j <= chi; j++) {
-						if(j == rdc || b[j] == t[j]) {
-							// Either matches read or isn't a possibility
-							continue;
-						}
-						// Potential mismatch - next, try
-						size_t depm = dep + 1;
-						TIndexOffU topm = t[j], botm = b[j];
-						TIndexOffU topmp = tp[j], botmp = bp[j];
-						assert_eq(botm - topm, botmp - topmp);
-						TIndexOffU tm[4], bm[4];   // dest BW ranges for BWT
-						tm[0] = t[0]; tm[1] = t[1];
-						tm[2] = t[2]; tm[3] = t[3];
-						bm[0] = b[0]; bm[1] = t[1];
-						bm[2] = b[2]; bm[3] = t[3];
-						TIndexOffU tmp[4], bmp[4]; // dest BW ranges for BWT'
-						tmp[0] = tp[0]; tmp[1] = tp[1];
-						tmp[2] = tp[2]; tmp[3] = tp[3];
-						bmp[0] = bp[0]; bmp[1] = tp[1];
-						bmp[2] = bp[2]; bmp[3] = tp[3];
-						SideLocus tlocm, blocm;
-						INIT_LOCS(topm, botm, tlocm, blocm, *ebwt);
-						for(; depm < len; depm++) {
-							int rdcm = seq[len - depm - 1];
-							tmp[0] = tmp[1] = tmp[2] = tmp[3] = topmp;
-							bmp[0] = bmp[1] = bmp[2] = bmp[3] = botmp;
-							if(blocm.valid()) {
-								bwops_++;
-								tm[0] = tm[1] = tm[2] = tm[3] =
-								bm[0] = bm[1] = bm[2] = bm[3] = 0;
-								ebwt->mapBiLFEx(tlocm, blocm, tm, bm, tmp, bmp);
-								SANITY_CHECK_4TUP(tm, bm, tmp, bmp);
-								topm = tm[rdcm]; botm = bm[rdcm];
-								topmp = tmp[rdcm]; botmp = bmp[rdcm];
-								if(botm <= topm) {
-									break;
-								}
-							} else {
-								assert_eq(botm, topm+1);
-								assert_eq(botmp, topmp+1);
-								bwops_++;
-								topm = ebwt->mapLF1(topm, tlocm, rdcm);
-								if(topm == OFF_MASK) {
-									break;
-								}
-								botm = topm + 1;
-								// topp/botp stay the same
-							}
-							INIT_LOCS(topm, botm, tlocm, blocm, *ebwt);
-						}
-						if(depm == len) {
-							// Success; this is a 1MM hit
-							size_t off5p = dep;  // offset from 5' end of read
-							size_t offstr = dep; // offset into patFw/patRc
-							if(fw == ebwtfw) {
-								off5p = len - off5p - 1;
-							}
-							if(!ebwtfw) {
-								offstr = len - offstr - 1;
-							}
-							Edit e((uint32_t)off5p, j, rdc, EDIT_TYPE_MM, false);
-							results = true;
-							int64_t score = (len - 1) * sc.match();
-							int pen = sc.score(rdc, (int)(1 << j), quc - 33);
-							score += pen;
-							bool valid = score >= minsc;
-							if(valid) { // Note: Should be always valid, but needs to prove it
-								TIndexOffU toprep = ebwtfw ? topm : topmp;
-								TIndexOffU botrep = ebwtfw ? botm : botmp;
-								assert_eq(toprep, toptmp);
-								assert_eq(botrep, bottmp);
-								hits.add1mmEe(toprep, botrep, &e, NULL, fw, score);
-							}
-						}
-					}
-				}
-				if(bot > top && match) {
-					assert_lt(rdc, 4);
-					if(dep == len-1) {
-						// Success; this is an exact hit
-						if(ebwtfw && repex) {
-							if(fw) {
-								results = true;
-								int64_t score = len * sc.match();
-								hits.addExactEeFw(
-									ebwtfw ? top : topp,
-									ebwtfw ? bot : botp,
-									NULL, NULL, fw, score);
-								assert(ebwtFw->contains(seq, NULL, NULL));
-							} else {
-								results = true;
-								int64_t score = len * sc.match();
-								hits.addExactEeRc(
-									ebwtfw ? top : topp,
-									ebwtfw ? bot : botp,
-									NULL, NULL, fw, score);
-								assert(ebwtFw->contains(seq, NULL, NULL));
-							}
-						}
-						break; // End of far loop
-					} else {
-						INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-						assert(sanityPartial(ebwt, ebwtp, seq, len - dep - 1, len, rep1mm, top, bot, topp, botp));
-					}
-				} else {
-					break; // End of far loop
-				}
-			} // for(; dep < len; dep++)
-		} // for(int ebwtfw = 0; ebwtfw < 2; ebwtfw++)
-	} // for(int fw = 0; fw < 2; fw++)
-	return results;
-}
+		const size_t start_el = gbatch*ibatch_size;
+		size_t end_el = start_el+ibatch_size;
+		if (end_el>total_els) end_el = total_els;
+		uint64_t bwops; // just ignore the bwops for now, keep it local
+		SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(paramVec[start_el]), &(dataVec[start_el]));
+	} // for gbatch
+#ifndef FORCE_ALL_OMP
+	); // for_each
 #endif
+}
+
 
 /**
  * Get tloc, bloc ready for the next step.  If the new range is under
  * the ceiling.
  */
-inline void
-SeedAligner::nextLocsBi(
-        const Ebwt* ebwt,             // forward index (BWT)
-	const int seed_step,          // current instantiated seed step
+inline void nextLocsBi(
+	const Ebwt* ebwt,       // forward index (BWT)
 	SideLocus& tloc,              // top locus
 	SideLocus& bloc,              // bot locus
 	TIndexOffU topf,              // top in BWT
@@ -1259,122 +700,55 @@ SeedAligner::nextLocsBi(
 }
 
 // return true, if we are already done
-bool
-SeedAligner::startSearchSeedBi(
-                        const Ebwt* ebwt,       // forward index (BWT)
-			SeedAligner::SeedAlignerSearchParams &p)
+inline bool startSearchSeedBi(
+	const Ebwt* ebwt,       // forward index (BWT)
+	const SeedAlignerSearchParams &p,
+	SeedAlignerSearchState &sstate,
+	SeedAlignerSearchData  &sdata)
 {
-	const char *seq = p.cs.seq;
-	const int n_seed_steps = p.cs.n_seed_steps;
 
-	assert_gt(n_seed_steps, 0);
-	if(p.step == n_seed_steps) {
-		return true;
-	}
-	if(p.step == 0) {
+	assert_eq(sstate.step, 0);
+	assert_gt(p.cs.n_seed_steps, 0);
+	{
+		const char *seq = p.cs.seq;
 		// Just starting
-		assert(p.prevEdit == NULL);
-		assert(!p.tloc.valid());
-		assert(!p.bloc.valid());
+		assert(!sstate.tloc.valid());
+		assert(!sstate.bloc.valid());
 		const int seed_step_min = p.cs.seed_step_min();
 		int off = abs(seed_step_min)-1;
 		// Check whether/how far we can jump using ftab or fchr
 		int ftabLen = ebwt->eh().ftabChars();
-		if(p.cs.hasi0) { //if(ftabLen > 1 && ftabLen <= p.cs.maxjump)
-			ebwt->ftabLoHi(p.cs.fwi0, p.bwt.topf, p.bwt.botf);
-			if(p.bwt.botf - p.bwt.topf == 0) return true;
-			p.step += ftabLen;
+		if (ftabLen > 1 && ftabLen <= p.cs.maxjump()) {
+			TIndexOffU fwi0 = Ebwt::ftabSeqToInt(ftabLen, true, seq, off - ftabLen + 1, false);
+			ebwt->ftabLoHi(fwi0, sdata.bwt.topf, sdata.bwt.botf);
+			if(sdata.bwt.botf - sdata.bwt.topf == 0) return true;
+			sstate.step += ftabLen;
 		} else if(p.cs.maxjump() > 0) {
 			// Use fchr
-			int c = seq[off];
+			const int c = seq[off];
 			assert_range(0, 3, c);
-			p.bwt.topf = ebwt->fchr()[c];
-			p.bwt.botf = ebwt->fchr()[c+1];
-			if(p.bwt.botf - p.bwt.topf == 0) return true;
-			p.step++;
+			sdata.bwt.topf = ebwt->fchr()[c];
+			sdata.bwt.botf = ebwt->fchr()[c+1];
+			if(sdata.bwt.botf - sdata.bwt.topf == 0) return true;
+			sstate.step++;
 		} else {
 			assert_eq(0, p.cs.maxjump());
-			p.bwt.topf = 0;
-			p.bwt.botf = ebwt->fchr()[4];
+			sdata.bwt.topf = 0;
+			sdata.bwt.botf = ebwt->fchr()[4];
 		}
-		if(p.step == n_seed_steps) {
+		if(sstate.step == p.cs.n_seed_steps) {
 			return true;
 		}
-		nextLocsBi(ebwt, seed_step_min+p.step, p.tloc, p.bloc, p.bwt);
-		assert(p.tloc.valid());
-	} else assert(p.prevEdit != NULL);
-	assert(p.tloc.valid());
-	assert(p.bwt.botf - p.bwt.topf == 1 ||  p.bloc.valid());
-	assert(p.bwt.botf - p.bwt.topf > 1  || !p.bloc.valid());
-	assert_geq(p.step, 0);
+		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
+		assert(sstate.tloc.valid());
+	} 
+	assert(sstate.tloc.valid());
+	assert(sdata.bwt.botf - sdata.bwt.topf == 1 ||  sstate.bloc.valid());
+	assert(sdata.bwt.botf - sdata.bwt.topf > 1  || !sstate.bloc.valid());
+	assert_geq(sstate.step, 0);
 
 	return false;
 }
-
-class SeedAlignerSearchSave {
-public:
-	SeedAlignerSearchSave(
-		Constraint &cons, Constraint &ovCons,
-		SideLocus &tloc, SideLocus &bloc)
-	: orgCons(cons), orgOvCons(ovCons)
-	, orgTloc(tloc), orgBloc(bloc)
-	, oldCons(cons), oldOvCons(ovCons)
-	, oldTloc(tloc), oldBloc(bloc)
-	{}
-
-	~SeedAlignerSearchSave() {
-		orgCons = oldCons; orgOvCons = oldOvCons;
-		orgTloc = oldTloc; orgBloc = oldBloc;
-	}
-
-private:
-	// reference to the original variables
-	Constraint &orgCons;
-	Constraint &orgOvCons;
-	SideLocus &orgTloc;
-	SideLocus &orgBloc;
-
-	// copy of the originals
-	const Constraint oldCons;
-	const Constraint oldOvCons;
-	const SideLocus oldTloc;
-	const SideLocus oldBloc;
-};
-
-#if 0
-// State used for recursion
-class SeedAlignerSearchRecState {
-public:
-	SeedAlignerSearchRecState(
-			int j,
-			int c,
-			const SeedAlignerSearchState &sstate,
-			DoublyLinkedList<Edit> *prevEdit)
-	: bwt(sstate.tf[j], sstate.bf[j], sstate.tb[j], sstate.bb[j])
-	, edit(sstate.off, j, c, EDIT_TYPE_MM, false)
-	, editl()
-	, _prevEdit(prevEdit)
-	{
-		assert(_prevEdit == NULL || _prevEdit->next == NULL);
-		editl.payload = edit;
-		if(_prevEdit != NULL) {
-			_prevEdit->next = &editl;
-			editl.prev = _prevEdit;
-		}
-		assert(editl.next == NULL);
-	}
-
-	~SeedAlignerSearchRecState() {
-		if(_prevEdit != NULL) _prevEdit->next = NULL;
-	}
-
-	BwtTopBot bwt;
-	Edit edit;
-	DoublyLinkedList<Edit> editl;
-private:
-	DoublyLinkedList<Edit> *_prevEdit;
-};
-#endif
 
 /**
  * Given a seed, search.  Assumes zone 0 = no backtracking.
@@ -1388,31 +762,35 @@ void
 SeedAligner::searchSeedBi(
                         const Ebwt* ebwt,       // forward index (BWT)
                         uint64_t& bwops_,         // Burrows-Wheeler operations
-                        const uint8_t nparams, SeedAlignerSearchParams paramVec[])
+                        const uint8_t nparams,
+			const SeedAlignerSearchParams paramVec[],
+			SeedAlignerSearchData dataVec[])
 {
+	uint8_t idxs[SS_SIZE]; // indexes into sstateVec and paramVec
 	SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
 	assert(nparams<=SS_SIZE);
 
-	uint32_t nleft = nparams; // will keep track of how many are not done yet
+	uint8_t nleft = nparams; // will keep track of how many are not done yet
 
 	{
 	   uint8_t n=0;
            uint8_t iparam = 0; // iparam and n may diverge, if some are done at init stage
 	   while (n<nleft) {
-		SeedAlignerSearchParams& p= paramVec[iparam];
-		p.resetData();
-		sstateVec[n] = iparam;
+		const SeedAlignerSearchParams& p = paramVec[iparam];
+		SeedAlignerSearchData&   sdata   = dataVec[iparam];
+		SeedAlignerSearchState&  sstate  = sstateVec[iparam];
+		sdata.resetData(p.cs.seq, p.cs.seq_len);
+		sstate.reset();
+		idxs[n] = iparam;
 		iparam+=1;
-		const bool done = startSearchSeedBi(ebwt, p);
+		const bool done = startSearchSeedBi(ebwt, p, sstate, sdata);
 		if(done) {
-		        if(p.step == (int)p.cs.n_seed_steps) {
+		        if(sstate.step == (int)p.cs.n_seed_steps) {
                 		// Finished aligning seed
-				p.checkCV();
-				p.set_reporting();
+				sdata.set_reporting();
 			}
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) sstateVec[n] = sstateVec[nleft];
 		} else {
 			n+=1;
 		}
@@ -1429,52 +807,55 @@ SeedAligner::searchSeedBi(
 	   uint8_t n=0;
            // logically a for (uint32_t n=0; n<nleft; n++) but with nleft potentially changing
 	   while (n<nleft) {
-		const uint8_t iparam = sstateVec[n];
+		const uint8_t iparam = idxs[n];
 
-		SeedAlignerSearchParams& p= paramVec[iparam];
+		const SeedAlignerSearchParams& p = paramVec[iparam];
+		SeedAlignerSearchData&   sdata   = dataVec[iparam];
+		SeedAlignerSearchState&  sstate  = sstateVec[iparam];
+
 		const int n_seed_steps = p.cs.n_seed_steps;
-		if (p.step >= (int) n_seed_steps) {
+		if (sstate.step >= (int) n_seed_steps) {
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) sstateVec[n] = sstateVec[nleft];
+			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
-		const int seed_step_min = p.cs.seed_step_min();
-		size_t i = p.step; // call the stepIdx i for historical reasons
-		p.step++; // get ready for the next iteration
 
+		assert_gt(sdata.bwt.botf, sdata.bwt.topf);
+		assert(sdata.bwt.botf - sdata.bwt.topf == 1 ||  sstate.bloc.valid());
+		assert(sdata.bwt.botf - sdata.bwt.topf > 1  || !sstate.bloc.valid());
+		assert(sstate.tloc.valid());
+
+		const int seed_step_min = p.cs.seed_step_min();
 		const char *seq = p.cs.seq;
 
-		assert_gt(p.bwt.botf, p.bwt.topf);
-		assert(p.bwt.botf - p.bwt.topf == 1 ||  p.bloc.valid());
-		assert(p.bwt.botf - p.bwt.topf > 1  || !p.bloc.valid());
-		assert(p.tloc.valid());
-		SeedAlignerSearchWorkState wstate(seed_step_min+i);
-		__builtin_prefetch(&(seq[wstate.off]));
-		if(p.bloc.valid()) {
+		SeedAlignerSearchWorkState wstate(seed_step_min+sstate.step);
+		sstate.step++; // get ready for the next iteration
+
+		if(sstate.bloc.valid()) {
 			// Range delimited by tloc/bloc has size >1.  If size == 1,
 			// we use a simpler query (see if(!bloc.valid()) blocks below)
 			bwops++;
-			ebwt->mapBiLFEx(p.tloc, p.bloc, wstate.t, wstate.b);
+			ebwt->mapBiLFEx(sstate.tloc, sstate.bloc, wstate.t, wstate.b);
 		}
 		int c = seq[wstate.off];  assert_range(0, 4, c);
 		//
 		if(c == 4) { // couldn't handle the N
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) sstateVec[n] = sstateVec[nleft];
+			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
-		if(!p.bloc.valid()) {
+		if(!sstate.bloc.valid()) {
 			assert(wstate.bp[c] == wstate.tp[c]+1);
 			// Range delimited by tloc/bloc has size 1
 			bwops++;
-			const TIndexOffU ntop = p.bwt.topf;
-			wstate.t[c] = ebwt->mapLF1(ntop, p.tloc, c);
+			const TIndexOffU ntop = sdata.bwt.topf;
+			wstate.t[c] = ebwt->mapLF1(ntop, sstate.tloc, c);
 			if(wstate.t[c] == OFF_MASK) {
 				// done with this, swap with last and reduce nleft
 				nleft-=1;
-				if (n<nleft) sstateVec[n] = sstateVec[nleft];
+				if (n<nleft) idxs[n] = idxs[nleft];
 				continue;
 			}
 			assert_geq(wstate.t[c], ebwt->fchr()[c]);
@@ -1485,19 +866,18 @@ SeedAligner::searchSeedBi(
 		if(wstate.b[c] == wstate.t[c]) {
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) sstateVec[n] = sstateVec[nleft];
+			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
-		p.bwt.set(wstate.t[c], wstate.b[c]);
-		if(i+1 == n_seed_steps) {
-			p.checkCV();
-			p.set_reporting();
+		sdata.bwt.set(wstate.t[c], wstate.b[c]);
+		if(sstate.step == n_seed_steps) {
+			sdata.set_reporting();
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
-			if (n<nleft) sstateVec[n] = sstateVec[nleft];
+			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
-		nextLocsBi(ebwt, seed_step_min+i+1, p.tloc, p.bloc, p.bwt);
+		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
 		// not done, move to the next element
 		n+=1;
 	   } // while n
