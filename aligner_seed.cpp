@@ -649,17 +649,18 @@ void MultiSeedAligner::searchAllSeedsDoAll()
 
 	// do the searches in batches
 	const uint64_t total_els  = _bufVec_size;
-	const uint64_t total_batches = (total_els+(ibatch_size-1))/ibatch_size; // round up
+	const uint32_t total_batches = (total_els+(ibatch_size-1))/ibatch_size; // round up
 #ifdef FORCE_ALL_OMP
-#pragma omp parallel for default(shared) schedule(dynamic,8)
-	for (uint64_t gbatch=0; gbatch<total_batches; gbatch++) {
+#pragma omp parallel for
+	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
 #else
 	std::for_each_n(std::execution::par_unseq,
 		thrust::counting_iterator(0), total_batches,
-		[ebwtFw,paramVec,dataVec,total_els](uint64_t gbatch) mutable {
+		[ebwtFw,paramVec,dataVec,total_els](uint32_t gbatch) mutable {
 #endif
 		const size_t start_el = gbatch*ibatch_size;
-		const size_t end_el = std::min(start_el+ibatch_size,total_els);
+		size_t end_el = start_el+ibatch_size;
+		if (end_el>total_els) end_el = total_els;
 		uint64_t bwops; // just ignore the bwops for now, keep it local
 		SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(paramVec[start_el]), &(dataVec[start_el]));
 	} // for gbatch
@@ -829,7 +830,10 @@ SeedAligner::searchSeedBi(
 		const char *seq = p.cs.seq;
 
 		SeedAlignerSearchWorkState wstate(seed_step_min+sstate.step);
-		__builtin_prefetch(&(seq[wstate.off]));
+		//__builtin_prefetch(&(seq[wstate.off]));
+		//_mm_prefetch(&(seq[wstate.off]), _MM_HINT_T0);
+		// asm("prefetcht0 %0" : /**/ : "m"(&(seq[wstate.off])) : /**/ );
+		force_prefetch(&(seq[wstate.off]));
 		sstate.step++; // get ready for the next iteration
 
 		if(sstate.bloc.valid()) {
