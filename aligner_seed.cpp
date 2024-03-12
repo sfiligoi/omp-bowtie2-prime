@@ -830,10 +830,6 @@ SeedAligner::searchSeedBi(
 		const char *seq = p.cs.seq;
 
 		SeedAlignerSearchWorkState wstate(seed_step_min+sstate.step);
-		//__builtin_prefetch(&(seq[wstate.off]));
-		//_mm_prefetch(&(seq[wstate.off]), _MM_HINT_T0);
-		// asm("prefetcht0 %0" : /**/ : "m"(&(seq[wstate.off])) : /**/ );
-		force_prefetch(&(seq[wstate.off]));
 		sstate.step++; // get ready for the next iteration
 
 		if(sstate.bloc.valid()) {
