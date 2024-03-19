@@ -61,7 +61,7 @@
 #endif
 
 #ifndef ASM_PREFETCH
-#define force_prefetch(PTR) __builtin_prefetch(PRT)
+#define force_prefetch(PTR) __builtin_prefetch(PTR)
 #else
 // This is NVIDA HPC SDK syntax
 #define force_prefetch(PTR) asm("prefetcht0 %0" : /**/ : "m"(PTR) : /**/ );

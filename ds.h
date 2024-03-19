@@ -141,7 +141,7 @@ protected:
 
 	template <typename T>
 	static auto propagate_alloc_to_obj_imp(BTAllocator* me, T &obj, int dummy) -> decltype(obj.set_alloc(me), void()) {
-		obj.set_alloc(this); // propagate_alloc_==true
+		obj.set_alloc(me); // propagate_alloc_==true
 	}
 
 	template <typename T>
@@ -645,7 +645,7 @@ public:
 	 */
 	EList<T, S>& operator=(const EList<T, S>& o) {
 		assert_eq(cat_, o.cat());
-		copy_alloc(o);
+		this->copy_alloc(o);
 		if(o.cur_ == 0) {
 			// Nothing to copy
 			cur_ = 0;
@@ -678,7 +678,7 @@ public:
 		// Can only transfer into an empty object
 		free();
 		cat_ = o.cat_;
-		copy_alloc(o);
+		this->copy_alloc(o);
 		allocCat_ = cat_;
 		list_ = o.list_;
 		sz_ = o.sz_;
@@ -1233,7 +1233,7 @@ private:
 		if(list_ != NULL) {
 			assert_neq(-1, allocCat_);
 			assert_eq(allocCat_, cat_);
-			deallocate(list_, sz_);
+			this->deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -1364,7 +1364,7 @@ public:
 	 * Copy from another ELList using operator=.
 	 */
 	ELList(const ELList<T, S1, S2>& o) :
-		cat_(0), list_(NULL), sz_(S), cur_(0)
+		cat_(0), list_(NULL), sz_(S2), cur_(0)
 	{
 		*this = o;
 	}
@@ -1373,7 +1373,7 @@ public:
 	 * Copy from another ELList using operator=.
 	 */
 	explicit ELList(const ELList<T, S1, S2>& o, int cat) :
-		cat_(cat), list_(NULL), sz_(S), cur_(0)
+		cat_(cat), list_(NULL), sz_(S2), cur_(0)
 	{
 		*this = o;
 		assert_geq(cat, 0);
@@ -1423,7 +1423,7 @@ public:
 	 */
 	void xfer(ELList<T, S1, S2>& o) {
 		assert_eq(cat_, o.cat());
-		copy_alloc(o);
+		this->copy_alloc(o);
 		list_ = o.list_; // list_ is an array of EList<T>s
 		sz_   = o.sz_;
 		cur_  = o.cur_;
@@ -1613,7 +1613,7 @@ protected:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			deallocate(list_, sz_);
+			this->deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -1719,7 +1719,7 @@ public:
 	 * Copy from another ELLList using operator=.
 	 */
 	ELLList(const ELLList<T, S1, S2, S3>& o) :
-		cat_(0), list_(NULL), sz_(S), cur_(0)
+		cat_(0), list_(NULL), sz_(S3), cur_(0)
 	{
 		*this = o;
 	}
@@ -1728,7 +1728,7 @@ public:
 	 * Copy from another ELLList using operator=.
 	 */
 	explicit ELLList(const ELLList<T, S1, S2, S3>& o, int cat) :
-		cat_(cat), list_(NULL), sz_(S), cur_(0)
+		cat_(cat), list_(NULL), sz_(S3), cur_(0)
 	{
 		*this = o;
 		assert_geq(cat, 0);
@@ -1778,7 +1778,7 @@ public:
 	 */
 	void xfer(ELLList<T, S1, S2, S3>& o) {
 		assert_eq(cat_, o.cat());
-		copy_alloc(o);
+		this->copy_alloc(o);
 		list_ = o.list_; // list_ is an array of EList<T>s
 		sz_   = o.sz_;
 		cur_  = o.cur_;
@@ -1966,7 +1966,7 @@ protected:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			deallocate(list_, sz_);
+			this->deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -2086,7 +2086,7 @@ public:
 	 */
 	ESet& operator=(const ESet<T>& o) {
 		assert_eq(cat_, o.cat());
-		copy_alloc(o);
+		this->copy_alloc(o);
 		free();
 		sz_ = o.sz_;
 		cur_ = o.cur_;
@@ -2220,7 +2220,7 @@ public:
 	void xfer(ESet<T>& o) {
 		// What does it mean to transfer to a different-category list?
 		assert_eq(cat_, o.cat());
-		copy_alloc(o);
+		this->copy_alloc(o);
 		// Can only transfer into an empty object
 		free();
 		list_ = o.list_;
@@ -2261,7 +2261,7 @@ private:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			deallocate(list_, sz_);
+			this->deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -2481,7 +2481,7 @@ public:
 	 */
 	void xfer(ELSet<T, S>& o) {
 		assert_eq(cat_, o.cat());
-		copy_alloc(o);
+		this->copy_alloc(o);
 		list_ = o.list_; // list_ is an array of ESet<T>s
 		sz_   = o.sz_;
 		cur_  = o.cur_;
@@ -2676,7 +2676,7 @@ protected:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			deallocate(list_, sz_);
+			this->deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif
@@ -2789,7 +2789,7 @@ public:
 	 * Copy contents of given ESet into this ESet.
 	 */
 	EMap& operator=(const EMap<K, V>& o) {
-		copy_alloc(o);
+		this->copy_alloc(o);
 		free();
 		sz_ = o.sz_;
 		cur_ = o.cur_;
@@ -2950,7 +2950,7 @@ private:
 	 */
 	void free() {
 		if(list_ != NULL) {
-			deallocate(list_, sz_);
+			this->deallocate(list_, sz_);
 #ifdef USE_MEM_TALLY
 			gMemTally.del(cat_, sz_);
 #endif

@@ -395,7 +395,7 @@ void MultiSeedResults::prepareOneSeed(
 			_srs[idx]);
 }
 
-size_t MultiSeedResults::instantiateSeeds(const Read* preads[])
+size_t MultiSeedResults::instantiateSeeds(Read const * const preads[])
 {
 	size_t seq_total_size = 0;
 	size_t seeds_total_size = 0;
