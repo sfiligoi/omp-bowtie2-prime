@@ -634,6 +634,7 @@ public:
 		mdzChr_(RES_CAT),
 		mdzRun_(RES_CAT)
 	{
+	  if (alloc!=NULL) {
 		stackRef_.set_alloc(alloc,true);
 		stackRel_.set_alloc(alloc,true);
 		stackRead_.set_alloc(alloc,true);
@@ -642,7 +643,8 @@ public:
 		mdzOp_.set_alloc(alloc,true);
 		mdzChr_.set_alloc(alloc,true);
 		mdzRun_.set_alloc(alloc,true);
-		reset();
+	  }
+	  reset();
 	}
 
 	// allow move operators

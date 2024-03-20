@@ -983,7 +983,7 @@ public:
 		const ReportingParams& rp, // Parameters governing reporting
 		Mapq& mapq,                // Mapq calculator
 		size_t threadId,           // Thread ID
-		BTPerThreadAllocators& allocs) :
+		BTPerThreadAllocators* allocs) : // allocs can be NULL
 		g_(g),
 		rp_(rp),
 		threadid_(threadId),
@@ -1008,19 +1008,21 @@ public:
 		select1_(),    // for selecting random subsets for mate 1
 		select2_(),    // for selecting random subsets for mate 2
 		st_(rp),       // reporting state - what's left to do?
-		staln_(&(allocs[threadId]))
+		staln_( (allocs==NULL) ? NULL : &((*allocs)[threadId]) )
 	{
 		assert(rp_.repOk());
-		BTAllocator* alloc = &(allocs[threadId]);
-		rs1_.set_alloc(alloc,true);
-		rs2_.set_alloc(alloc,true);
-		rs1u_.set_alloc(alloc,true);
-		rs2u_.set_alloc(alloc,true);
-		select1_.set_alloc(alloc,true);
-		select2_.set_alloc(alloc,true);
-		selectBuf_.set_alloc(alloc,true);
-        	obuf_.set_alloc(alloc);
-        	//staln_.set_alloc(alloc);
+		if (allocs!=NULL) {
+		 BTAllocator* alloc = &((*allocs)[threadId]);
+		 rs1_.set_alloc(alloc,true);
+		 rs2_.set_alloc(alloc,true);
+		 rs1u_.set_alloc(alloc,true);
+		 rs2u_.set_alloc(alloc,true);
+		 select1_.set_alloc(alloc,true);
+		 select2_.set_alloc(alloc,true);
+		 selectBuf_.set_alloc(alloc,true);
+        	 obuf_.set_alloc(alloc);
+        	 //staln_.set_alloc(alloc);
+        	}
 	}
 
 	// allow move operators

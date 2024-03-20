@@ -1964,7 +1964,7 @@ public:
 		const ReportingParams& rp, // Parameters governing reporting
 		Mapq& mapq,                // Mapq calculator
 		size_t threadId,           // Thread ID
-		BTPerThreadAllocators& allocs) :
+		BTPerThreadAllocators* allocs) :
 	AlnSinkWrap(g, rp, mapq, threadId, allocs) ,
 	prm() ,
 	rpm() {}
@@ -2279,8 +2279,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 	constexpr bool paired = false;
 
 	BTAllocator worker_alloc;
+#ifdef USE_CUSTOM_ALLOCS
 	BTPerThreadAllocators mate_allocs(num_parallel_tasks);
-
+#endif
 	// allocate to heap to make it GPU accessible
 	const msWorkerConsts *msconsts = new msWorkerConsts;
  
@@ -2317,13 +2318,19 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 							*rp,           // reporting parameters
 							*bmapq[mate], // MAPQ calculator
 							mate,         // thread id
-							mate_allocs); // memory pools
+#ifdef USE_CUSTOM_ALLOCS
+							&mate_allocs); // memory pools
+#else
+							(BTPerThreadAllocators*) NULL); // default memory allocator
+#endif
 		}
 		AlnSinkWrapOne *g_msinkwrap = v_msinkwrap.data();
 
 		// Major per-thread objects
 		msWorkerObjs* g_msobjs = new msWorkerObjs[num_parallel_tasks];
+#ifdef USE_CUSTOM_ALLOCS
 		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) g_msobjs[mate].set_alloc(&(mate_allocs[mate]));
+#endif
 
 		assert(multiseedMms==0);
 		// put on stack, so it is managed memory
@@ -2381,7 +2388,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   tmr.start();
 		   srs.clearSeeds();
 
+#ifdef USE_CUSTOM_ALLOCS
 		   mate_allocs.ensure_spare();
+#endif
 		   {
 			bool found_unread = false;
 			// Note: Will use mate to distinguish between tread-specific elements
@@ -2557,7 +2566,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   tmr.next("instantiateSeeds");
 
 			// always call ensure_spare from main CPU thread
+#ifdef USE_CUSTOM_ALLOCS
 		 	mate_allocs.ensure_spare();
+#endif
 
 			uint32_t max_batches = 0;
 		   	// we can do all of the "mates" in parallel
@@ -2574,7 +2585,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   tmr.next("searchAllSeedsPrepare");
 
 			// always call ensure_spare from main CPU thread
+#ifdef USE_CUSTOM_ALLOCS
 		 	mate_allocs.ensure_spare();
+#endif
 
 			// Align the seeds
 			// internally parallelized
@@ -2583,7 +2596,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   tmr.next("searchAllSeedsDo");
 
 			// always call ensure_spare from main CPU thread
+#ifdef USE_CUSTOM_ALLOCS
 		 	mate_allocs.ensure_spare();
+#endif
 
 		   	// we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared) schedule(dynamic,8)
@@ -2610,7 +2625,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   tmr.next("searchAllSeedsFinalize");
 
 			// always call ensure_spare from main CPU thread
+#ifdef USE_CUSTOM_ALLOCS
 		 	mate_allocs.ensure_spare();
+#endif
 
 		   	// we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared) schedule(dynamic,8)
@@ -2680,7 +2697,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   tmr.next("extendSeeds");
 
 		   // always call ensure_spare from main CPU thread
+#ifdef USE_CUSTOM_ALLOCS
 		   mate_allocs.ensure_spare();
+#endif
 
 #pragma omp parallel for default(shared) schedule(dynamic,8)
 		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
