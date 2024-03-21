@@ -1602,7 +1602,9 @@ private:
 
 	SeedAlignerSearchParams* _paramVec;      // array of _bufVec_size
 	SeedAlignerSearchData*   _dataVec;       // array of _bufVec_size
-	size_t                   _bufVec_size;
+
+	size_t                   _bufVec_size;    // allocated size
+	size_t                   _bufVec_filled;  // filled elements, may be smaller than allocated
 
 	/**
  	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.

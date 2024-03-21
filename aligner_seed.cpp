@@ -409,14 +409,14 @@ size_t MultiSeedResults::instantiateSeeds(Read const * const preads[])
 
 	if (_seqBuf_size<seq_total_size) {
 		// need more space
-		delete[] _seqBuf;
+		if (_seqBuf!=NULL) delete[] _seqBuf;
 		_seqBuf = new char[seq_total_size];
 		_seqBuf_size = seq_total_size;
 	}
 
 	if (_seedsBuf_size<seeds_total_size) {
 		// need more space
-		delete[] _seedsBuf;
+		if (_seedsBuf!=NULL) delete[] _seedsBuf;
 		_seedsBuf = new InstantiatedSeed[seeds_total_size];
 		_seedsBuf_size = seeds_total_size;
 	}
@@ -599,7 +599,7 @@ MultiSeedAligner::MultiSeedAligner(
 	, _als(new SeedAligner[srs.nSRs()])
 	, _ftabLen(ebwtFw->eh().ftabChars()) // cache the value
 	,  _paramVec(NULL), _dataVec(NULL)
-	, _bufVec_size(0)
+	, _bufVec_size(0), _bufVec_filled(0)
 {}
 
 MultiSeedAligner::~MultiSeedAligner() {
@@ -624,8 +624,8 @@ void MultiSeedAligner::reserveBuffers()
 
 	if (_bufVec_size<buf_total_size) {
 		// need bigger buffers
-		delete[] _dataVec;
-		delete[] _paramVec;
+		if (_dataVec!=NULL) delete[] _dataVec;
+		if (_paramVec!=NULL) delete[] _paramVec;
 		_paramVec = new SeedAlignerSearchParams[buf_total_size];
 		_dataVec = new SeedAlignerSearchData[buf_total_size];
 		_bufVec_size = buf_total_size;
@@ -639,6 +639,8 @@ void MultiSeedAligner::reserveBuffers()
 			_dataVec+buf_total_size); 
 		buf_total_size+=_als[i].getBufsSize();
 	}
+	_bufVec_filled = buf_total_size;
+	assert_leq(_bufVec_filled,_bufVec_size);
 }
 
 void MultiSeedAligner::searchAllSeedsDoAll()
@@ -648,7 +650,7 @@ void MultiSeedAligner::searchAllSeedsDoAll()
 	SeedAlignerSearchData*         dataVec  = _dataVec;
 
 	// do the searches in batches
-	const uint64_t total_els  = _bufVec_size;
+	const uint64_t total_els  = _bufVec_filled;
 	const uint32_t total_batches = (total_els+(ibatch_size-1))/ibatch_size; // round up
 #ifdef FORCE_ALL_OMP
 #pragma omp parallel for
