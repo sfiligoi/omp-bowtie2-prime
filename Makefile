@@ -198,7 +198,7 @@ else ifeq (0,$(shell $(CXX) -E -fsanitize=undefined btypes.h > /dev/null 2>&1; e
 endif
 
 DEBUG_FLAGS    := -O0 -g3 $(SSE_FLAG)
-RELEASE_FLAGS  := -g -fast -gopt $(SSE_FLAG)
+RELEASE_FLAGS  := -g -O3 $(SSE_FLAG)
 NOASSERT_FLAGS := -DNDEBUG
 FILE_FLAGS     := -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE
 DEBUG_DEFS     = -DCOMPILER_OPTIONS="\"$(DEBUG_FLAGS) $(CXXFLAGS)\""
