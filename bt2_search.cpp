@@ -2135,7 +2135,9 @@ class msWorkerObjs {
 public:
 	msWorkerObjs()
 	: ftabLen(multiseed_ebwtFw->eh().ftabChars())
+#ifndef DISABLE_PART_TWO_TESTING
 	, ca()
+#endif
 	, sd()
 	, sw()
 	, rnd()
@@ -2156,8 +2158,10 @@ public:
 	// redundant, but useful
 	const int ftabLen;
 
+#ifndef DISABLE_PART_TWO_TESTING
 	// Interfaces for alignment and seed caches
 	AlignmentCacheIfaceBT2 ca;
+#endif
 
 	SwDriverBT2 sd;
 	SwAligner sw;
@@ -2438,8 +2442,6 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					msinkwrap.prm.reset(); // per-read metrics
 					msinkwrap.prm.doFmString = false;
 
-					msobj.ca.nextRead(); // clear the cache
-					assert(!msobj.ca.aligning());
 					const size_t rdlen = rds[mate]->length();
 					msinkwrap.nextRead(
 						rds[mate],
@@ -2595,6 +2597,8 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 
 		   tmr.next("searchAllSeedsDo");
 
+#ifndef DISABLE_PART_TWO_TESTING
+
 			// always call ensure_spare from main CPU thread
 #ifdef USE_CUSTOM_ALLOCS
 		 	mate_allocs.ensure_spare();
@@ -2701,11 +2705,16 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   mate_allocs.ensure_spare();
 #endif
 
+#endif  /*DISABLE_PART_TWO_TESTING*/
+
 #pragma omp parallel for default(shared) schedule(dynamic,8)
 		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 			if (mate_idx[mate]!=MATE_DONE_READING) { // only do it for valid ones, to handle end tails
 			  const uint16_t roundi = ++irounds[mate];  // increment the irounds, so we are ready for new round, if needed
 			  const uint16_t interval = intervals[mate];
+#ifdef DISABLE_PART_TWO_TESTING
+                          mate_idx[mate]=MATE_DONE; // force cleanup, since we did not do part 2
+#endif
 			  // Calculate # seed rounds for each mate
 			  const uint16_t nrounds = min<uint16_t>(nSeedRounds, interval);
 			  if ((mate_idx[mate]==MATE_DONE) || (roundi>=nrounds)) { // only finalize reads that have no outstanding rounds left
