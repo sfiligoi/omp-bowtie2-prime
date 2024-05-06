@@ -727,7 +727,7 @@ inline bool startSearchSeedBi(
 		int ftabLen = ep.ftabChars();
 		if (ftabLen > 1 && ftabLen <= p.cs.maxjump()) {
 			TIndexOffU fwi0 = Ebwt::ftabSeqToInt(ftabLen, true, seq, off - ftabLen + 1, false);
-			Ebwt::ftabLoHi(ftab, eftab, ep._len, ep._ftabLen, ep._eftabLen,
+			Ebwt::ftabLoHi(ftab, eftab, ep,
 					fwi0,
 					sdata.bwt.topf, sdata.bwt.botf);
 			if(sdata.bwt.botf - sdata.bwt.topf == 0) return true;
@@ -775,7 +775,14 @@ SeedAligner::searchSeedBi(
 			const SeedAlignerSearchParams paramVec[],
 			SeedAlignerSearchData dataVec[])
 {
+	const EbwtParams& ep = ebwt->eh();
+	const uint8_t* const ebwtPtr = ebwt->ebwt();
+	const TIndexOffU * const ftab = ebwt->ftab();
+	const TIndexOffU * const eftab = ebwt->eftab();
+	const TIndexOffU * const fchr =  ebwt->fchr();
+
 	uint8_t idxs[SS_SIZE]; // indexes into sstateVec and paramVec
+
 	SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
 	assert(nparams<=SS_SIZE);
 
@@ -793,8 +800,7 @@ SeedAligner::searchSeedBi(
 		idxs[n] = iparam;
 		iparam+=1;
 		const bool done = startSearchSeedBi(
-					ebwt->eh(), ebwt->ebwt(),
-					ebwt->ftab(), ebwt->eftab(), ebwt->fchr(),
+					ep, ebwtPtr, ftab, eftab, fchr,
 					p, sstate, sdata);
 		if(done) {
 		        if(sstate.step == (int)p.cs.n_seed_steps) {
@@ -870,8 +876,8 @@ SeedAligner::searchSeedBi(
 				if (n<nleft) idxs[n] = idxs[nleft];
 				continue;
 			}
-			assert_geq(wstate.t[c], ebwt->fchr()[c]);
-			assert_lt(wstate.t[c],  ebwt->fchr()[c+1]);
+			assert_geq(wstate.t[c], fchr[c]);
+			assert_lt(wstate.t[c],  fchr[c+1]);
 			wstate.b[c] = wstate.t[c]+1;
 			assert_gt(wstate.b[c], 0);
 		}
@@ -889,7 +895,7 @@ SeedAligner::searchSeedBi(
 			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
-		nextLocsBi(ebwt->eh(), ebwt->ebwt(), sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
+		nextLocsBi(ep, ebwtPtr, sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
 		// not done, move to the next element
 		n+=1;
 	   } // while n

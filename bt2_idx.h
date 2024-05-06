@@ -1499,6 +1499,24 @@ public:
 			assert_geq(bot, top);
 		}
 
+	static void
+	ftabLoHi(
+		const TIndexOffU *ftab,
+		const TIndexOffU *eftab,
+		const EbwtParams& ep,
+		TIndexOffU i,
+		TIndexOffU& top,
+		TIndexOffU& bot)
+		{
+			top = ftabHi(ftab,eftab,
+				ep._len, ep._ftabLen, ep._eftabLen,
+				i);
+			bot = ftabLo(ftab,eftab,
+				ep._len, ep._ftabLen, ep._eftabLen,
+				i+1);
+			assert_geq(bot, top);
+		}
+
 	void ftabLoHiPrefetch(TIndexOffU i) const
 		{
 			ftabHiPrefetch(i);
