@@ -704,7 +704,11 @@ inline void nextLocsBi(
 
 // return true, if we are already done
 inline bool startSearchSeedBi(
-	const Ebwt* ebwt,       // forward index (BWT)
+	const EbwtParams& ep,         // index params
+	const uint8_t* ebwt,          // index data
+	const TIndexOffU *ftab,
+	const TIndexOffU *eftab,
+	const TIndexOffU fchr[5],     // index fchr
 	const SeedAlignerSearchParams &p,
 	SeedAlignerSearchState &sstate,
 	SeedAlignerSearchData  &sdata)
@@ -720,29 +724,31 @@ inline bool startSearchSeedBi(
 		const int seed_step_min = p.cs.seed_step_min();
 		int off = abs(seed_step_min)-1;
 		// Check whether/how far we can jump using ftab or fchr
-		int ftabLen = ebwt->eh().ftabChars();
+		int ftabLen = ep.ftabChars();
 		if (ftabLen > 1 && ftabLen <= p.cs.maxjump()) {
 			TIndexOffU fwi0 = Ebwt::ftabSeqToInt(ftabLen, true, seq, off - ftabLen + 1, false);
-			ebwt->ftabLoHi(fwi0, sdata.bwt.topf, sdata.bwt.botf);
+			Ebwt::ftabLoHi(ftab, eftab, ep._len, ep._ftabLen, ep._eftabLen,
+					fwi0,
+					sdata.bwt.topf, sdata.bwt.botf);
 			if(sdata.bwt.botf - sdata.bwt.topf == 0) return true;
 			sstate.step += ftabLen;
 		} else if(p.cs.maxjump() > 0) {
 			// Use fchr
 			const int c = seq[off];
 			assert_range(0, 3, c);
-			sdata.bwt.topf = ebwt->fchr()[c];
-			sdata.bwt.botf = ebwt->fchr()[c+1];
+			sdata.bwt.topf = fchr[c];
+			sdata.bwt.botf = fchr[c+1];
 			if(sdata.bwt.botf - sdata.bwt.topf == 0) return true;
 			sstate.step++;
 		} else {
 			assert_eq(0, p.cs.maxjump());
 			sdata.bwt.topf = 0;
-			sdata.bwt.botf = ebwt->fchr()[4];
+			sdata.bwt.botf = fchr[4];
 		}
 		if(sstate.step == p.cs.n_seed_steps) {
 			return true;
 		}
-		nextLocsBi(ebwt->eh(), ebwt->ebwt(), sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
+		nextLocsBi(ep, ebwt, sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
 		assert(sstate.tloc.valid());
 	} 
 	assert(sstate.tloc.valid());
@@ -786,7 +792,10 @@ SeedAligner::searchSeedBi(
 		sstate.reset();
 		idxs[n] = iparam;
 		iparam+=1;
-		const bool done = startSearchSeedBi(ebwt, p, sstate, sdata);
+		const bool done = startSearchSeedBi(
+					ebwt->eh(), ebwt->ebwt(),
+					ebwt->ftab(), ebwt->eftab(), ebwt->fchr(),
+					p, sstate, sdata);
 		if(done) {
 		        if(sstate.step == (int)p.cs.n_seed_steps) {
                 		// Finished aligning seed
