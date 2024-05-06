@@ -677,7 +677,8 @@ void MultiSeedAligner::searchAllSeedsDoAll()
  * the ceiling.
  */
 inline void nextLocsBi(
-	const Ebwt* ebwt,       // forward index (BWT)
+	const EbwtParams& ep,         // index params
+	const uint8_t* ebwt,          // index data
 	SideLocus& tloc,              // top locus
 	SideLocus& bloc,              // bot locus
 	TIndexOffU topf,              // top in BWT
@@ -689,11 +690,11 @@ inline void nextLocsBi(
 	{
 		if(botf - topf == 1) {
 			// Already down to 1 row; just init top locus
-			tloc.initFromRow(topf, ebwt->eh(), ebwt->ebwt());
+			tloc.initFromRow(topf, ep, ebwt);
 			bloc.invalidate();
 		} else {
 			SideLocus::initFromTopBot(
-				topf, botf, ebwt->eh(), ebwt->ebwt(), tloc, bloc);
+				topf, botf, ep, ebwt, tloc, bloc);
 			assert(bloc.valid());
 		}
 	}
@@ -741,7 +742,7 @@ inline bool startSearchSeedBi(
 		if(sstate.step == p.cs.n_seed_steps) {
 			return true;
 		}
-		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
+		nextLocsBi(ebwt->eh(), ebwt->ebwt(), sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
 		assert(sstate.tloc.valid());
 	} 
 	assert(sstate.tloc.valid());
@@ -879,7 +880,7 @@ SeedAligner::searchSeedBi(
 			if (n<nleft) idxs[n] = idxs[nleft];
 			continue;
 		}
-		nextLocsBi(ebwt, sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
+		nextLocsBi(ebwt->eh(), ebwt->ebwt(), sstate.tloc, sstate.bloc, sdata.bwt.topf, sdata.bwt.botf);
 		// not done, move to the next element
 		n+=1;
 	   } // while n
