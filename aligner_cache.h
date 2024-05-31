@@ -495,7 +495,6 @@ public:
  */
 class AlignmentCache {
 
-	typedef RedBlackNode<QKey,  QVal>  QNode;
 	typedef RedBlackNode<SAKey, SAVal> SANode;
 
 	typedef PList<SAKey, CACHE_PAGE_SZ> TQList;
@@ -506,7 +505,6 @@ public:
 	AlignmentCache(
 		uint64_t bytes) :
 		pool_(bytes, CACHE_PAGE_SZ, CA_CAT),
-		qmap_(CACHE_PAGE_SZ, CA_CAT),
 		qlist_(CA_CAT),
 		samap_(CACHE_PAGE_SZ, CA_CAT),
 		salist_(CA_CAT),
@@ -532,35 +530,6 @@ public:
 	}
 
 	/**
-	 * Return true iff the cache has no entries in it.
-	 */
-	bool empty() const {
-		bool ret = qmap_.empty();
-		assert(!ret || qlist_.empty());
-		assert(!ret || samap_.empty());
-		assert(!ret || salist_.empty());
-		return ret;
-	}
-
-	/**
-	 * Add a new query key ('qk'), usually a 2-bit encoded substring of
-	 * the read) as the key in a new Red-Black node in the qmap and
-	 * return a pointer to the node's QVal.
-	 *
-	 * The expectation is that the caller is about to set about finding
-	 * associated reference substrings, and that there will be future
-	 * calls to addOnTheFly to add associations to reference substrings
-	 * found.
-	 */
-	QVal* add(
-		const QKey& qk,
-		bool *added,
-		bool getLock = true)
-	{
-			return addImpl(qk, added);
-	}
-
-	/**
 	 * Add a new association between a read sequnce ('seq') and a
 	 * reference sequence ('')
 	 */
@@ -578,17 +547,11 @@ public:
 	 */
 	void clear() {
 		pool_.clear();
-		qmap_.clear();
 		qlist_.clear();
 		samap_.clear();
 		salist_.clear();
 		version_++;
 	}
-
-	/**
-	 * Return the number of keys in the query multimap.
-	 */
-	size_t qNumKeys() const { return qmap_.size(); }
 
 	/**
 	 * Return the number of keys in the suffix array multimap.
@@ -619,7 +582,6 @@ public:
 protected:
 
 	Pool                   pool_;   // dispenses memory pages
-	RedBlack<QKey, QVal>   qmap_;   // map from query substrings to reference substrings
 	TQList                 qlist_;  // list of reference substrings
 	RedBlack<SAKey, SAVal> samap_;  // map from reference substrings to SA ranges
 	TSAList                salist_; // list of SA ranges
@@ -678,24 +640,6 @@ private:
 		TIndexOffU topf,    // top range elt in BWT index
 		TIndexOffU botf);    // bottom range elt in BWT index
 
-	/**
-	 * Add a new query key ('qk'), usually a 2-bit encoded substring of
-	 * the read) as the key in a new Red-Black node in the qmap and
-	 * return a pointer to the node's QVal.
-	 *
-	 * The expectation is that the caller is about to set about finding
-	 * associated reference substrings, and that there will be future
-	 * calls to addOnTheFly to add associations to reference substrings
-	 * found.
-	 */
-	QVal* addImpl(
-		const QKey& qk,
-		bool *added)
-	{
-		assert(qk.cacheable());
-		QNode *n = qmap_.add(pool(), qk, added);
-		return (n != NULL ? &n->payload : NULL);
-	}
 };
 
 /**
@@ -747,19 +691,7 @@ public:
 		const QKey&    qk)
 	{
 		assert(repOk());
-		if(qk.cacheable()) {
-			// Make a QNode for this key and possibly add the QNode to the
-			// Red-Black map; but if 'seq' isn't cacheable, just create the
-			// QNode (without adding it to the map).
-			bool added = false;
-			qv_ = current_->add(qk, &added);
-		} else {
-			qv_ = &qvbuf_;
-		}
-		if(qv_ == NULL) {
-			resetRead();
- 			return -1; // Not in memory
-		}
+		qv_ = &qvbuf_;
 		qv_->reset();
 		return 0; // Need to search for it
 	}
