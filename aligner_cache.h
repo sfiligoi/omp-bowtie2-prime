@@ -261,6 +261,20 @@ public:
 	QVal() { reset(); }
 
 	/**
+	 * True -> my key is equal to the given key.
+	 */
+	bool operator==(const QVal& o) const {
+		return (i_ == o.i_) && (rangen_ == o.rangen_) && (eltn_ == o.eltn_);
+	}
+
+	/**
+	 * True -> my key is not equal to the given key.
+	 */
+	bool operator!=(const QVal& o) const {
+		return !(*this == o);
+	}
+
+	/**
 	 * Return the offset of the first reference substring in the qlist.
 	 */
 	TIndexOffU offset() const { return i_; }
@@ -348,6 +362,21 @@ typedef QKey SAKey;
 struct SAVal {
 
 	SAVal() : topf(), topb(), i(), len(OFF_MASK) { }
+
+	/**
+	 * True -> my key is equal to the given key.
+	 */
+	bool operator==(const SAVal& o) const {
+		return  (topf == o.topf) && (topb == o.topb) && 
+			(i == o.i) && (len == o.len);
+	}
+
+	/**
+	 * True -> my key is not equal to the given key.
+	 */
+	bool operator!=(const SAVal& o) const {
+		return !(*this == o);
+	}
 
 	/**
 	 * Return true iff the SAVal is valid.
@@ -495,8 +524,6 @@ public:
  */
 class AlignmentCache {
 
-	typedef RedBlackNode<SAKey, SAVal> SANode;
-
 	typedef PList<SAKey, CACHE_PAGE_SZ> TQList;
 	typedef PList<TIndexOffU, CACHE_PAGE_SZ> TSAList;
 
@@ -506,7 +533,7 @@ public:
 		uint64_t bytes) :
 		pool_(bytes, CACHE_PAGE_SZ, CA_CAT),
 		qlist_(CA_CAT),
-		samap_(CACHE_PAGE_SZ, CA_CAT),
+		samap_(CA_CAT),
 		salist_(CA_CAT),
 		version_(0) { }
 
@@ -583,7 +610,7 @@ protected:
 
 	Pool                   pool_;   // dispenses memory pages
 	TQList                 qlist_;  // list of reference substrings
-	RedBlack<SAKey, SAVal> samap_;  // map from reference substrings to SA ranges
+	EMap<SAKey, SAVal>     samap_;  // map from reference substrings to SA ranges
 	TSAList                salist_; // list of SA ranges
 
 	uint32_t version_; // cache version
@@ -608,10 +635,9 @@ private:
 			SAKey sak = qlist_.get(i);
 			// Shouldn't have identical keys in qlist_
 			assert(i == refi || qlist_.get(i) != qlist_.get(i-1));
-			// Get corresponding SANode
-			SANode *n = samap_.lookup(sak);
-			assert(n != NULL);
-			const SAVal& sav = n->payload;
+			// Get corresponding SAVal
+			assert(samap_.lookup(sak) != NULL);
+			const SAVal& sav = *(samap_.lookup(sak));
 			assert(sav.repOk(*this));
 			if(sav.len > 0) {
 				nrange++;

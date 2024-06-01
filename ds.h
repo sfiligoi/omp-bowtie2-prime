@@ -2833,7 +2833,7 @@ public:
 	bool insert(const std::pair<K, V>& el) {
 		size_t i = 0;
 		if(cur_ == 0) {
-			insert(el, 0);
+			insertAt(el, 0);
 			return true;
 		}
 		if(cur_ < 16) {
@@ -2843,9 +2843,35 @@ public:
 			// Binary search
 			i = bsearchLoBound(el.first);
 		}
-		if(list_[i] == el) return false; // already there
-		insert(el, i);
+		if ((i!=cur_) && (list_[i].first == el.first)) return false; // already there
+		insertAt(el, i);
 		return true; // not already there
+	}
+
+	bool insert(const K& key, const V& val) {
+		return insert(make_pair(key,val));
+	}
+
+	bool insertEx(const std::pair<K, V>& el, size_t& i) {
+		if(cur_ == 0) {
+			i = 0;
+			insertAt(el, 0);
+			return true;
+		}
+		if(cur_ < 16) {
+			// Linear scan
+			i = scanLoBound(el.first);
+		} else {
+			// Binary search
+			i = bsearchLoBound(el.first);
+		}
+		if ((i!=cur_) && (list_[i] == el.first)) return false; // already there
+		insertAt(el, i);
+		return true; // not already there
+	}
+
+	bool insertEx(const K& key, const V& val, size_t& i) {
+		return insertEx(make_pair(key,val),i);
 	}
 
 	/**
@@ -2882,6 +2908,19 @@ public:
 			i = bsearchLoBound(el);
 		}
 		return i != cur_ && list_[i].first == el;
+	}
+
+	/**
+	 * Given a Key, return the pointer to the value,
+	 * if one exists.
+	 */
+	inline const V* lookup(const K& key) const {
+		size_t i;
+		if (containsEx(key, i)) {
+			return &(list_[i].second);
+		} else {
+			return NULL; // not found
+		}
 	}
 
 	/**
@@ -3025,7 +3064,7 @@ private:
 	 * Insert value 'el' at offset 'idx'.  It's OK to insert at cur_,
 	 * which is equivalent to appending.
 	 */
-	void insert(const std::pair<K, V>& el, size_t idx) {
+	void insertAt(const std::pair<K, V>& el, size_t idx) {
 		assert_leq(idx, cur_);
 		if(cur_ == sz_) {
 			expandCopy(sz_+1);

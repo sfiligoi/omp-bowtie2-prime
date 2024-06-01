@@ -56,7 +56,6 @@ bool AlignmentCache::addOnTheFlyImpl(
 	TIndexOffU topf,    // top range elt in BWT index
 	TIndexOffU botf)    // bottom range elt in BWT index
 {
-	bool added = true;
 	// If this is the first reference sequence we're associating with
 	// the query sequence, initialize the QVal.
 	if(!qv.valid()) {
@@ -74,24 +73,18 @@ bool AlignmentCache::addOnTheFlyImpl(
 	}
 #endif
 	assert_eq(qv.offset() + qv.numRanges(), qlist_.size());
-	SANode *s = samap_.add(pool(), sak, &added);
-	if(s == NULL) {
-		return false; // Exhausted pool memory
-	}
-	assert(s->key.repOk());
+	bool added = !samap_.contains(sak);
 	if(added) {
-		s->payload.i = (TIndexOffU)salist_.size();
-		s->payload.len = botf - topf;
-		s->payload.topf = topf;
-		s->payload.topb = 0;  // TODO: remove topb
+		SAVal sav;
+		sav.i = (TIndexOffU)salist_.size();
+		sav.len = botf - topf;
+		sav.topf = topf;
+		sav.topb = 0;  // TODO: remove topb
 		for(size_t j = 0; j < (botf-topf); j++) {
-			if(!salist_.add(pool(), OFF_MASK)) {
-				// Change the payload's len field
-				s->payload.len = (TIndexOffU)j;
-				return false; // Exhausted pool memory
-			}
+			salist_.add(pool(), OFF_MASK);
 		}
-		assert(s->payload.repOk(*this));
+		assert(sav.repOk(*this));
+		samap_.insert(sak,sav);
 	}
 	// Now that we know all allocations have succeeded, we can do a few final
 	// updates
