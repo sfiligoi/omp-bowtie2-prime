@@ -4101,6 +4101,9 @@ protected:
 	PList<T, S>* list_;
 };
 
+#if 0
+// Deprecated RedBlack, as it is complex and we never use it
+
 /**
  * A Red-Black tree node.  Links to parent & left and right children.
  * Key and Payload are of types K and P.  Node total ordering is based
@@ -4613,6 +4616,7 @@ protected:
 	EList<TNode*> pages_;   // the pages
 	int intenseRepOkCnt_;   // counter for the computationally intensive repOk function
 };
+#endif
 
 /**
  * For assembling doubly-linked lists of Edits.
