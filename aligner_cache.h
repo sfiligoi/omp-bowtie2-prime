@@ -672,8 +672,6 @@ public:
 
 	AlignmentCacheIface(
 		AlignmentCache *current):
-		qk_(),
-		qv_(NULL),
 		rangen_(0),
 		eltsn_(0),
 		current_(current)
@@ -686,60 +684,18 @@ public:
 	AlignmentCacheIface(const AlignmentCacheIface& other) = delete;
 	AlignmentCacheIface& operator=(const AlignmentCacheIface& other) = delete;
 
-	/**
-	 * This function is called whenever we start to align a new read or
-	 * read substring.  We make key for it and store the key in qk_.
-	 * If the sequence is uncacheable, we don't actually add it to the
-	 * map but the corresponding reference substrings are still added
-	 * to the qlist_.
-	 *
-	 * Returns:
-	 *  -1 if out of memory
-	 *  0 if key was found in cache
-	 */
-	int beginAlign(
-                const char *   seq,     // reference sequence close to read seq - content
-                const uint32_t seq_len) // reference sequence close to read seq - length
-	{
-		assert(repOk());
-		QKey qk(seq, seq_len ASSERT_ONLY(, tmpdnastr_));
-		return beginAlign(qk);
-	}
-
-	int beginAlign(
-		const QKey&    qk)
-	{
-		assert(repOk());
-		qv_ = &qvbuf_;
-		qv_->reset();
-		return 0; // Need to search for it
-	}
 	ASSERT_ONLY(BTDnaString tmpdnastr_);
 
-	/**
-	 * Called when is finished aligning a read (and so is finished
-	 * adding associated reference strings).  Returns a copy of the
-	 * final QVal object and resets the alignment state of the
-	 * current-read cache.
-	 *
-	 * Also, if the alignment is cacheable, it commits it to the next
-	 * cache up in the cache hierarchy.
-	 */
-	QVal finishAlign(bool getLock = true) {
-		if(!qv_->valid()) {
-			qv_->init(0, 0, 0);
-		}
-		// Copy this pointer because we're about to reset the qv_ field
-		// to NULL
-		QVal* qv = qv_;
-		// Commit the contents of the current-read cache to the next
-		// cache up in the hierarchy.
-		// If qk is cacheable, then it must be in the cache
-		// Reset the state in this iface in preparation for the next
-		// alignment.
+	const QVal& align(
+		const SAKey& sak, // the key holding the reference substring
+		TIndexOffU topf,              // top in BWT index
+		TIndexOffU botf) {            // bot in BWT index
+		//beginAlign;
+		qvbuf_.reset();
+		addOnTheFly(sak, topf, botf);
+		// finishAlign
 		resetRead();
-		assert(repOk());
-		return *qv;
+		return qvbuf_;
 	}
 
 	/**
@@ -754,12 +710,6 @@ public:
 		assert(!aligning());
 	}
 
-	/**
-	 * Return true iff we're in the middle of aligning a sequence.
-	 */
-	bool aligning() const {
-		return qv_ != NULL;
-	}
 
 	/**
 	 * Clears both the local and shared caches.
@@ -782,7 +732,7 @@ public:
 		assert(aligning());
 		assert(repOk());
 		//assert(sak.cacheable());
-		if(current_->addOnTheFly((*qv_), sak, topf, botf, getLock)) {
+		if(current_->addOnTheFly(qvbuf_, sak, topf, botf, getLock)) {
 			rangen_++;
 			eltsn_ += (botf-topf);
 			return true;
@@ -846,10 +796,6 @@ public:
 	bool repOk() const {
 		assert(current_ != NULL);
 		assert_geq(eltsn_, rangen_);
-		if(qv_ == NULL) {
-			assert_eq(0, rangen_);
-			assert_eq(0, eltsn_);
-		}
 		return true;
 	}
 #endif
@@ -868,11 +814,8 @@ protected:
 	 */
 	void resetRead() {
 		rangen_ = eltsn_ = 0;
-		qv_ = NULL;
 	}
 
-	QKey qk_;  // key representation for current read substring
-	QVal *qv_; // pointer to value representation for current read substring
 	QVal qvbuf_; // buffer for when key is uncacheable but we need a qv
 
 	size_t rangen_; // number of ranges since last alignment job began

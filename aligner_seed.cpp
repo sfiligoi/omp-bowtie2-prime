@@ -557,33 +557,11 @@ void SeedAligner::searchAllSeedsFinalize(
 			const SeedAlignerSearchData& sdata= dataVec[seedsearches];
 			seedsearches++;
 
-			QVal  qv;
-			const SAKey &sak = sdata.sak;
-
-			// Tell the cache that we've started aligning, so the cache can
-			// expect a series of on-the-fly updates
-			int ret = cache.beginAlign(sak);
-			if(ret == -1) {
-				// Out of memory when we tried to add key to map
-				ooms++;
-				continue;
-			}
-			assert(cache.aligning());
-			bool success = true;
 			if ( sdata.need_reporting ) {
-				// Finished aligning seed
-				bool mysuccess = cache.addOnTheFly(sak, sdata.bwt.topf, sdata.bwt.botf);
-				success = mysuccess;
+				const SAKey &sak = sdata.sak;
+				const QVal&  qv = cache.align(sak, sdata.bwt.topf, sdata.bwt.botf);
+				if(qv.valid()) sr.add(qv,i,fw);
 			}
-			if(!success){
-				// Memory exhausted during copy
-				ooms++;
-				continue;
-			}
-			qv = cache.finishAlign(); 
-			assert(!cache.aligning());
-
-			if(qv.valid()) sr.add(qv,i,fw);
 		} // for i
 	} // for fwi
 	if (ooms>0) {
