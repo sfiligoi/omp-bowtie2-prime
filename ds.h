@@ -1168,10 +1168,23 @@ public:
 	int cat() const { return cat_; }
 
 	/**
+	 * Perform a linear search for the first element that is
+	 * 'el'.  Return cur_ if all elements are not el.
+	 */
+	inline size_t lsearch(const T& el) const {
+		for(size_t i = 0; i < cur_; i++) {
+			if (list_[i] == el) {
+				return i;
+			}
+		}
+		return cur_;
+	}
+
+	/**
 	 * Perform a binary search for the first element that is not less
 	 * than 'el'.  Return cur_ if all elements are less than el.
 	 */
-	size_t bsearchLoBound(const T& el) const {
+	inline size_t bsearchLoBound(const T& el) const {
 		size_t hi = cur_;
 		size_t lo = 0;
 		while(true) {
@@ -3016,7 +3029,7 @@ private:
 	 * Perform a binary search for the first element that is not less
 	 * than 'el'.  Return cur_ if all elements are less than el.
 	 */
-	size_t bsearchLoBound(const K& el) const {
+	inline size_t bsearchLoBound(const K& el) const {
 		size_t hi = cur_;
 		size_t lo = 0;
 		while(true) {
@@ -3116,6 +3129,217 @@ private:
 	std::pair<K, V> *list_; // list pointer, returned from new[]
 	size_t sz_;  // capacity
 	size_t cur_; // occupancy (AKA size)
+};
+
+/**
+ * Simple expandable map using a heap-allocated lists.
+ *
+ * Note that the copy constructor and operator= routines perform
+ * shallow copies (w/ memcpy).
+ */
+template <typename K, typename V, int S = 128>
+class ESimpleMap {
+
+public:
+
+	/**
+	 * Allocate initial default of 128 elements.
+	 */
+	ESimpleMap(int cat = 0) :
+		klist_(cat),
+		vlist_(cat)
+	{}
+
+	/**
+	 * Initially allocate given number of elements; should be > 0.
+	 */
+	ESimpleMap(size_t isz, int cat = 0) :
+		klist_(isz, cat),
+		vlist_(isz, cat)
+	{}
+
+	/**
+	 * Copy from another ESimpleMap.
+	 */
+	ESimpleMap(const ESimpleMap<K, V>& o) : klist_(o.klist_), vlist_(o.vlist_) {}
+
+	/**
+	 * Destructor.
+	 */
+	~ESimpleMap() { }
+
+	/**
+	 * Copy contents of given ESimpleMap into this ESimpleMap.
+	 */
+	ESimpleMap& operator=(const ESimpleMap<K, V>& o) {
+		klist_=o.klist_;
+		vlist_=o.vlist_;
+		return *this;
+	}
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
+		klist_.set_alloc(alloc, propagate_alloc);
+		vlist_.set_alloc(alloc, propagate_alloc);
+	}
+
+	void set_alloc(std::pair<BTAllocator *, bool> arg) {
+		klist_.set_alloc(arg);
+		vlist_.set_alloc(arg);
+	}
+
+	std::pair<BTAllocator *, bool> get_alloc() const {return vlist_.get_alloc();} // same as klist
+
+	/**
+	 * Return number of elements.
+	 */
+	size_t size() const { return klist_.size(); }
+
+	/**
+	 * Return the total size in bytes occupied by this map.
+	 */
+	size_t totalSizeBytes() const {
+		return 	klist_.totalSizeBytes()+vlist_.totalSizeBytes();
+	}
+
+	/**
+	 * Return the total capacity in bytes occupied by this map.
+	 */
+	size_t totalCapacityBytes() const {
+		return 	klist_.totalCapacityBytes()+vlist_.totalCapacityBytes();
+	}
+
+	/**
+	 * Return true iff there are no elements.
+	 */
+	bool empty() const { return klist_.empty(); }
+
+	/**
+	 * Insert a new element into the set in sorted order.
+	 */
+	bool insert(const K& key, const V& val) {
+		const size_t cur = klist_.size();
+		size_t i = 0;
+		if(cur == 0) { // we know it cannot be a duplicate
+			push_back(key, val);
+			return true;
+		}
+		i = klist_.lsearch(key);
+		if (i!=cur) return false; // already there
+		push_back(key, val); // always insert at the end
+		return true; // not already there
+	}
+
+	bool insert(const std::pair<K, V>& el) {
+		return insert(el.first, el.second);
+	}
+
+	bool insertEx(const K& key, const V& val, size_t& i) {
+		const size_t cur = klist_.size();
+		if(cur == 0) {
+			i = 0;
+			push_back(key, val);
+			return true;
+		}
+		i = klist_.lsearch(key);
+		if (i!=cur) return false; // already there
+		push_back(el); // always insert at the end
+		i = cur;
+		return true; // not already there
+	}
+
+	bool insertEx(const std::pair<K, V>& el, size_t& i) {
+		return insertEx(el.first, el.second, i);
+	}
+
+	/**
+	 * Return true iff this set contains 'el'.
+	 */
+	bool contains(const K& el) const {
+		return klist_.lsearch(el) != klist_.size();
+	}
+
+	/**
+	 * Return true iff this set contains 'el'.
+	 */
+	bool containsEx(const K& el, size_t& i) const {
+		const size_t cur = klist_.size();
+		i =  klist_.lsearch(el);
+		return i != cur;
+	}
+
+	/**
+	 * Given a Key, return the pointer to the value,
+	 * if one exists.
+	 */
+	inline const V* lookup(const K& key) const {
+		size_t i;
+		if (containsEx(key, i)) {
+			return &(vlist_[i]);
+		} else {
+			return NULL; // not found
+		}
+	}
+
+	/**
+	 * Remove element from set.
+	 */
+	void remove(const K& el) {
+		const size_t cur = klist_.size();
+		const size_t i = klist_.lsearch(el);
+		if (i!=cur) {
+			klist_.remove(i);
+			vlist_.remove(i);
+		}
+	}
+
+	/**
+	 * If size is less than requested size, resize up to at least sz
+	 * and set cur_ to requested sz.
+	 */
+	void resize(size_t sz) {
+		klist_.resize(sz);
+		vlist_.resize(sz);
+	}
+
+	/**
+	 * Get the ith key, value in the map.
+	 */
+	const V& get(size_t i) const {
+		return vlist_[i];
+	}
+
+	const K& get_key(size_t i) const {
+		return klist_[i];
+	}
+
+	/**
+	 * Get the ith key, value in the map.
+	 */
+	const V& operator[](size_t i) const {
+		return vlist_[i];
+	}
+
+	/**
+	 * Clear set without deallocating (or setting) anything.
+	 */
+	void clear() {
+		klist_.clear();
+		vlist_.clear();
+	}
+
+private:
+
+	/**
+	 * Insert value 'el' at offset 'idx'.  It's OK to insert at cur_,
+	 * which is equivalent to appending.
+	 */
+	void push_back(const K& key, const V& val) {
+		klist_.push_back(key);
+		vlist_.push_back(val);
+	}
+
+	EList<K> klist_;   // list pointer, returned from new[]
+	EList<V> vlist_;   // list pointer, returned from new[]
 };
 
 /**

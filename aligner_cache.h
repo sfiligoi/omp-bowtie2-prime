@@ -610,7 +610,7 @@ protected:
 
 	Pool                   pool_;   // dispenses memory pages
 	TQList                 qlist_;  // list of reference substrings
-	EMap<SAKey, SAVal>     samap_;  // map from reference substrings to SA ranges
+	ESimpleMap<SAKey, SAVal>  samap_;  // map from reference substrings to SA ranges
 	TSAList                salist_; // list of SA ranges
 
 	uint32_t version_; // cache version
