@@ -311,11 +311,11 @@ struct ExtendRange {
 
 class SwDriver {
 
-	typedef PList<TIndexOffU, CACHE_PAGE_SZ> TSAList;
+	typedef EList<TIndexOffU> TSAList;
 
 public:
 
-	SwDriver(size_t bytes) :
+	SwDriver() :
 		satups_(DP_CAT),
 		gws_(DP_CAT),
 		seenDiags1_(DP_CAT),
@@ -323,7 +323,6 @@ public:
 		redAnchor_(DP_CAT),
 		redMate1_(DP_CAT),
 		redMate2_(DP_CAT),
-		pool_(bytes, CACHE_PAGE_SZ, DP_CAT),
 		salistEe_(DP_CAT),
 		gwstate_(GW_CAT),
 		reportOverhangs(gReportOverhangs) { }
@@ -360,7 +359,6 @@ public:
 		oresUngap_.set_alloc(alloc,propagate_alloc);
 		resEe_.set_alloc(alloc,propagate_alloc);
 		oresEe_.set_alloc(alloc,propagate_alloc);
-		pool_.set_alloc(alloc,propagate_alloc);
 		salistEe_.set_alloc(alloc,propagate_alloc);
 		gwstate_.set_alloc(alloc,propagate_alloc);
 	}
@@ -574,7 +572,6 @@ protected:
 	SwResult       resEe_;     // temp holder for ungapped alignment result
 	SwResult       oresEe_;    // temp holder for ungap. aln. opp mate
 	
-	Pool           pool_;      // memory pages for salistExact_
 	TSAList        salistEe_;  // PList for offsets for end-to-end hits
 	GroupWalkState gwstate_;   // some per-thread state shared by all GroupWalks
 	const bool reportOverhangs;

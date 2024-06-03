@@ -62,9 +62,7 @@ bool AlignmentCache::addOnTheFlyImpl(
 		qv.init((uint32_t)qlist_.size(), 0, 0);
 	}
 	qv.addRange(botf-topf); // update tally for # ranges and # elts
-	if(!qlist_.add(pool(), sak)) {
-		return false; // Exhausted pool memory
-	}
+	qlist_.push_back(sak);
 #ifndef NDEBUG
 	for(size_t i = qv.offset(); i < qlist_.size(); i++) {
 		if(i > qv.offset()) {
@@ -81,7 +79,7 @@ bool AlignmentCache::addOnTheFlyImpl(
 		sav.topf = topf;
 		sav.topb = 0;  // TODO: remove topb
 		for(size_t j = 0; j < (botf-topf); j++) {
-			salist_.add(pool(), OFF_MASK);
+			salist_.push_back(OFF_MASK);
 		}
 		assert(sav.repOk(*this));
 		samap_.insert(sak,sav);

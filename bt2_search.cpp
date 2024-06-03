@@ -1935,7 +1935,7 @@ static inline bool have_next_read(std::unique_ptr<PatternSourceReadAhead> &g_psr
 class AlignmentCacheIfaceBT2 : public AlignmentCacheIface {
 public:
 	AlignmentCacheIfaceBT2()
-	: AlignmentCacheIface(new AlignmentCache(seedCacheCurrentMB * 1024 * 1024))
+	: AlignmentCacheIface(new AlignmentCache)
 	{}
 
 	~AlignmentCacheIfaceBT2() {delete current_;}
@@ -1947,7 +1947,7 @@ public:
 class SwDriverBT2 : public SwDriver {
 public:
 	SwDriverBT2()
-	: SwDriver(exactCacheCurrentMB * 1024 * 1024) {}
+	: SwDriver() {}
 
 	SwDriverBT2(SwDriverBT2&& other) = default;
 	SwDriverBT2& operator=(SwDriverBT2&& other) noexcept = default;
@@ -2800,7 +2800,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 
 		//const BitPairReference& refs   = *multiseed_refs;
 
-		AlignmentCache scCurrent(seedCacheCurrentMB * 1024 * 1024);
+		AlignmentCache scCurrent();
 
 		// Interfaces for alignment and seed caches
 		AlignmentCacheIface ca(&scCurrent);
@@ -2825,7 +2825,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 			(size_t)tid);  // thread id
 
 		SeedAligner al;
-		SwDriver sd(exactCacheCurrentMB * 1024 * 1024);
+		SwDriver sd();
 		SwAligner sw(NULL), osw(NULL);
 		SeedResults shs[2];
 		ReportingMetrics rpm;

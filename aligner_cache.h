@@ -121,7 +121,7 @@ public:
 	TIndexOffU botf;        // bot in BWT
 };
 
-typedef PListSlice<TIndexOffU, CACHE_PAGE_SZ> TSlice;
+typedef EListSlice<TIndexOffU,128> TSlice;
 
 /**
  * Key for the query multimap: the read substring and its length.
@@ -521,17 +521,17 @@ public:
  * A cache consists chiefly of two multimaps, each implemented as a
  * Red-Black tree map backed by an EList.  A 'version' counter is
  * incremented every time the cache is cleared.
+ *
+ * TODO: Doucment the changes
  */
 class AlignmentCache {
 
-	typedef PList<SAKey, CACHE_PAGE_SZ> TQList;
-	typedef PList<TIndexOffU, CACHE_PAGE_SZ> TSAList;
+	typedef EList<SAKey> TQList;
+	typedef EList<TIndexOffU> TSAList;
 
 public:
 
-	AlignmentCache(
-		uint64_t bytes) :
-		pool_(bytes, CACHE_PAGE_SZ, CA_CAT),
+	AlignmentCache():
 		qlist_(CA_CAT),
 		samap_(CA_CAT),
 		salist_(CA_CAT),
@@ -573,7 +573,6 @@ public:
 	 * reads will have to be re-aligned.
 	 */
 	void clear() {
-		pool_.clear();
 		qlist_.clear();
 		samap_.clear();
 		salist_.clear();
@@ -596,11 +595,6 @@ public:
 	size_t saSize() const { return salist_.size(); }
 
 	/**
-	 * Return the pool.
-	 */
-	Pool& pool() { return pool_; }
-
-	/**
 	 * Return the current "version" of the cache, i.e. the total number
 	 * of times it has turned over since its creation.
 	 */
@@ -608,7 +602,6 @@ public:
 
 protected:
 
-	Pool                   pool_;   // dispenses memory pages
 	TQList                 qlist_;  // list of reference substrings
 	ESimpleMap<SAKey, SAVal>  samap_;  // map from reference substrings to SA ranges
 	TSAList                salist_; // list of SA ranges

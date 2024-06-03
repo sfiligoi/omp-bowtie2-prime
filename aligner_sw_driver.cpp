@@ -149,15 +149,12 @@ bool SwDriver::eeSaTups(
                     // Clear list where resolved offsets are stored
                     if(firstEe) {
                         salistEe_.clear();
-                        pool_.clear();
                         firstEe = false;
                     }
                     // We have to be careful not to allocate excessive amounts of memory here
                     TSlice o(salistEe_, (TIndexOffU)salistEe_.size(), width);
                     for(TIndexOffU i = 0; i < width; i++) {
-                        if(!salistEe_.add(pool_, OFF_MASK)) {
-                            return false;
-                        }
+                        salistEe_.push_back(OFF_MASK);
                     }
                     assert(!done);
                     eehits_.push_back(hit);
@@ -231,14 +228,11 @@ bool SwDriver::eeSaTups(
                 // Clear list where resolved offsets are stored
                 if(firstEe) {
                     salistEe_.clear();
-                    pool_.clear();
                     firstEe = false;
                 }
                 TSlice o(salistEe_, (TIndexOffU)salistEe_.size(), width);
                 for(size_t i = 0; i < width; i++) {
-                    if(!salistEe_.add(pool_, OFF_MASK)) {
-                        return false;
-                    }
+                    salistEe_.push_back(OFF_MASK);
                 }
                 eehits_.push_back(hit);
                 satpos_.expand();
