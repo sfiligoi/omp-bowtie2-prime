@@ -740,31 +740,6 @@ public:
 		return false;
 	}
 
-	bool addOnTheFly(
-		const BTDnaString& rfseq, // reference sequence close to read seq
-		TIndexOffU topf,            // top in BWT index
-		TIndexOffU botf,            // bot in BWT index
-		bool getLock = true)      // true -> lock is not held by caller
-	{
-
-		ASSERT_ONLY(BTDnaString tmp);
-		SAKey sak(rfseq ASSERT_ONLY(, tmp));
-		return addOnTheFly(sak, topf, botf, getLock);
-	}
-
-	bool addOnTheFly(
-		const char *   rfseq,       // reference sequence close to read seq - content
-		const uint32_t rfseq_len,   // reference sequence close to read seq - length
-		TIndexOffU topf,            // top in BWT index
-		TIndexOffU botf,            // bot in BWT index
-		bool getLock = true)      // true -> lock is not held by caller
-	{
-
-		ASSERT_ONLY(BTDnaString tmp);
-		SAKey sak(rfseq, rfseq_len ASSERT_ONLY(, tmp));
-		return addOnTheFly(sak, topf, botf, getLock);
-	}
-
 	/**
 	 * Given a QVal, populate the given EList of SATuples with records
 	 * describing all of the cached information about the QVal's
