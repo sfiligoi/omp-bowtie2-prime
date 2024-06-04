@@ -46,45 +46,6 @@ bool SAVal::repOk(const AlignmentCache& ac) const {
 }
 #endif
 
-/**
- * Add a new association between a read sequnce ('seq') and a
- * reference sequence ('')
- */
-bool AlignmentCache::addOnTheFlyImpl(
-	QVal& qv,         // qval that points to the range of reference substrings
-	const SAKey& sak, // the key holding the reference substring
-	TIndexOffU topf,    // top range elt in BWT index
-	TIndexOffU botf)    // bottom range elt in BWT index
-{
-	qv.init(sak, botf-topf);
-	bool added = !samap_.contains(sak);
-	if(added) {
-		SAVal sav;
-		sav.i = (TIndexOffU)salist_.size();
-		sav.len = botf - topf;
-		sav.topf = topf;
-		sav.topb = 0;  // TODO: remove topb
-		for(size_t j = 0; j < (botf-topf); j++) {
-			salist_.push_back(OFF_MASK);
-		}
-		assert(sav.repOk(*this));
-		samap_.insert(sak,sav);
-	}
-	// Now that we know all allocations have succeeded, we can do a few final
-	// updates
-
-	return true;
-}
-
-bool AlignmentCache::addOnTheFly(
-	QVal& qv,         // qval that points to the range of reference substrings
-	const SAKey& sak, // the key holding the reference substring
-	TIndexOffU topf,    // top range elt in BWT index
-	TIndexOffU botf,    // bottom range elt in BWT index
-	bool getLock)
-{
-		return addOnTheFlyImpl(qv, sak, topf, botf);
-}
 
 #ifdef ALIGNER_CACHE_MAIN
 

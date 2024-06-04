@@ -159,7 +159,7 @@ bool SwDriver::eeSaTups(
                     assert(!done);
                     eehits_.push_back(hit);
                     satpos_.expand();
-                    satpos_.back().sat.init(SAKey(), top, OFF_MASK, o);
+                    satpos_.back().sat.init(SAKey(), top, o);
                     satpos_.back().sat.key.seq = MAX_U64;
                     satpos_.back().sat.key.len = (uint32_t)rd.length();
                     satpos_.back().pos.init(fw, 0, 0, (uint32_t)rd.length());
@@ -236,7 +236,7 @@ bool SwDriver::eeSaTups(
                 }
                 eehits_.push_back(hit);
                 satpos_.expand();
-                satpos_.back().sat.init(SAKey(), top, OFF_MASK, o);
+                satpos_.back().sat.init(SAKey(), top, o);
                 satpos_.back().sat.key.seq = MAX_U64;
                 satpos_.back().sat.key.len = (uint32_t)rd.length();
                 satpos_.back().pos.init(hit.fw, 0, 0, (uint32_t)rd.length());
@@ -552,8 +552,8 @@ void SwDriver::prioritizeSATups(
 					ebwtBw,
 					satpos.back().sat.topf,
 					(TIndexOffU)(satpos.back().sat.topf + sz),
-					satpos.back().sat.topb,
-					(TIndexOffU)(satpos.back().sat.topb + sz),
+					0,
+					(TIndexOffU)(0 + sz),
 					fw,
 					rdoff,
 					seedlen,
@@ -681,7 +681,7 @@ void SwDriver::prioritizeSATups(
 		SATuple sat;
 		TSlice o;
 		o.init(satpos2_[ri].sat.offs, r, r+1);
-		sat.init(satpos2_[ri].sat.key, (TIndexOffU)(satpos2_[ri].sat.topf + r), OFF_MASK, o);
+		sat.init(satpos2_[ri].sat.key, (TIndexOffU)(satpos2_[ri].sat.topf + r), o);
 		satpos_.expand();
 		satpos_.back().sat = sat;
 		satpos_.back().origSz = satpos2_[ri].origSz;

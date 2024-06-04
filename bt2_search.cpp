@@ -2597,7 +2597,6 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-						msobj.ca.clear(); // Clear cache in preparation for new search
 							// Get data from internal stuctures
 							als.searchAllSeedsOneFinalize(mate, msobj.ca); // pass alignment cache
 

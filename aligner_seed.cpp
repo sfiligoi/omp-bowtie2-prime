@@ -535,11 +535,10 @@ void SeedAligner::searchAllSeedsFinalize(
 	AlignmentCache& cache,  // local cache for seed alignments
 	SeedResults& sr)
 {
-	uint32_t ooms = 0;
-
 	const SeedAlignerSearchData* dataVec = dataVec_;
 
 	uint32_t seedsearches = 0;
+	cache.clear();
 
 	// finish aligning and add to SeedResult
 	for(int fwi = 0; fwi < 2; fwi++) {
@@ -563,9 +562,7 @@ void SeedAligner::searchAllSeedsFinalize(
 			}
 		} // for i
 	} // for fwi
-	if (ooms>0) {
-		std::cerr << "WARNING: searchAllSeeds oom " << ooms << std::endl;
-	}
+	cache.finalize();
 }
 
 MultiSeedAligner::MultiSeedAligner(

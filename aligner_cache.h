@@ -356,13 +356,13 @@ typedef QKey SAKey;
  */
 struct SAVal {
 
-	SAVal() : topf(), topb(), i(), len(OFF_MASK) { }
+	SAVal() : topf(), i(), len(OFF_MASK) { }
 
 	/**
 	 * True -> my key is equal to the given key.
 	 */
 	bool operator==(const SAVal& o) const {
-		return  (topf == o.topf) && (topb == o.topb) && 
+		return  (topf == o.topf) &&
 			(i == o.i) && (len == o.len);
 	}
 
@@ -391,18 +391,15 @@ struct SAVal {
 	 */
 	void init(
 		TIndexOffU tf,
-		TIndexOffU tb,
 		TIndexOffU ii,
 		TIndexOffU ln)
 	{
 		topf = tf;
-		topb = tb;
 		i = ii;
 		len = ln;
 	}
 
 	TIndexOffU topf;  // top in BWT
-	TIndexOffU topb;  // top in BWT'
 	TIndexOffU i;     // idx of first elt in salist
 	TIndexOffU len;   // length of range
 };
@@ -419,22 +416,20 @@ public:
 
 	SATuple() { reset(); };
 
-	SATuple(SAKey k, TIndexOffU tf, TIndexOffU tb, TSlice o) {
-		init(k, tf, tb, o);
+	SATuple(SAKey k, TIndexOffU tf, TSlice o) {
+		init(k, tf, o);
 	}
 
-	void init(SAKey k, TIndexOffU tf, TIndexOffU tb, TSlice o) {
-		key = k; topf = tf; topb = tb; offs = o;
+	void init(SAKey k, TIndexOffU tf, TSlice o) {
+		key = k; topf = tf; offs = o;
 	}
 
 	/**
 	 * Initialize this SATuple from a subrange of the SATuple 'src'.
 	 */
 	void init(const SATuple& src, size_t first, size_t last) {
-		assert_neq(OFF_MASK, src.topb);
 		key = src.key;
 		topf = (TIndexOffU)(src.topf + first);
-		topb = OFF_MASK; // unknown!
 		offs.init(src.offs, first, last);
 	}
 
@@ -475,10 +470,10 @@ public:
 	}
 
 	bool operator==(const SATuple& o) const {
-		return key == o.key && topf == o.topf && topb == o.topb && offs == o.offs;
+		return key == o.key && topf == o.topf && offs == o.offs;
 	}
 
-	void reset() { topf = topb = OFF_MASK; offs.reset(); }
+	void reset() { topf = OFF_MASK; offs.reset(); }
 
 	/**
 	 * Set the length to be at most the original length.
@@ -497,7 +492,6 @@ public:
 	// bot/length of SA range equals offs.size()
 	SAKey    key;  // sequence key
 	TIndexOffU topf;  // top in BWT index
-	TIndexOffU topb;  // top in BWT' index
 	TSlice   offs; // offsets
 };
 
@@ -529,6 +523,7 @@ public:
 	AlignmentCache():
 		samap_(CA_CAT),
 		salist_(CA_CAT),
+		salist_size_(0),
 		version_(0) { }
 
 	AlignmentCache(const AlignmentCache& other) = delete;
@@ -544,8 +539,7 @@ public:
 		const QVal& qv,
 		EList<SATuple, S>& satups,
 		size_t& nrange,
-		size_t& nelt,
-		bool getLock = true)
+		size_t& nelt)
 	{
 			queryQvalImpl(qv, satups, nrange, nelt);
 	}
@@ -554,12 +548,29 @@ public:
 	 * Add a new association between a read sequnce ('seq') and a
 	 * reference sequence ('')
 	 */
-	bool addOnTheFly(
+	void addOnTheFly(
 		QVal& qv,         // qval that points to the range of reference substrings
 		const SAKey& sak, // the key holding the reference substring
 		TIndexOffU topf,    // top range elt in BWT index
-		TIndexOffU botf,    // bottom range elt in BWT index
-		bool getLock = true);
+		TIndexOffU botf) {   // bottom range elt in BWT index
+		qv.init(sak, botf-topf);
+		bool added = !samap_.contains(sak);
+		if(added) {
+			SAVal sav;
+			sav.init(topf, salist_size_, botf - topf);
+			salist_size_ += sav.len; // just remember how much we need for now	
+			assert(sav.repOk(*this));
+			samap_.insert(sak,sav);
+		}
+	}
+
+	/**
+	 * Finalize the cache, initialize salist_
+	 **/
+	void finalize() {
+		salist_.resizeNoCopy(salist_size_);
+		salist_.fill(OFF_MASK);
+	}
 
 	/**
 	 * Clear the cache, i.e. turn it over.  All HitGens referring to
@@ -569,36 +580,43 @@ public:
 	void clear() {
 		samap_.clear();
 		salist_.clear();
+		salist_size_=0;
 		version_++;
 	}
 
 	/**
 	 * Return the number of keys in the suffix array multimap.
 	 */
-	size_t saNumKeys() const { return samap_.size(); }
+	inline size_t saNumKeys() const { return samap_.size(); }
 
 	/**
 	 * Return the number of elements in the SA range list.
 	 */
-	size_t saSize() const { return salist_.size(); }
+	inline size_t saSize() const { return salist_size_; }
 
 	/**
 	 * Return the current "version" of the cache, i.e. the total number
 	 * of times it has turned over since its creation.
 	 */
-	uint32_t version() const { return version_; }
+	inline uint32_t version() const { return version_; }
+
+	/**
+	 * Check if it has been finalized
+	 **/
+	inline bool finlized() const {return salist_size_==salist_.size();} 
 
 protected:
 
 	ESimpleMap<SAKey, SAVal>  samap_;  // map from reference substrings to SA ranges
-	TSAList                salist_; // list of SA ranges
+	TSAList                salist_;      // list of SA ranges
+	size_t                 salist_size_; // needed size for salist_
 
 	uint32_t version_; // cache version
 
 private:
 
 	template <int S>
-	void queryQvalImpl(
+	inline void queryQvalImpl(
 		const QVal& qv,
 		EList<SATuple, S>& satups,
 		size_t& nrange,
@@ -617,7 +635,7 @@ private:
 			if(sav.len > 0) {
 				nrange++;
 				satups.expand();
-				satups.back().init(sak, sav.topf, sav.topb, TSlice(salist_, sav.i, sav.len));
+				satups.back().init(sak, sav.topf, TSlice(salist_, sav.i, sav.len));
 				nelt += sav.len;
 #ifndef NDEBUG
 				// Shouldn't add consecutive identical entries too satups
@@ -635,7 +653,7 @@ private:
 	 * Add a new association between a read sequnce ('seq') and a
 	 * reference sequence ('')
 	 */
-	bool addOnTheFlyImpl(
+	void addOnTheFlyImpl(
 		QVal& qv,         // qval that points to the range of reference substrings
 		const SAKey& sak, // the key holding the reference substring
 		TIndexOffU topf,    // top range elt in BWT index
