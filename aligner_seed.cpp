@@ -465,7 +465,6 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 	const SeedResults& sr,
 	const int ftabLen)           // forward index (BWT) value
 {
-	assert(sr.repOk(&cache.current()));
 	uint32_t seedsearches = 0;
 
 	SeedAlignerSearchParams* paramVec = paramVec_;
@@ -478,7 +477,6 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 		// For each instantiated seed
 		// start aligning and find list of seeds to search
 		for(size_t i =0; i < sr.numOffs(); i++) {
-			assert(sr.repOk(&cache.current()));
 			const InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			if(!is.isValid()) {
 				// Cache hit in an across-read cache
@@ -534,7 +532,7 @@ inline void SeedAligner::searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwt
 
 
 void SeedAligner::searchAllSeedsFinalize(
-	AlignmentCacheIface& cache,  // local cache for seed alignments
+	AlignmentCache& cache,  // local cache for seed alignments
 	SeedResults& sr)
 {
 	uint32_t ooms = 0;
@@ -559,8 +557,9 @@ void SeedAligner::searchAllSeedsFinalize(
 
 			if ( sdata.need_reporting ) {
 				const SAKey &sak = sdata.sak;
-				const QVal&  qv = cache.align(sak, sdata.bwt.topf, sdata.bwt.botf);
-				if(qv.valid()) sr.add(qv,i,fw);
+				QVal  qv;
+				cache.addOnTheFly(qv,sak, sdata.bwt.topf, sdata.bwt.botf);
+				sr.add(qv,i,fw);
 			}
 		} // for i
 	} // for fwi

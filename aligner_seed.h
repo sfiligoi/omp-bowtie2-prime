@@ -1515,7 +1515,7 @@ public:
 	void searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwtFw);
 
 	void searchAllSeedsFinalize(
-		AlignmentCacheIface& cache,  // local cache for seed alignments
+		AlignmentCache& cache,  // local cache for seed alignments
 		SeedResults& sr);            // holds all the seed hits
 
 	/**
@@ -1589,7 +1589,7 @@ public:
 
 	void searchAllSeedsOneFinalize(
 		uint32_t             idx,      // srs/als index
-		AlignmentCacheIface& cache) {  // local cache for seed alignments
+		AlignmentCache& cache) {  // local cache for seed alignments
 		_als[idx].searchAllSeedsFinalize(cache, _srs.getSR(idx));
 	}
 

@@ -1931,19 +1931,6 @@ static inline bool have_next_read(std::unique_ptr<PatternSourceReadAhead> &g_psr
   return have_read;
 }
 
-// a couple helper functions to allow default constructors to be used
-class AlignmentCacheIfaceBT2 : public AlignmentCacheIface {
-public:
-	AlignmentCacheIfaceBT2()
-	: AlignmentCacheIface(new AlignmentCache)
-	{}
-
-	~AlignmentCacheIfaceBT2() {delete current_;}
-
-	AlignmentCacheIfaceBT2(const AlignmentCacheIfaceBT2& other) = delete;
-	AlignmentCacheIfaceBT2& operator=(const AlignmentCacheIfaceBT2& other) = delete;
-};
-
 class SwDriverBT2 : public SwDriver {
 public:
 	SwDriverBT2()
@@ -2160,7 +2147,7 @@ public:
 
 #ifndef DISABLE_PART_TWO_TESTING
 	// Interfaces for alignment and seed caches
-	AlignmentCacheIfaceBT2 ca;
+	AlignmentCache ca;
 #endif
 
 	SwDriverBT2 sd;
@@ -2610,7 +2597,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-						msobj.ca.nextRead(); // Clear cache in preparation for new search
+						msobj.ca.clear(); // Clear cache in preparation for new search
 							// Get data from internal stuctures
 							als.searchAllSeedsOneFinalize(mate, msobj.ca); // pass alignment cache
 
@@ -2800,10 +2787,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 
 		//const BitPairReference& refs   = *multiseed_refs;
 
-		AlignmentCache scCurrent();
-
-		// Interfaces for alignment and seed caches
-		AlignmentCacheIface ca(&scCurrent);
+		AlignmentCache ca;
 
 		// Instantiate an object for holding reporting-related parameters.
 		ReportingParams rp(
@@ -2900,7 +2884,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 				prm.reset(); // per-read metrics
 				prm.doFmString = false;
 
-					ca.nextRead(); // clear the cache
+					ca.clear(); // clear the cache
 					assert(!ca.aligning());
 					bool paired = !ps->read_b().empty();
 					const size_t rdlen1 = ps->read_a().length();
@@ -3400,7 +3384,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 					size_t nRepeatSeedsMS[] = {0, 0, 0, 0};
 					size_t seedHitTotMS[] = {0, 0, 0, 0};
 					for(size_t roundi = 0; roundi < nSeedRounds; roundi++) {
-						ca.nextRead(); // Clear cache in preparation for new search
+						ca.clear(); // Clear cache in preparation for new search
 						shs[0].clearSeeds();
 						shs[1].clearSeeds();
 						assert(shs[0].empty());

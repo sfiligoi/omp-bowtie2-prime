@@ -402,7 +402,7 @@ public:
 		size_t cpow2,                // interval between diagonals to checkpoint
 		bool doTri,                  // triangular mini-fills
 		int tighten,                 // -M score tightening mode
-		AlignmentCacheIface& ca,     // alignment cache for seed hits
+		AlignmentCache& ca,          // alignment cache for seed hits
 		RandomSource& rnd,           // pseudo-random source
 		PerReadMetrics& prm,         // per-read metrics
 		AlnSinkWrap* mhs,            // HitSink for multiseed-style aligner
@@ -459,7 +459,7 @@ public:
 		size_t cpow2,                // interval between diagonals to checkpoint
 		bool doTri,                  // triangular mini-fills
 		int tighten,                 // -M score tightening mode
-		AlignmentCacheIface& cs,     // alignment cache for seed hits
+		AlignmentCache& cs,          // alignment cache for seed hits
 		RandomSource& rnd,           // pseudo-random source
 		PerReadMetrics& prm,         // per-read metrics for anchor
 		AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
@@ -533,7 +533,7 @@ protected:
 		bool lensq,                  // square extended length
 		bool szsq,                   // square SA range size
 		size_t nsm,                  // if range as <= nsm elts, it's "small"
-		AlignmentCacheIface& ca,     // alignment cache for seed hits
+		AlignmentCache& ca,          // alignment cache for seed hits
 		RandomSource& rnd,           // pseudo-random generator
 		PerReadMetrics& prm,         // per-read metrics
 		size_t& nelt_out,            // out: # elements total
