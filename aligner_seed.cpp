@@ -571,6 +571,7 @@ MultiSeedAligner::MultiSeedAligner(
  	: _ebwtFw(ebwtFw)
 	, _srs(srs)
 	, _als(new SeedAligner[srs.nSRs()])
+	, _caches(new AlignmentCache[srs.nSRs()])
 	, _ftabLen(ebwtFw->eh().ftabChars()) // cache the value
 	,  _paramVec(NULL), _dataVec(NULL)
 	, _bufVec_size(0), _bufVec_filled(0)
@@ -579,6 +580,7 @@ MultiSeedAligner::MultiSeedAligner(
 MultiSeedAligner::~MultiSeedAligner() {
 	if (_dataVec!=NULL) delete[] _dataVec;
 	if (_paramVec!=NULL) delete[] _paramVec;
+	delete[] _caches;
 	delete[] _als;
 }
 

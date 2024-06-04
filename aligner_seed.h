@@ -1569,6 +1569,9 @@ public:
 	SeedAligner &getAL(uint32_t idx) { return _als[idx];}
 	const SeedAligner &getAL(uint32_t idx) const { return _als[idx];}
 
+	AlignmentCache &getCache(uint32_t idx) { return _caches[idx];}
+	const AlignmentCache &getCache(uint32_t idx) const { return _caches[idx];}
+
 	// Update buffers, based on content of _srs
 	void reserveBuffers();
 
@@ -1591,8 +1594,8 @@ public:
 	template <class ASW>
 	bool searchAllSeedsOneFinalize(
 		uint32_t        idx,      // srs/als index
-		AlignmentCache& cache,         // local cache for seed alignments
 		ASW&            msinkwrap) { 
+		AlignmentCache& cache = _caches[idx];
 		SeedResults& sr = _srs.getSR(idx);
 		_als[idx].searchAllSeedsFinalize(cache, sr);
 		msinkwrap.updatePRM(sr);
@@ -1609,6 +1612,8 @@ private:
 	const Ebwt*              _ebwtFw; // forward index (BWT)
 	MultiSeedResults&        _srs;
 	SeedAligner*             _als;
+	AlignmentCache*          _caches;
+
 
 	const int                _ftabLen;
 

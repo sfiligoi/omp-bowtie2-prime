@@ -2122,9 +2122,6 @@ class msWorkerObjs {
 public:
 	msWorkerObjs()
 	: ftabLen(multiseed_ebwtFw->eh().ftabChars())
-#ifndef DISABLE_PART_TWO_TESTING
-	, ca()
-#endif
 	, sd()
 	, sw()
 	, rnd()
@@ -2144,11 +2141,6 @@ public:
 
 	// redundant, but useful
 	const int ftabLen;
-
-#ifndef DISABLE_PART_TWO_TESTING
-	// Interfaces for alignment and seed caches
-	AlignmentCache ca;
-#endif
 
 	SwDriverBT2 sd;
 	SwAligner sw;
@@ -2598,7 +2590,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate];
 					// get data from internal structures
-					if (!als.searchAllSeedsOneFinalize(mate, msobj.ca, msinkwrap)) {
+					if (!als.searchAllSeedsOneFinalize(mate, msinkwrap)) {
 						// No seed alignments!  Done with this mate.
 						mate_idx[mate] = MATE_DONE;
 					}
@@ -2649,7 +2641,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 										msconsts->cPow2,          // checkpointer interval, log2
 										msconsts->tri,          // triangular mini-fills?
 										msconsts->doTighten,        // -M score tightening mode
-										msobj.ca,       // seed alignment cache
+										als.getCache(mate),       // seed alignment cache
 										msobj.rnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
 										&msinkwrap,     // for organizing hits
