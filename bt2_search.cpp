@@ -2596,20 +2596,12 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
-					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-							// Get data from internal stuctures
-							als.searchAllSeedsOneFinalize(mate, msobj.ca); // pass alignment cache
-
-							msinkwrap.updatePRM(psrs->getSR(mate));
-							assert(psrs->getSR(mate).repOk(&msobj.ca.current()));
-							if(psrs->getSR(mate).empty()) {
-								// No seed alignments!  Done with this mate.
-								mate_idx[mate] = MATE_DONE;
-							} else {
-								// psrs->getSR(mate) contain what we need to know to update our seed
-								// summaries for this seeding
-								msinkwrap.updateSHSCounters(psrs->getSR(mate));
-							}
+					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate];
+					// get data from internal structures
+					if (!als.searchAllSeedsOneFinalize(mate, msobj.ca, msinkwrap)) {
+						// No seed alignments!  Done with this mate.
+						mate_idx[mate] = MATE_DONE;
+					}
 				} // if
 			} // for mate
 		   tmr.next("searchAllSeedsFinalize");

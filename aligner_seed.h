@@ -1587,10 +1587,22 @@ public:
 	// Assumes all prepareSearchAllSeeds were already called
 	void searchAllSeedsDoAll();
 
-	void searchAllSeedsOneFinalize(
-		uint32_t             idx,      // srs/als index
-		AlignmentCache& cache) {  // local cache for seed alignments
-		_als[idx].searchAllSeedsFinalize(cache, _srs.getSR(idx));
+	// return False if No seed alignment
+	template <class ASW>
+	bool searchAllSeedsOneFinalize(
+		uint32_t        idx,      // srs/als index
+		AlignmentCache& cache,         // local cache for seed alignments
+		ASW&            msinkwrap) { 
+		SeedResults& sr = _srs.getSR(idx);
+		_als[idx].searchAllSeedsFinalize(cache, sr);
+		msinkwrap.updatePRM(sr);
+		assert(sr.repOk(&cache));
+		if (sr.empty()) {
+			return false;
+		} else {
+			msinkwrap.updateSHSCounters(sr);
+			return true;
+		}
 	}
 
 private:
