@@ -56,12 +56,7 @@ bool AlignmentCache::addOnTheFlyImpl(
 	TIndexOffU topf,    // top range elt in BWT index
 	TIndexOffU botf)    // bottom range elt in BWT index
 {
-	// If this is the first reference sequence we're associating with
-	// the query sequence, initialize the QVal.
-	if(!qv.valid()) {
-		qv.init((uint32_t)qlist_.size(), 0, 0);
-	}
-	qv.addRange(botf-topf); // update tally for # ranges and # elts
+	qv.init((uint32_t)qlist_.size(), 1, botf-topf);
 	qlist_.push_back(sak);
 #ifndef NDEBUG
 	for(size_t i = qv.offset(); i < qlist_.size(); i++) {
