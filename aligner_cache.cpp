@@ -56,16 +56,7 @@ bool AlignmentCache::addOnTheFlyImpl(
 	TIndexOffU topf,    // top range elt in BWT index
 	TIndexOffU botf)    // bottom range elt in BWT index
 {
-	qv.init((TIndexOffU)qlist_.size(), 1, botf-topf);
-	qlist_.push_back(sak);
-#ifndef NDEBUG
-	for(size_t i = qv.offset(); i < qlist_.size(); i++) {
-		if(i > qv.offset()) {
-			assert(qlist_.get(i) != qlist_.get(i-1));
-		}
-	}
-#endif
-	assert_eq(qv.offset() + qv.numRanges(), qlist_.size());
+	qv.init(sak, botf-topf);
 	bool added = !samap_.contains(sak);
 	if(added) {
 		SAVal sav;

@@ -260,11 +260,14 @@ public:
 
 	QVal() { reset(); }
 
+	QVal(const QKey &k, TIndexOffU elts)
+	: k_(k), rangen_(1), eltn_(elts) {}
+
 	/**
 	 * True -> my key is equal to the given key.
 	 */
 	bool operator==(const QVal& o) const {
-		return (i_ == o.i_) && (rangen_ == o.rangen_) && (eltn_ == o.eltn_);
+		return (k_ == o.k_) && (rangen_ == o.rangen_) && (eltn_ == o.eltn_);
 	}
 
 	/**
@@ -277,13 +280,13 @@ public:
 	/**
 	 * Return the offset of the first reference substring in the qlist.
 	 */
-	TIndexOffU offset() const { return i_; }
+	const QKey& key() const { return k_; }
 
 	/**
 	 * Return the number of reference substrings associated with a read
 	 * substring.
 	 */
-	TIndexOffU numRanges() const {
+	uint8_t numRanges() const {
 		assert(valid());
 		return rangen_;
 	}
@@ -309,28 +312,20 @@ public:
 	/**
 	 * Return true iff the QVal is valid.
 	 */
-	bool valid() const { return rangen_ != OFF_MASK; }
+	bool valid() const { return rangen_ != 0; }
 
 	/**
 	 * Reset to invalid state.
 	 */
 	void reset() {
-		i_ = 0; rangen_ = eltn_ = OFF_MASK;
+		rangen_ = eltn_ = 0;
 	}
 
 	/**
 	 * Initialize Qval.
 	 */
-	void init(TIndexOffU i, TIndexOffU ranges, TIndexOffU elts) {
-		i_ = i; rangen_ = ranges; eltn_ = elts;
-	}
-
-	/**
-	 * Tally another range with given number of elements.
-	 */
-	void addRange(TIndexOffU numElts) {
-		rangen_++;
-		eltn_ += numElts;
+	void init(const QKey &k, TIndexOffU elts) {
+		k_ = k; rangen_ = 1; eltn_ = elts;
 	}
 
 #ifndef NDEBUG
@@ -343,8 +338,8 @@ public:
 
 protected:
 
-	TIndexOffU i_;      // idx of first elt in qlist
-	TIndexOffU rangen_; // # ranges (= # associated reference substrings)
+	QKey       k_;      // idx of first elt in qlist
+	uint8_t    rangen_; // # ranges (= # associated reference substrings)
 	TIndexOffU eltn_;   // # elements (total)
 };
 
@@ -532,7 +527,6 @@ class AlignmentCache {
 public:
 
 	AlignmentCache():
-		qlist_(CA_CAT),
 		samap_(CA_CAT),
 		salist_(CA_CAT),
 		version_(0) { }
@@ -573,7 +567,6 @@ public:
 	 * reads will have to be re-aligned.
 	 */
 	void clear() {
-		qlist_.clear();
 		samap_.clear();
 		salist_.clear();
 		version_++;
@@ -583,11 +576,6 @@ public:
 	 * Return the number of keys in the suffix array multimap.
 	 */
 	size_t saNumKeys() const { return samap_.size(); }
-
-	/**
-	 * Return the number of elements in the reference substring list.
-	 */
-	size_t qSize() const { return qlist_.size(); }
 
 	/**
 	 * Return the number of elements in the SA range list.
@@ -602,7 +590,6 @@ public:
 
 protected:
 
-	TQList                 qlist_;  // list of reference substrings
 	ESimpleMap<SAKey, SAVal>  samap_;  // map from reference substrings to SA ranges
 	TSAList                salist_; // list of SA ranges
 
@@ -618,16 +605,11 @@ private:
 		size_t& nelt)
 	{
 		assert(qv.repOk(*this));
-		const size_t refi = qv.offset();
-		const size_t reff = refi + qv.numRanges();
-		// For each reference sequence sufficiently similar to the
-		// query sequence in the QKey...
-		for(size_t i = refi; i < reff; i++) {
+		if (qv.numRanges()>0) {
+			// assume only one element
 			// Get corresponding SAKey, containing similar reference
 			// sequence & length
-			SAKey sak = qlist_.get(i);
-			// Shouldn't have identical keys in qlist_
-			assert(i == refi || qlist_.get(i) != qlist_.get(i-1));
+			const SAKey& sak = qv.key();
 			// Get corresponding SAVal
 			assert(samap_.lookup(sak) != NULL);
 			const SAVal& sav = *(samap_.lookup(sak));
