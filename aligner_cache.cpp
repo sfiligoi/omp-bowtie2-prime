@@ -56,7 +56,7 @@ bool AlignmentCache::addOnTheFlyImpl(
 	TIndexOffU topf,    // top range elt in BWT index
 	TIndexOffU botf)    // bottom range elt in BWT index
 {
-	qv.init((uint32_t)qlist_.size(), 1, botf-topf);
+	qv.init((TIndexOffU)qlist_.size(), 1, botf-topf);
 	qlist_.push_back(sak);
 #ifndef NDEBUG
 	for(size_t i = qv.offset(); i < qlist_.size(); i++) {
