@@ -473,7 +473,7 @@ void SwDriver::prioritizeSATups(
 	bool lensq,                  // square length in weight calculation
 	bool szsq,                   // square range size in weight calculation
 	size_t nsm,                  // if range as <= nsm elts, it's "small"
-	AlignmentCache& ca,     // alignment cache for seed hits
+	AlignmentCacheInterface ca,  // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random generator
 	PerReadMetrics& prm,         // per-read metrics
 	size_t& nelt_out,            // out: # elements total
@@ -749,7 +749,7 @@ int SwDriver::extendSeeds(
 	size_t cpow2,                // interval between diagonals to checkpoint
 	bool doTri,                  // triangular mini-fills?
 	int tighten,                 // -M score tightening mode
-	AlignmentCache& ca,          // alignment cache for seed hits
+	AlignmentCacheInterface ca,  // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random source
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
@@ -1341,7 +1341,7 @@ int SwDriver::extendSeedsPaired(
 	size_t cpow2,                // interval between diagonals to checkpoint
 	bool doTri,                  // triangular mini-fills?
 	int tighten,                 // -M score tightening mode
-	AlignmentCache& ca,          // alignment cache for seed hits
+	AlignmentCacheInterface ca,  // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random source
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner

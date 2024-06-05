@@ -1569,8 +1569,10 @@ public:
 	SeedAligner &getAL(uint32_t idx) { return _als[idx];}
 	const SeedAligner &getAL(uint32_t idx) const { return _als[idx];}
 
-	AlignmentCache &getCache(uint32_t idx) { return _caches[idx];}
-	const AlignmentCache &getCache(uint32_t idx) const { return _caches[idx];}
+	AlignmentCache &getCache(uint32_t idx) { return _caches.getCache(idx);}
+	const AlignmentCache &getCache(uint32_t idx) const { return _caches.getCache(idx);}
+
+	AlignmentCacheInterface getCacheInterface(uint32_t idx) { return _caches.getCacheInterface(idx);}
 
 	// Update buffers, based on content of _srs
 	void reserveBuffers();
@@ -1595,7 +1597,7 @@ public:
 	bool searchAllSeedsOneFinalize(
 		uint32_t        idx,      // srs/als index
 		ASW&            msinkwrap) { 
-		AlignmentCache& cache = _caches[idx];
+		AlignmentCache& cache = _caches.getCache(idx);
 		SeedResults& sr = _srs.getSR(idx);
 		_als[idx].searchAllSeedsFinalize(cache, sr);
 		msinkwrap.updatePRM(sr);
@@ -1608,12 +1610,16 @@ public:
 		}
 	}
 
+	// need to be called after all the other finalizers
+	void finalizeCaches() {
+		_caches.finalize();
+	}
+
 private:
 	const Ebwt*              _ebwtFw; // forward index (BWT)
 	MultiSeedResults&        _srs;
 	SeedAligner*             _als;
-	AlignmentCache*          _caches;
-
+	AlignmentMultiCache      _caches;
 
 	const int                _ftabLen;
 

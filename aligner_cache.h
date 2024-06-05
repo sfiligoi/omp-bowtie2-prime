@@ -495,6 +495,8 @@ public:
 	TSlice   offs; // offsets
 };
 
+class AlignmentCacheInterface;
+
 /**
  * Encapsulate the data structures and routines that constitute a
  * particular cache, i.e., a particular stratum of the cache system,
@@ -514,35 +516,20 @@ public:
  * TODO: Doucment the changes
  */
 class AlignmentCache {
-
-	typedef EList<SAKey> TQList;
-	typedef EList<TIndexOffU> TSAList;
+	friend class AlignmentCacheInterface;
 
 public:
 
 	AlignmentCache():
 		samap_(CA_CAT),
-		salist_(CA_CAT),
 		salist_size_(0),
+		salist_offs_(0),
 		version_(0) { }
 
 	AlignmentCache(const AlignmentCache& other) = delete;
 	AlignmentCache& operator=(const AlignmentCache& other) = delete;
 
-	/**
-	 * Given a QVal, populate the given EList of SATuples with records
-	 * describing all of the cached information about the QVal's
-	 * reference substrings.
-	 */
-	template <int S>
-	void queryQval(
-		const QVal& qv,
-		EList<SATuple, S>& satups,
-		size_t& nrange,
-		size_t& nelt)
-	{
-			queryQvalImpl(qv, satups, nrange, nelt);
-	}
+	void setSAOffset(size_t off) {salist_offs_=off;}
 
 	/**
 	 * Add a new association between a read sequnce ('seq') and a
@@ -565,22 +552,14 @@ public:
 	}
 
 	/**
-	 * Finalize the cache, initialize salist_
-	 **/
-	void finalize() {
-		salist_.resizeNoCopy(salist_size_);
-		salist_.fill(OFF_MASK);
-	}
-
-	/**
 	 * Clear the cache, i.e. turn it over.  All HitGens referring to
 	 * ranges in this cache will become invalid and the corresponding
 	 * reads will have to be re-aligned.
 	 */
 	void clear() {
 		samap_.clear();
-		salist_.clear();
 		salist_size_=0;
+		salist_offs_=0;
 		version_++;
 	}
 
@@ -600,27 +579,28 @@ public:
 	 */
 	inline uint32_t version() const { return version_; }
 
-	/**
-	 * Check if it has been finalized
-	 **/
-	inline bool finlized() const {return salist_size_==salist_.size();} 
-
 protected:
 
 	ESimpleMap<SAKey, SAVal>  samap_;  // map from reference substrings to SA ranges
-	TSAList                salist_;      // list of SA ranges
-	size_t                 salist_size_; // needed size for salist_
+	size_t                 salist_size_; // local salist size
+	size_t                 salist_offs_; // global offset
 
 	uint32_t version_; // cache version
 
 private:
 
-	template <int S>
+	/**
+	 * Given a QVal, populate the given EList of SATuples with records
+	 * describing all of the cached information about the QVal's
+	 * reference substrings.
+	 */
+	template <int S1, int S2>
 	inline void queryQvalImpl(
 		const QVal& qv,
-		EList<SATuple, S>& satups,
+		EList<TIndexOffU, S1>& salist,
+		EList<SATuple, S2>&    satups,
 		size_t& nrange,
-		size_t& nelt)
+		size_t& nelt) const
 	{
 		assert(qv.repOk(*this));
 		if (qv.numRanges()>0) {
@@ -635,7 +615,7 @@ private:
 			if(sav.len > 0) {
 				nrange++;
 				satups.expand();
-				satups.back().init(sak, sav.topf, TSlice(salist_, sav.i, sav.len));
+				satups.back().init(sak, sav.topf, TSlice(salist, salist_offs_+sav.i, sav.len));
 				nelt += sav.len;
 #ifndef NDEBUG
 				// Shouldn't add consecutive identical entries too satups
@@ -649,16 +629,77 @@ private:
 		}
 	}
 
-	/**
-	 * Add a new association between a read sequnce ('seq') and a
-	 * reference sequence ('')
-	 */
-	void addOnTheFlyImpl(
-		QVal& qv,         // qval that points to the range of reference substrings
-		const SAKey& sak, // the key holding the reference substring
-		TIndexOffU topf,    // top range elt in BWT index
-		TIndexOffU botf);    // bottom range elt in BWT index
+};
 
+/**
+ * Implements the cache lookup
+ **/
+class AlignmentCacheInterface {
+public:
+	AlignmentCacheInterface(const AlignmentCache& cache, EList<TIndexOffU>& salist)
+		:cache_(cache) , salist_(salist) {}
+
+	/**
+	 * Given a QVal, populate the given EList of SATuples with records
+	 * describing all of the cached information about the QVal's
+	 * reference substrings.
+	 */
+	template <int S>
+	void queryQval(
+		const QVal& qv,
+		EList<SATuple, S>& satups,
+		size_t& nrange,
+		size_t& nelt)
+	{
+		cache_.queryQvalImpl(qv, salist_, satups, nrange, nelt);
+	}
+private:
+	const AlignmentCache& cache_;
+	EList<TIndexOffU>&    salist_;
+};
+
+/**
+ * Handle a set of caches
+ **/
+class AlignmentMultiCache {
+public:
+	AlignmentMultiCache(const uint32_t ncaches)
+		: caches_(new AlignmentCache[ncaches])
+		, ncaches_(ncaches)
+		{}
+
+	~AlignmentMultiCache() {
+		delete[] caches_;
+	}
+
+	inline uint32_t n_els() const {return ncaches_;}
+
+	inline AlignmentCache &getCache(uint32_t idx) { return caches_[idx];}
+	inline const AlignmentCache &getCache(uint32_t idx) const { return caches_[idx];}
+
+	inline AlignmentCacheInterface getCacheInterface(uint32_t idx) {
+		AlignmentCacheInterface out(caches_[idx], salists_);
+		return out;
+	}
+
+	/**
+	 * Finalize the cache, initialize salist_
+	 **/
+	void finalize() {
+		size_t nsas = 0;
+		for (uint32_t i=0; i<ncaches_; i++) {
+			AlignmentCache& cache = caches_[i];
+			cache.setSAOffset(nsas);
+			nsas += cache.saSize();
+		}
+		salists_.resizeNoCopy(nsas);
+		salists_.fill(OFF_MASK);
+	}
+
+private:
+	AlignmentCache   *caches_;
+	EList<TIndexOffU> salists_;
+	const uint32_t    ncaches_;  // size of caches_
 };
 
 #endif /*ALIGNER_CACHE_H_*/

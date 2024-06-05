@@ -2596,6 +2596,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					}
 				} // if
 			} // for mate
+			als.finalizeCaches();
 		   tmr.next("searchAllSeedsFinalize");
 
 			// always call ensure_spare from main CPU thread
@@ -2641,7 +2642,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 										msconsts->cPow2,          // checkpointer interval, log2
 										msconsts->tri,          // triangular mini-fills?
 										msconsts->doTighten,        // -M score tightening mode
-										als.getCache(mate),       // seed alignment cache
+										als.getCacheInterface(mate),  // seed alignment cache
 										msobj.rnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
 										&msinkwrap,     // for organizing hits
