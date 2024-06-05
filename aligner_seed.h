@@ -1389,7 +1389,7 @@ public:
 	        const Read* pread);        // read to align
 
 	// Expects prepareOneSeed has been called on all the valid elements
-	size_t instantiateSeeds(Read const * const preads[]);
+	size_t instantiateSeeds(const Read reads[]);
 
 
 private:

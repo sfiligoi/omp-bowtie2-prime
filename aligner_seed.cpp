@@ -395,7 +395,7 @@ void MultiSeedResults::prepareOneSeed(
 			_srs[idx]);
 }
 
-size_t MultiSeedResults::instantiateSeeds(Read const * const preads[])
+size_t MultiSeedResults::instantiateSeeds(const Read reads[])
 {
 	size_t seq_total_size = 0;
 	size_t seeds_total_size = 0;
@@ -426,7 +426,7 @@ size_t MultiSeedResults::instantiateSeeds(Read const * const preads[])
 	for (uint32_t i=0; i<_n_sr; i++) {
 		tries += SeedAligner::instantiateSeed(
 			_seqBuf + _bufOffs[i].first, _seedsBuf + _bufOffs[i].second,
-			*preads[i], _nofw, _norc,
+			reads[i], _nofw, _norc,
 			_srs[i]);
 	}
 

@@ -32,6 +32,7 @@
 #include <time.h>
 #include <utility>
 #include <execution>
+#include <omp.h>
 
 #ifndef _WIN32
 #include <signal.h>
@@ -1776,6 +1777,8 @@ createPatsrcFactory(
 
 #define PTHREAD_ATTRS (PTHREAD_CREATE_JOINABLE | PTHREAD_CREATE_DETACHED)
 
+static int multiseed_num_cpu_tasks = 1;
+
 static PatternSourceReadAheadFactory* multiseed_readahead_factory;
 static Ebwt*                    multiseed_ebwtFw;
 static Ebwt*                    multiseed_ebwtBw;
@@ -2254,10 +2257,13 @@ public:
  * -
  */
  /* Work in progress: There is only one such invocation, parallelization inside */
-static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
+static void multiseedSearchWorker(const uint32_t num_parallel_tasks, const uint32_t num_cpu_tasks) {
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
 	AlnSink&                msink    = *multiseed_msink;
+
+	// when we batch, how many parallel_tasks per CPU
+	const uint32_t ptasks_per_cpu = (num_parallel_tasks+num_cpu_tasks-1)/num_cpu_tasks; // round up
 
 	constexpr bool paired = false;
 
@@ -2353,13 +2359,11 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		int* nceil = new(worker_alloc.allocate(num_parallel_tasks,sizeof(int))) int[num_parallel_tasks];
 
 		// read object
-		typedef Read* ReadPtr;
-		Read* *rds = new(worker_alloc.allocate(num_parallel_tasks,sizeof(ReadPtr))) ReadPtr[num_parallel_tasks];
+		Read *rds = new Read[num_parallel_tasks];
 		// Calculate the minimum valid score threshold for the read
 		TAlScore* minsc = new TAlScore[num_parallel_tasks];
 
-                std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
-		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
+                std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_cpu_tasks);
 
                 uint64_t repcnt = 0;
 		while (true) { // will exit with a break
@@ -2377,8 +2381,12 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		   {
 			bool found_unread = false;
 			// Note: Will use mate to distinguish between tread-specific elements
-#pragma omp parallel for reduction(||:found_unread) default(shared) schedule(dynamic,8)
-			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+#pragma omp parallel for reduction(||:found_unread) default(shared)
+			for (uint32_t icpu=0; icpu<num_cpu_tasks; icpu++) {
+			  const uint32_t mate_start = icpu*ptasks_per_cpu;
+			  const uint32_t mate_end = std::min((icpu+1)*ptasks_per_cpu,num_parallel_tasks);
+			  // process one block of mates per CPU
+			  for (uint32_t mate=mate_start; mate<mate_end; mate++) {
 			    msWorkerObjs& msobj = g_msobjs[mate];
 			    while (mate_idx[mate]!=MATE_DONE_READING) { // External loop, including filtering
 
@@ -2390,9 +2398,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 				}
 
 				while (mate_idx[mate]!=MATE_DONE_READING) { // Internal loop, just buffer reads and retries
-					bool done_reading = !have_next_read(g_psrah[mate]);
+					bool done_reading = !have_next_read(g_psrah[icpu]);
 					if (!done_reading) {
-						pair<bool, bool> ret = g_psrah[mate].get()->nextReadPair();
+						pair<bool, bool> ret = g_psrah[icpu].get()->nextReadPair();
 						bool success = ret.first;
 						if(!success) {
 							done_reading = ret.second;
@@ -2408,11 +2416,11 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 				} // internal while loop
 
 				if (mate_idx[mate]!=MATE_DONE_READING) {
-					ps[mate] = g_psrah[mate].get()->ptr();
-					rds[mate] = &ps[mate]->read_a();
+					PatternSourcePerThread& ps = *(g_psrah[icpu].get()->ptr());
+					rds[mate] = ps.read_a();
 
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-					TReadId rdid = rds[mate]->rdid;
+					TReadId rdid = rds[mate].rdid;
 
 					// Align this read/pair
 					//
@@ -2421,39 +2429,39 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					msinkwrap.prm.reset(); // per-read metrics
 					msinkwrap.prm.doFmString = false;
 
-					const size_t rdlen = rds[mate]->length();
+					const size_t rdlen = rds[mate].length();
 					msinkwrap.nextRead(
-						rds[mate],
+						&rds[mate],
 						NULL,
 						rdid,
 						msconsts->sc.qualitiesMatter());
 					assert(msinkwrap.inited());
 					minsc[mate] = scoreMin.f<TAlScore>(rdlen);
 					if(minsc[mate] > 0) {
-						if(!gQuiet) printEEScoreMsg(*ps[mate], paired, true);
+						if(!gQuiet) printEEScoreMsg(ps, paired, true);
 						minsc[mate] = 0;
 					}
 					// Keep track of whether the read was filtered
 					bool filt = false;
 					{
 						// N filter; does the read have too many Ns?
-						bool nfilt = msconsts->sc.nFilter(rds[mate]->patFw);
+						bool nfilt = msconsts->sc.nFilter(rds[mate].patFw);
 
 						// Score filter; does the read enough character to rise above
 						// the score threshold?
 						bool scfilt =msconsts->sc.scoreFilter(minsc[mate], rdlen);
 						bool lenfilt = true;
 						if(rdlen <= (size_t)multiseedMms || rdlen < 2) {
-							if(!gQuiet) printMmsSkipMsg(*ps[mate], paired, true, multiseedMms);
+							if(!gQuiet) printMmsSkipMsg(ps, paired, true, multiseedMms);
 							lenfilt = false;
 						}
 						if(rdlen < 2) {
-							if(!gQuiet) printLenSkipMsg(*ps[mate], paired, true);
+							if(!gQuiet) printLenSkipMsg(ps, paired, true);
 							lenfilt = false;
 						}
 						bool qcfilt = true;
 						if(qcFilter) {
-							qcfilt = (rds[mate]->filter != '0');
+							qcfilt = (rds[mate].filter != '0');
 						}
 						filt = msinkwrap.setAndComputeFilter(nfilt, scfilt, lenfilt, qcfilt);
 					}
@@ -2462,7 +2470,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					assert(msinkwrap.empty());
 					msobj.sd.nextRead(false, rdlen, 0); // SwDriver
 					exhaustive[mate] = false;
-					msobj.rnd.init(rds[mate]->seed);
+					msobj.rnd.init(rds[mate].seed);
 
 					msinkwrap.prm.maxDPFails = msconsts->streak;
 					assert_gt(msconsts->streak, 0);
@@ -2517,14 +2525,15 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					// Set up seeds
 					// Check whether the offset would drive the first seed
 					// off the end
-					if(offset > 0 && multiseedLen + offset > rds[mate]->length()) {
+					if(offset > 0 && multiseedLen + offset > rds[mate].length()) {
 						mate_idx[mate] = MATE_DONE;
 					} else {
 						// register the mate and compute the needed per-mate buffer size 
-						srs.prepareOneSeed(mate, offset, interval, rds[mate]);
+						srs.prepareOneSeed(mate, offset, interval, &rds[mate]);
 					} // if done
 			   } // if !done_reading[mate]
-			} // for mate - found_unread
+			  } // for mate - found_unread
+			} // for icpu - found_unread
 			if (!found_unread) break; // nothing else to do
 		   }
 		   tmr.next("read");
@@ -2617,7 +2626,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
                                                                 {
 									// Unpaired dynamic programming driver
 									ret = msobj.sd.extendSeeds(
-										*rds[mate],     // read
+										rds[mate],     // read
 										true,           // mate #1?
 										psrs->getSR(mate),      // seed hits
 										msconsts->ebwtFw,         // bowtie index
@@ -2694,7 +2703,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		
 				irounds[mate] = nSeedRounds; // invalidate
 
-				const size_t rdlen = rds[mate]->length();
+				const size_t rdlen = rds[mate].length();
 				size_t totnucs = 0;
 				{
 					size_t len = rdlen;
@@ -2706,7 +2715,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 				msinkwrap.finalizePRM(totnucs);
 
 				// Commit and report paired-end/unpaired alignments
-				//uint32_t sd = rds[0]->seed ^ rds[1]->seed;
+				//uint32_t sd = rds[0].seed ^ rds[1].seed;
 				//rnd.init(ROTL(sd, 20));
 				msinkwrap.finishReadOne(
 					&psrs->getSR(mate),           // seed results for mate 1
@@ -4184,8 +4193,11 @@ static void multiseedSearch(
 	}
 #endif
 
+	const int num_cpu_tasks = omp_get_max_threads();
+	multiseed_num_cpu_tasks = num_cpu_tasks;
+
 	// Important: Need at least nthreads+1 elements, more is OK
-	PatternSourceReadAheadFactory readahead_factory(patsrc,pp,2*nthreads+1);
+	PatternSourceReadAheadFactory readahead_factory(patsrc,pp,2*num_cpu_tasks+1);
 	multiseed_readahead_factory = &readahead_factory;
 
 	// Start the metrics thread
@@ -4207,7 +4219,7 @@ static void multiseedSearch(
 				multiseedSearchWorkerPaired(nthreads);
 			} else {
 #endif
-				multiseedSearchWorker(nthreads);
+				multiseedSearchWorker(nthreads, num_cpu_tasks);
 #ifdef ENABLE_2P5
 			}
 #endif
