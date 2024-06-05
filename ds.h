@@ -4179,6 +4179,44 @@ public:
 		len_ = nlen;
 	}
 
+	/**
+	 * Add an element to the back.  No intialization is done.
+	 */
+	void fill(size_t begin, size_t end, const T& v) {
+		assert_leq(begin, end);
+		assert_leq(end, len_);
+		T* list = &(list_->get(i_));
+		for(size_t i = begin; i < end; i++) {
+			list[i] = v;
+		}
+	}
+
+	/**
+	 * Fill the list with a fixed value
+	 */
+	inline void fill(const T& v) {
+		const auto len = len_;
+		T* list = &(list_->get(i_));
+		for(size_t i = 0; i < len; i++) {
+			list[i] = v;
+		}
+	}
+
+	/**
+	 * Fill the range with zeros.
+	 */
+	inline void fillZero(size_t begin, size_t end) {
+		assert_leq(begin, end);
+		memset(&(list_->get(begin+i_)), 0, sizeof(T) * (end-begin));
+	}
+
+	/**
+	 * Set all bits in the list array to 0.
+	 */
+	inline void fillZero() {
+		memset(&(list_->get(i_)), 0, sizeof(T) * len_);
+	}
+
 protected:
 	size_t i_;
 	size_t len_;

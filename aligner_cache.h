@@ -615,7 +615,9 @@ private:
 			if(sav.len > 0) {
 				nrange++;
 				satups.expand();
-				satups.back().init(sak, sav.topf, TSlice(salist, salist_offs_+sav.i, sav.len));
+				TSlice offs = TSlice(salist, salist_offs_+sav.i, sav.len);
+				offs.fill(OFF_MASK);
+				satups.back().init(sak, sav.topf, offs);
 				nelt += sav.len;
 #ifndef NDEBUG
 				// Shouldn't add consecutive identical entries too satups
@@ -693,7 +695,6 @@ public:
 			nsas += cache.saSize();
 		}
 		salists_.resizeNoCopy(nsas);
-		salists_.fill(OFF_MASK);
 	}
 
 private:
