@@ -1931,23 +1931,10 @@ static inline bool have_next_read(std::unique_ptr<PatternSourceReadAhead> &g_psr
   return have_read;
 }
 
-// a couple helper functions to allow default constructors to be used
-class AlignmentCacheIfaceBT2 : public AlignmentCacheIface {
-public:
-	AlignmentCacheIfaceBT2()
-	: AlignmentCacheIface(new AlignmentCache(seedCacheCurrentMB * 1024 * 1024))
-	{}
-
-	~AlignmentCacheIfaceBT2() {delete current_;}
-
-	AlignmentCacheIfaceBT2(const AlignmentCacheIfaceBT2& other) = delete;
-	AlignmentCacheIfaceBT2& operator=(const AlignmentCacheIfaceBT2& other) = delete;
-};
-
 class SwDriverBT2 : public SwDriver {
 public:
 	SwDriverBT2()
-	: SwDriver(exactCacheCurrentMB * 1024 * 1024) {}
+	: SwDriver() {}
 
 	SwDriverBT2(SwDriverBT2&& other) = default;
 	SwDriverBT2& operator=(SwDriverBT2&& other) noexcept = default;
@@ -2135,9 +2122,6 @@ class msWorkerObjs {
 public:
 	msWorkerObjs()
 	: ftabLen(multiseed_ebwtFw->eh().ftabChars())
-#ifndef DISABLE_PART_TWO_TESTING
-	, ca()
-#endif
 	, sd()
 	, sw()
 	, rnd()
@@ -2157,11 +2141,6 @@ public:
 
 	// redundant, but useful
 	const int ftabLen;
-
-#ifndef DISABLE_PART_TWO_TESTING
-	// Interfaces for alignment and seed caches
-	AlignmentCacheIfaceBT2 ca;
-#endif
 
 	SwDriverBT2 sd;
 	SwAligner sw;
@@ -2609,23 +2588,15 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
-					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-						msobj.ca.nextRead(); // Clear cache in preparation for new search
-							// Get data from internal stuctures
-							als.searchAllSeedsOneFinalize(mate, msobj.ca); // pass alignment cache
-
-							msinkwrap.updatePRM(psrs->getSR(mate));
-							assert(psrs->getSR(mate).repOk(&msobj.ca.current()));
-							if(psrs->getSR(mate).empty()) {
-								// No seed alignments!  Done with this mate.
-								mate_idx[mate] = MATE_DONE;
-							} else {
-								// psrs->getSR(mate) contain what we need to know to update our seed
-								// summaries for this seeding
-								msinkwrap.updateSHSCounters(psrs->getSR(mate));
-							}
+					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate];
+					// get data from internal structures
+					if (!als.searchAllSeedsOneFinalize(mate, msinkwrap)) {
+						// No seed alignments!  Done with this mate.
+						mate_idx[mate] = MATE_DONE;
+					}
 				} // if
 			} // for mate
+			als.finalizeCaches();
 		   tmr.next("searchAllSeedsFinalize");
 
 			// always call ensure_spare from main CPU thread
@@ -2671,7 +2642,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 										msconsts->cPow2,          // checkpointer interval, log2
 										msconsts->tri,          // triangular mini-fills?
 										msconsts->doTighten,        // -M score tightening mode
-										msobj.ca,       // seed alignment cache
+										als.getCacheInterface(mate),  // seed alignment cache
 										msobj.rnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
 										&msinkwrap,     // for organizing hits
@@ -2800,10 +2771,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 
 		//const BitPairReference& refs   = *multiseed_refs;
 
-		AlignmentCache scCurrent(seedCacheCurrentMB * 1024 * 1024);
-
-		// Interfaces for alignment and seed caches
-		AlignmentCacheIface ca(&scCurrent);
+		AlignmentCache ca;
 
 		// Instantiate an object for holding reporting-related parameters.
 		ReportingParams rp(
@@ -2825,7 +2793,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 			(size_t)tid);  // thread id
 
 		SeedAligner al;
-		SwDriver sd(exactCacheCurrentMB * 1024 * 1024);
+		SwDriver sd();
 		SwAligner sw(NULL), osw(NULL);
 		SeedResults shs[2];
 		ReportingMetrics rpm;
@@ -2900,7 +2868,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 				prm.reset(); // per-read metrics
 				prm.doFmString = false;
 
-					ca.nextRead(); // clear the cache
+					ca.clear(); // clear the cache
 					assert(!ca.aligning());
 					bool paired = !ps->read_b().empty();
 					const size_t rdlen1 = ps->read_a().length();
@@ -3400,7 +3368,7 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 					size_t nRepeatSeedsMS[] = {0, 0, 0, 0};
 					size_t seedHitTotMS[] = {0, 0, 0, 0};
 					for(size_t roundi = 0; roundi < nSeedRounds; roundi++) {
-						ca.nextRead(); // Clear cache in preparation for new search
+						ca.clear(); // Clear cache in preparation for new search
 						shs[0].clearSeeds();
 						shs[1].clearSeeds();
 						assert(shs[0].empty());

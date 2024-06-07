@@ -46,68 +46,6 @@ bool SAVal::repOk(const AlignmentCache& ac) const {
 }
 #endif
 
-/**
- * Add a new association between a read sequnce ('seq') and a
- * reference sequence ('')
- */
-bool AlignmentCache::addOnTheFlyImpl(
-	QVal& qv,         // qval that points to the range of reference substrings
-	const SAKey& sak, // the key holding the reference substring
-	TIndexOffU topf,    // top range elt in BWT index
-	TIndexOffU botf)    // bottom range elt in BWT index
-{
-	bool added = true;
-	// If this is the first reference sequence we're associating with
-	// the query sequence, initialize the QVal.
-	if(!qv.valid()) {
-		qv.init((uint32_t)qlist_.size(), 0, 0);
-	}
-	qv.addRange(botf-topf); // update tally for # ranges and # elts
-	if(!qlist_.add(pool(), sak)) {
-		return false; // Exhausted pool memory
-	}
-#ifndef NDEBUG
-	for(size_t i = qv.offset(); i < qlist_.size(); i++) {
-		if(i > qv.offset()) {
-			assert(qlist_.get(i) != qlist_.get(i-1));
-		}
-	}
-#endif
-	assert_eq(qv.offset() + qv.numRanges(), qlist_.size());
-	SANode *s = samap_.add(pool(), sak, &added);
-	if(s == NULL) {
-		return false; // Exhausted pool memory
-	}
-	assert(s->key.repOk());
-	if(added) {
-		s->payload.i = (TIndexOffU)salist_.size();
-		s->payload.len = botf - topf;
-		s->payload.topf = topf;
-		s->payload.topb = 0;  // TODO: remove topb
-		for(size_t j = 0; j < (botf-topf); j++) {
-			if(!salist_.add(pool(), OFF_MASK)) {
-				// Change the payload's len field
-				s->payload.len = (TIndexOffU)j;
-				return false; // Exhausted pool memory
-			}
-		}
-		assert(s->payload.repOk(*this));
-	}
-	// Now that we know all allocations have succeeded, we can do a few final
-	// updates
-
-	return true;
-}
-
-bool AlignmentCache::addOnTheFly(
-	QVal& qv,         // qval that points to the range of reference substrings
-	const SAKey& sak, // the key holding the reference substring
-	TIndexOffU topf,    // top range elt in BWT index
-	TIndexOffU botf,    // bottom range elt in BWT index
-	bool getLock)
-{
-		return addOnTheFlyImpl(qv, sak, topf, botf);
-}
 
 #ifdef ALIGNER_CACHE_MAIN
 

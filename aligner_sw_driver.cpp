@@ -149,20 +149,17 @@ bool SwDriver::eeSaTups(
                     // Clear list where resolved offsets are stored
                     if(firstEe) {
                         salistEe_.clear();
-                        pool_.clear();
                         firstEe = false;
                     }
                     // We have to be careful not to allocate excessive amounts of memory here
                     TSlice o(salistEe_, (TIndexOffU)salistEe_.size(), width);
                     for(TIndexOffU i = 0; i < width; i++) {
-                        if(!salistEe_.add(pool_, OFF_MASK)) {
-                            return false;
-                        }
+                        salistEe_.push_back(OFF_MASK);
                     }
                     assert(!done);
                     eehits_.push_back(hit);
                     satpos_.expand();
-                    satpos_.back().sat.init(SAKey(), top, OFF_MASK, o);
+                    satpos_.back().sat.init(SAKey(), top, o);
                     satpos_.back().sat.key.seq = MAX_U64;
                     satpos_.back().sat.key.len = (uint32_t)rd.length();
                     satpos_.back().pos.init(fw, 0, 0, (uint32_t)rd.length());
@@ -231,18 +228,15 @@ bool SwDriver::eeSaTups(
                 // Clear list where resolved offsets are stored
                 if(firstEe) {
                     salistEe_.clear();
-                    pool_.clear();
                     firstEe = false;
                 }
                 TSlice o(salistEe_, (TIndexOffU)salistEe_.size(), width);
                 for(size_t i = 0; i < width; i++) {
-                    if(!salistEe_.add(pool_, OFF_MASK)) {
-                        return false;
-                    }
+                    salistEe_.push_back(OFF_MASK);
                 }
                 eehits_.push_back(hit);
                 satpos_.expand();
-                satpos_.back().sat.init(SAKey(), top, OFF_MASK, o);
+                satpos_.back().sat.init(SAKey(), top, o);
                 satpos_.back().sat.key.seq = MAX_U64;
                 satpos_.back().sat.key.len = (uint32_t)rd.length();
                 satpos_.back().pos.init(hit.fw, 0, 0, (uint32_t)rd.length());
@@ -479,7 +473,7 @@ void SwDriver::prioritizeSATups(
 	bool lensq,                  // square length in weight calculation
 	bool szsq,                   // square range size in weight calculation
 	size_t nsm,                  // if range as <= nsm elts, it's "small"
-	AlignmentCacheIface& ca,     // alignment cache for seed hits
+	AlignmentCacheInterface ca,  // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random generator
 	PerReadMetrics& prm,         // per-read metrics
 	size_t& nelt_out,            // out: # elements total
@@ -558,8 +552,8 @@ void SwDriver::prioritizeSATups(
 					ebwtBw,
 					satpos.back().sat.topf,
 					(TIndexOffU)(satpos.back().sat.topf + sz),
-					satpos.back().sat.topb,
-					(TIndexOffU)(satpos.back().sat.topb + sz),
+					0,
+					(TIndexOffU)(0 + sz),
 					fw,
 					rdoff,
 					seedlen,
@@ -687,7 +681,7 @@ void SwDriver::prioritizeSATups(
 		SATuple sat;
 		TSlice o;
 		o.init(satpos2_[ri].sat.offs, r, r+1);
-		sat.init(satpos2_[ri].sat.key, (TIndexOffU)(satpos2_[ri].sat.topf + r), OFF_MASK, o);
+		sat.init(satpos2_[ri].sat.key, (TIndexOffU)(satpos2_[ri].sat.topf + r), o);
 		satpos_.expand();
 		satpos_.back().sat = sat;
 		satpos_.back().origSz = satpos2_[ri].origSz;
@@ -755,7 +749,7 @@ int SwDriver::extendSeeds(
 	size_t cpow2,                // interval between diagonals to checkpoint
 	bool doTri,                  // triangular mini-fills?
 	int tighten,                 // -M score tightening mode
-	AlignmentCacheIface& ca,     // alignment cache for seed hits
+	AlignmentCacheInterface ca,  // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random source
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
@@ -1347,7 +1341,7 @@ int SwDriver::extendSeedsPaired(
 	size_t cpow2,                // interval between diagonals to checkpoint
 	bool doTri,                  // triangular mini-fills?
 	int tighten,                 // -M score tightening mode
-	AlignmentCacheIface& ca,     // alignment cache for seed hits
+	AlignmentCacheInterface ca,  // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random source
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner

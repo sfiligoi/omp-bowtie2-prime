@@ -121,7 +121,7 @@ public:
 	TIndexOffU botf;        // bot in BWT
 };
 
-typedef PListSlice<TIndexOffU, CACHE_PAGE_SZ> TSlice;
+typedef EListSlice<TIndexOffU,128> TSlice;
 
 /**
  * Key for the query multimap: the read substring and its length.
@@ -260,16 +260,33 @@ public:
 
 	QVal() { reset(); }
 
+	QVal(const QKey &k, TIndexOffU elts)
+	: k_(k), rangen_(1), eltn_(elts) {}
+
+	/**
+	 * True -> my key is equal to the given key.
+	 */
+	bool operator==(const QVal& o) const {
+		return (k_ == o.k_) && (rangen_ == o.rangen_) && (eltn_ == o.eltn_);
+	}
+
+	/**
+	 * True -> my key is not equal to the given key.
+	 */
+	bool operator!=(const QVal& o) const {
+		return !(*this == o);
+	}
+
 	/**
 	 * Return the offset of the first reference substring in the qlist.
 	 */
-	TIndexOffU offset() const { return i_; }
+	const QKey& key() const { return k_; }
 
 	/**
 	 * Return the number of reference substrings associated with a read
 	 * substring.
 	 */
-	TIndexOffU numRanges() const {
+	uint8_t numRanges() const {
 		assert(valid());
 		return rangen_;
 	}
@@ -295,28 +312,20 @@ public:
 	/**
 	 * Return true iff the QVal is valid.
 	 */
-	bool valid() const { return rangen_ != OFF_MASK; }
+	bool valid() const { return rangen_ != 0; }
 
 	/**
 	 * Reset to invalid state.
 	 */
 	void reset() {
-		i_ = 0; rangen_ = eltn_ = OFF_MASK;
+		rangen_ = eltn_ = 0;
 	}
 
 	/**
 	 * Initialize Qval.
 	 */
-	void init(TIndexOffU i, TIndexOffU ranges, TIndexOffU elts) {
-		i_ = i; rangen_ = ranges; eltn_ = elts;
-	}
-
-	/**
-	 * Tally another range with given number of elements.
-	 */
-	void addRange(TIndexOffU numElts) {
-		rangen_++;
-		eltn_ += numElts;
+	void init(const QKey &k, TIndexOffU elts) {
+		k_ = k; rangen_ = 1; eltn_ = elts;
 	}
 
 #ifndef NDEBUG
@@ -329,8 +338,8 @@ public:
 
 protected:
 
-	TIndexOffU i_;      // idx of first elt in qlist
-	TIndexOffU rangen_; // # ranges (= # associated reference substrings)
+	QKey       k_;      // idx of first elt in qlist
+	uint8_t    rangen_; // # ranges (= # associated reference substrings)
 	TIndexOffU eltn_;   // # elements (total)
 };
 
@@ -347,7 +356,22 @@ typedef QKey SAKey;
  */
 struct SAVal {
 
-	SAVal() : topf(), topb(), i(), len(OFF_MASK) { }
+	SAVal() : topf(), i(), len(OFF_MASK) { }
+
+	/**
+	 * True -> my key is equal to the given key.
+	 */
+	bool operator==(const SAVal& o) const {
+		return  (topf == o.topf) &&
+			(i == o.i) && (len == o.len);
+	}
+
+	/**
+	 * True -> my key is not equal to the given key.
+	 */
+	bool operator!=(const SAVal& o) const {
+		return !(*this == o);
+	}
 
 	/**
 	 * Return true iff the SAVal is valid.
@@ -367,18 +391,15 @@ struct SAVal {
 	 */
 	void init(
 		TIndexOffU tf,
-		TIndexOffU tb,
 		TIndexOffU ii,
 		TIndexOffU ln)
 	{
 		topf = tf;
-		topb = tb;
 		i = ii;
 		len = ln;
 	}
 
 	TIndexOffU topf;  // top in BWT
-	TIndexOffU topb;  // top in BWT'
 	TIndexOffU i;     // idx of first elt in salist
 	TIndexOffU len;   // length of range
 };
@@ -395,22 +416,20 @@ public:
 
 	SATuple() { reset(); };
 
-	SATuple(SAKey k, TIndexOffU tf, TIndexOffU tb, TSlice o) {
-		init(k, tf, tb, o);
+	SATuple(SAKey k, TIndexOffU tf, TSlice o) {
+		init(k, tf, o);
 	}
 
-	void init(SAKey k, TIndexOffU tf, TIndexOffU tb, TSlice o) {
-		key = k; topf = tf; topb = tb; offs = o;
+	void init(SAKey k, TIndexOffU tf, TSlice o) {
+		key = k; topf = tf; offs = o;
 	}
 
 	/**
 	 * Initialize this SATuple from a subrange of the SATuple 'src'.
 	 */
 	void init(const SATuple& src, size_t first, size_t last) {
-		assert_neq(OFF_MASK, src.topb);
 		key = src.key;
 		topf = (TIndexOffU)(src.topf + first);
-		topb = OFF_MASK; // unknown!
 		offs.init(src.offs, first, last);
 	}
 
@@ -451,10 +470,10 @@ public:
 	}
 
 	bool operator==(const SATuple& o) const {
-		return key == o.key && topf == o.topf && topb == o.topb && offs == o.offs;
+		return key == o.key && topf == o.topf && offs == o.offs;
 	}
 
-	void reset() { topf = topb = OFF_MASK; offs.reset(); }
+	void reset() { topf = OFF_MASK; offs.reset(); }
 
 	/**
 	 * Set the length to be at most the original length.
@@ -473,9 +492,10 @@ public:
 	// bot/length of SA range equals offs.size()
 	SAKey    key;  // sequence key
 	TIndexOffU topf;  // top in BWT index
-	TIndexOffU topb;  // top in BWT' index
 	TSlice   offs; // offsets
 };
+
+class AlignmentCacheInterface;
 
 /**
  * Encapsulate the data structures and routines that constitute a
@@ -492,84 +512,44 @@ public:
  * A cache consists chiefly of two multimaps, each implemented as a
  * Red-Black tree map backed by an EList.  A 'version' counter is
  * incremented every time the cache is cleared.
+ *
+ * TODO: Doucment the changes
  */
 class AlignmentCache {
-
-	typedef RedBlackNode<QKey,  QVal>  QNode;
-	typedef RedBlackNode<SAKey, SAVal> SANode;
-
-	typedef PList<SAKey, CACHE_PAGE_SZ> TQList;
-	typedef PList<TIndexOffU, CACHE_PAGE_SZ> TSAList;
+	friend class AlignmentCacheInterface;
 
 public:
 
-	AlignmentCache(
-		uint64_t bytes) :
-		pool_(bytes, CACHE_PAGE_SZ, CA_CAT),
-		qmap_(CACHE_PAGE_SZ, CA_CAT),
-		qlist_(CA_CAT),
-		samap_(CACHE_PAGE_SZ, CA_CAT),
-		salist_(CA_CAT),
+	AlignmentCache():
+		samap_(CA_CAT),
+		salist_size_(0),
+		salist_offs_(0),
 		version_(0) { }
 
 	AlignmentCache(const AlignmentCache& other) = delete;
 	AlignmentCache& operator=(const AlignmentCache& other) = delete;
 
-	/**
-	 * Given a QVal, populate the given EList of SATuples with records
-	 * describing all of the cached information about the QVal's
-	 * reference substrings.
-	 */
-	template <int S>
-	void queryQval(
-		const QVal& qv,
-		EList<SATuple, S>& satups,
-		size_t& nrange,
-		size_t& nelt,
-		bool getLock = true)
-	{
-			queryQvalImpl(qv, satups, nrange, nelt);
-	}
-
-	/**
-	 * Return true iff the cache has no entries in it.
-	 */
-	bool empty() const {
-		bool ret = qmap_.empty();
-		assert(!ret || qlist_.empty());
-		assert(!ret || samap_.empty());
-		assert(!ret || salist_.empty());
-		return ret;
-	}
-
-	/**
-	 * Add a new query key ('qk'), usually a 2-bit encoded substring of
-	 * the read) as the key in a new Red-Black node in the qmap and
-	 * return a pointer to the node's QVal.
-	 *
-	 * The expectation is that the caller is about to set about finding
-	 * associated reference substrings, and that there will be future
-	 * calls to addOnTheFly to add associations to reference substrings
-	 * found.
-	 */
-	QVal* add(
-		const QKey& qk,
-		bool *added,
-		bool getLock = true)
-	{
-			return addImpl(qk, added);
-	}
+	void setSAOffset(size_t off) {salist_offs_=off;}
 
 	/**
 	 * Add a new association between a read sequnce ('seq') and a
 	 * reference sequence ('')
 	 */
-	bool addOnTheFly(
+	void addOnTheFly(
 		QVal& qv,         // qval that points to the range of reference substrings
 		const SAKey& sak, // the key holding the reference substring
 		TIndexOffU topf,    // top range elt in BWT index
-		TIndexOffU botf,    // bottom range elt in BWT index
-		bool getLock = true);
+		TIndexOffU botf) {   // bottom range elt in BWT index
+		qv.init(sak, botf-topf);
+		bool added = !samap_.contains(sak);
+		if(added) {
+			SAVal sav;
+			sav.init(topf, salist_size_, botf - topf);
+			salist_size_ += sav.len; // just remember how much we need for now	
+			assert(sav.repOk(*this));
+			samap_.insert(sak,sav);
+		}
+	}
 
 	/**
 	 * Clear the cache, i.e. turn it over.  All HitGens referring to
@@ -577,84 +557,67 @@ public:
 	 * reads will have to be re-aligned.
 	 */
 	void clear() {
-		pool_.clear();
-		qmap_.clear();
-		qlist_.clear();
 		samap_.clear();
-		salist_.clear();
+		salist_size_=0;
+		salist_offs_=0;
 		version_++;
 	}
 
 	/**
-	 * Return the number of keys in the query multimap.
-	 */
-	size_t qNumKeys() const { return qmap_.size(); }
-
-	/**
 	 * Return the number of keys in the suffix array multimap.
 	 */
-	size_t saNumKeys() const { return samap_.size(); }
-
-	/**
-	 * Return the number of elements in the reference substring list.
-	 */
-	size_t qSize() const { return qlist_.size(); }
+	inline size_t saNumKeys() const { return samap_.size(); }
 
 	/**
 	 * Return the number of elements in the SA range list.
 	 */
-	size_t saSize() const { return salist_.size(); }
-
-	/**
-	 * Return the pool.
-	 */
-	Pool& pool() { return pool_; }
+	inline size_t saSize() const { return salist_size_; }
 
 	/**
 	 * Return the current "version" of the cache, i.e. the total number
 	 * of times it has turned over since its creation.
 	 */
-	uint32_t version() const { return version_; }
+	inline uint32_t version() const { return version_; }
 
 protected:
 
-	Pool                   pool_;   // dispenses memory pages
-	RedBlack<QKey, QVal>   qmap_;   // map from query substrings to reference substrings
-	TQList                 qlist_;  // list of reference substrings
-	RedBlack<SAKey, SAVal> samap_;  // map from reference substrings to SA ranges
-	TSAList                salist_; // list of SA ranges
+	ESimpleMap<SAKey, SAVal>  samap_;  // map from reference substrings to SA ranges
+	size_t                 salist_size_; // local salist size
+	size_t                 salist_offs_; // global offset
 
 	uint32_t version_; // cache version
 
 private:
 
-	template <int S>
-	void queryQvalImpl(
+	/**
+	 * Given a QVal, populate the given EList of SATuples with records
+	 * describing all of the cached information about the QVal's
+	 * reference substrings.
+	 */
+	template <int S1, int S2>
+	inline void queryQvalImpl(
 		const QVal& qv,
-		EList<SATuple, S>& satups,
+		EList<TIndexOffU, S1>& salist,
+		EList<SATuple, S2>&    satups,
 		size_t& nrange,
-		size_t& nelt)
+		size_t& nelt) const
 	{
 		assert(qv.repOk(*this));
-		const size_t refi = qv.offset();
-		const size_t reff = refi + qv.numRanges();
-		// For each reference sequence sufficiently similar to the
-		// query sequence in the QKey...
-		for(size_t i = refi; i < reff; i++) {
+		if (qv.numRanges()>0) {
+			// assume only one element
 			// Get corresponding SAKey, containing similar reference
 			// sequence & length
-			SAKey sak = qlist_.get(i);
-			// Shouldn't have identical keys in qlist_
-			assert(i == refi || qlist_.get(i) != qlist_.get(i-1));
-			// Get corresponding SANode
-			SANode *n = samap_.lookup(sak);
-			assert(n != NULL);
-			const SAVal& sav = n->payload;
+			const SAKey& sak = qv.key();
+			// Get corresponding SAVal
+			assert(samap_.lookup(sak) != NULL);
+			const SAVal& sav = *(samap_.lookup(sak));
 			assert(sav.repOk(*this));
 			if(sav.len > 0) {
 				nrange++;
 				satups.expand();
-				satups.back().init(sak, sav.topf, sav.topb, TSlice(salist_, sav.i, sav.len));
+				TSlice offs = TSlice(salist, salist_offs_+sav.i, sav.len);
+				offs.fill(OFF_MASK);
+				satups.back().init(sak, sav.topf, offs);
 				nelt += sav.len;
 #ifndef NDEBUG
 				// Shouldn't add consecutive identical entries too satups
@@ -668,266 +631,76 @@ private:
 		}
 	}
 
-	/**
-	 * Add a new association between a read sequnce ('seq') and a
-	 * reference sequence ('')
-	 */
-	bool addOnTheFlyImpl(
-		QVal& qv,         // qval that points to the range of reference substrings
-		const SAKey& sak, // the key holding the reference substring
-		TIndexOffU topf,    // top range elt in BWT index
-		TIndexOffU botf);    // bottom range elt in BWT index
-
-	/**
-	 * Add a new query key ('qk'), usually a 2-bit encoded substring of
-	 * the read) as the key in a new Red-Black node in the qmap and
-	 * return a pointer to the node's QVal.
-	 *
-	 * The expectation is that the caller is about to set about finding
-	 * associated reference substrings, and that there will be future
-	 * calls to addOnTheFly to add associations to reference substrings
-	 * found.
-	 */
-	QVal* addImpl(
-		const QKey& qk,
-		bool *added)
-	{
-		assert(qk.cacheable());
-		QNode *n = qmap_.add(pool(), qk, added);
-		return (n != NULL ? &n->payload : NULL);
-	}
 };
 
 /**
- * Interface used to query and update a pair of caches: one thread-
- * local and unsynchronized, another shared and synchronized.  One or
- * both can be NULL.
- */
-class AlignmentCacheIface {
-
+ * Implements the cache lookup
+ **/
+class AlignmentCacheInterface {
 public:
-
-	AlignmentCacheIface(
-		AlignmentCache *current):
-		qk_(),
-		qv_(NULL),
-		rangen_(0),
-		eltsn_(0),
-		current_(current)
-	{
-		assert(current_ != NULL);
-	}
-
-	~AlignmentCacheIface() {}
-
-	AlignmentCacheIface(const AlignmentCacheIface& other) = delete;
-	AlignmentCacheIface& operator=(const AlignmentCacheIface& other) = delete;
-
-	/**
-	 * This function is called whenever we start to align a new read or
-	 * read substring.  We make key for it and store the key in qk_.
-	 * If the sequence is uncacheable, we don't actually add it to the
-	 * map but the corresponding reference substrings are still added
-	 * to the qlist_.
-	 *
-	 * Returns:
-	 *  -1 if out of memory
-	 *  0 if key was found in cache
-	 */
-	int beginAlign(
-                const char *   seq,     // reference sequence close to read seq - content
-                const uint32_t seq_len) // reference sequence close to read seq - length
-	{
-		assert(repOk());
-		QKey qk(seq, seq_len ASSERT_ONLY(, tmpdnastr_));
-		return beginAlign(qk);
-	}
-
-	int beginAlign(
-		const QKey&    qk)
-	{
-		assert(repOk());
-		if(qk.cacheable()) {
-			// Make a QNode for this key and possibly add the QNode to the
-			// Red-Black map; but if 'seq' isn't cacheable, just create the
-			// QNode (without adding it to the map).
-			bool added = false;
-			qv_ = current_->add(qk, &added);
-		} else {
-			qv_ = &qvbuf_;
-		}
-		if(qv_ == NULL) {
-			resetRead();
- 			return -1; // Not in memory
-		}
-		qv_->reset();
-		return 0; // Need to search for it
-	}
-	ASSERT_ONLY(BTDnaString tmpdnastr_);
-
-	/**
-	 * Called when is finished aligning a read (and so is finished
-	 * adding associated reference strings).  Returns a copy of the
-	 * final QVal object and resets the alignment state of the
-	 * current-read cache.
-	 *
-	 * Also, if the alignment is cacheable, it commits it to the next
-	 * cache up in the cache hierarchy.
-	 */
-	QVal finishAlign(bool getLock = true) {
-		if(!qv_->valid()) {
-			qv_->init(0, 0, 0);
-		}
-		// Copy this pointer because we're about to reset the qv_ field
-		// to NULL
-		QVal* qv = qv_;
-		// Commit the contents of the current-read cache to the next
-		// cache up in the hierarchy.
-		// If qk is cacheable, then it must be in the cache
-		// Reset the state in this iface in preparation for the next
-		// alignment.
-		resetRead();
-		assert(repOk());
-		return *qv;
-	}
-
-	/**
-	 * A call to this member indicates that the caller has finished
-	 * with the last read (if any) and is ready to work on the next.
-	 * This gives the cache a chance to reset some of its state if
-	 * necessary.
-	 */
-	void nextRead() {
-		current_->clear();
-		resetRead();
-		assert(!aligning());
-	}
-
-	/**
-	 * Return true iff we're in the middle of aligning a sequence.
-	 */
-	bool aligning() const {
-		return qv_ != NULL;
-	}
-
-	/**
-	 * Clears both the local and shared caches.
-	 */
-	void clear() {
-		if(current_ != NULL) current_->clear();
-	}
-
-	/**
-	 * Add an alignment to the running list of alignments being
-	 * compiled for the current read in the local cache.
-	 */
-	bool addOnTheFly(
-		const SAKey& sak, // the key holding the reference substring
-		TIndexOffU topf,            // top in BWT index
-		TIndexOffU botf,            // bot in BWT index
-		bool getLock = true)      // true -> lock is not held by caller
-	{
-
-		assert(aligning());
-		assert(repOk());
-		//assert(sak.cacheable());
-		if(current_->addOnTheFly((*qv_), sak, topf, botf, getLock)) {
-			rangen_++;
-			eltsn_ += (botf-topf);
-			return true;
-		}
-		return false;
-	}
-
-	bool addOnTheFly(
-		const BTDnaString& rfseq, // reference sequence close to read seq
-		TIndexOffU topf,            // top in BWT index
-		TIndexOffU botf,            // bot in BWT index
-		bool getLock = true)      // true -> lock is not held by caller
-	{
-
-		ASSERT_ONLY(BTDnaString tmp);
-		SAKey sak(rfseq ASSERT_ONLY(, tmp));
-		return addOnTheFly(sak, topf, botf, getLock);
-	}
-
-	bool addOnTheFly(
-		const char *   rfseq,       // reference sequence close to read seq - content
-		const uint32_t rfseq_len,   // reference sequence close to read seq - length
-		TIndexOffU topf,            // top in BWT index
-		TIndexOffU botf,            // bot in BWT index
-		bool getLock = true)      // true -> lock is not held by caller
-	{
-
-		ASSERT_ONLY(BTDnaString tmp);
-		SAKey sak(rfseq, rfseq_len ASSERT_ONLY(, tmp));
-		return addOnTheFly(sak, topf, botf, getLock);
-	}
+	AlignmentCacheInterface(const AlignmentCache& cache, EList<TIndexOffU>& salist)
+		:cache_(cache) , salist_(salist) {}
 
 	/**
 	 * Given a QVal, populate the given EList of SATuples with records
 	 * describing all of the cached information about the QVal's
 	 * reference substrings.
 	 */
-	template<int S>
+	template <int S>
 	void queryQval(
 		const QVal& qv,
 		EList<SATuple, S>& satups,
 		size_t& nrange,
-		size_t& nelt,
-		bool getLock = true)
+		size_t& nelt)
 	{
-		current_->queryQval(qv, satups, nrange, nelt, getLock);
+		cache_.queryQvalImpl(qv, salist_, satups, nrange, nelt);
+	}
+private:
+	const AlignmentCache& cache_;
+	EList<TIndexOffU>&    salist_;
+};
+
+/**
+ * Handle a set of caches
+ **/
+class AlignmentMultiCache {
+public:
+	AlignmentMultiCache(const uint32_t ncaches)
+		: caches_(new AlignmentCache[ncaches])
+		, ncaches_(ncaches)
+		{}
+
+	~AlignmentMultiCache() {
+		delete[] caches_;
+	}
+
+	inline uint32_t n_els() const {return ncaches_;}
+
+	inline AlignmentCache &getCache(uint32_t idx) { return caches_[idx];}
+	inline const AlignmentCache &getCache(uint32_t idx) const { return caches_[idx];}
+
+	inline AlignmentCacheInterface getCacheInterface(uint32_t idx) {
+		AlignmentCacheInterface out(caches_[idx], salists_);
+		return out;
 	}
 
 	/**
-	 * Return a pointer to the current-read cache object.
-	 */
-	const AlignmentCache* currentCache() const { return current_; }
-
-	size_t curNumRanges() const { return rangen_; }
-	size_t curNumElts()   const { return eltsn_;  }
-
-#ifndef NDEBUG
-	/**
-	 * Check that AlignmentCacheIface is internally consistent.
-	 */
-	bool repOk() const {
-		assert(current_ != NULL);
-		assert_geq(eltsn_, rangen_);
-		if(qv_ == NULL) {
-			assert_eq(0, rangen_);
-			assert_eq(0, eltsn_);
+	 * Finalize the cache, initialize salist_
+	 **/
+	void finalize() {
+		size_t nsas = 0;
+		for (uint32_t i=0; i<ncaches_; i++) {
+			AlignmentCache& cache = caches_[i];
+			cache.setSAOffset(nsas);
+			nsas += cache.saSize();
 		}
-		return true;
-	}
-#endif
-
-	/**
-	 * Return the alignment cache for the current read.
-	 */
-	const AlignmentCache& current() {
-		return *current_;
+		salists_.resizeNoCopy(nsas);
 	}
 
-protected:
-
-	/**
-	 * Reset fields encoding info about the in-process read.
-	 */
-	void resetRead() {
-		rangen_ = eltsn_ = 0;
-		qv_ = NULL;
-	}
-
-	QKey qk_;  // key representation for current read substring
-	QVal *qv_; // pointer to value representation for current read substring
-	QVal qvbuf_; // buffer for when key is uncacheable but we need a qv
-
-	size_t rangen_; // number of ranges since last alignment job began
-	size_t eltsn_;  // number of elements since last alignment job began
-
-	AlignmentCache *current_; // cache dedicated to the current read
+private:
+	AlignmentCache   *caches_;
+	EList<TIndexOffU> salists_;
+	const uint32_t    ncaches_;  // size of caches_
 };
 
 #endif /*ALIGNER_CACHE_H_*/

@@ -465,7 +465,6 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 	const SeedResults& sr,
 	const int ftabLen)           // forward index (BWT) value
 {
-	assert(sr.repOk(&cache.current()));
 	uint32_t seedsearches = 0;
 
 	SeedAlignerSearchParams* paramVec = paramVec_;
@@ -478,7 +477,6 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 		// For each instantiated seed
 		// start aligning and find list of seeds to search
 		for(size_t i =0; i < sr.numOffs(); i++) {
-			assert(sr.repOk(&cache.current()));
 			const InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			if(!is.isValid()) {
 				// Cache hit in an across-read cache
@@ -534,14 +532,13 @@ inline void SeedAligner::searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwt
 
 
 void SeedAligner::searchAllSeedsFinalize(
-	AlignmentCacheIface& cache,  // local cache for seed alignments
+	AlignmentCache& cache,  // local cache for seed alignments
 	SeedResults& sr)
 {
-	uint32_t ooms = 0;
-
 	const SeedAlignerSearchData* dataVec = dataVec_;
 
 	uint32_t seedsearches = 0;
+	cache.clear();
 
 	// finish aligning and add to SeedResult
 	for(int fwi = 0; fwi < 2; fwi++) {
@@ -557,38 +554,14 @@ void SeedAligner::searchAllSeedsFinalize(
 			const SeedAlignerSearchData& sdata= dataVec[seedsearches];
 			seedsearches++;
 
-			QVal  qv;
-			const SAKey &sak = sdata.sak;
-
-			// Tell the cache that we've started aligning, so the cache can
-			// expect a series of on-the-fly updates
-			int ret = cache.beginAlign(sak);
-			if(ret == -1) {
-				// Out of memory when we tried to add key to map
-				ooms++;
-				continue;
-			}
-			assert(cache.aligning());
-			bool success = true;
 			if ( sdata.need_reporting ) {
-				// Finished aligning seed
-				bool mysuccess = cache.addOnTheFly(sak, sdata.bwt.topf, sdata.bwt.botf);
-				success = mysuccess;
+				const SAKey &sak = sdata.sak;
+				QVal  qv;
+				cache.addOnTheFly(qv,sak, sdata.bwt.topf, sdata.bwt.botf);
+				sr.add(qv,i,fw);
 			}
-			if(!success){
-				// Memory exhausted during copy
-				ooms++;
-				continue;
-			}
-			qv = cache.finishAlign(); 
-			assert(!cache.aligning());
-
-			if(qv.valid()) sr.add(qv,i,fw);
 		} // for i
 	} // for fwi
-	if (ooms>0) {
-		std::cerr << "WARNING: searchAllSeeds oom " << ooms << std::endl;
-	}
 }
 
 MultiSeedAligner::MultiSeedAligner(
@@ -597,6 +570,7 @@ MultiSeedAligner::MultiSeedAligner(
  	: _ebwtFw(ebwtFw)
 	, _srs(srs)
 	, _als(new SeedAligner[srs.nSRs()])
+	, _caches(srs.nSRs())
 	, _ftabLen(ebwtFw->eh().ftabChars()) // cache the value
 	,  _paramVec(NULL), _dataVec(NULL)
 	, _bufVec_size(0), _bufVec_filled(0)

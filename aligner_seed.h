@@ -1515,7 +1515,7 @@ public:
 	void searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwtFw);
 
 	void searchAllSeedsFinalize(
-		AlignmentCacheIface& cache,  // local cache for seed alignments
+		AlignmentCache& cache,  // local cache for seed alignments
 		SeedResults& sr);            // holds all the seed hits
 
 	/**
@@ -1569,6 +1569,11 @@ public:
 	SeedAligner &getAL(uint32_t idx) { return _als[idx];}
 	const SeedAligner &getAL(uint32_t idx) const { return _als[idx];}
 
+	AlignmentCache &getCache(uint32_t idx) { return _caches.getCache(idx);}
+	const AlignmentCache &getCache(uint32_t idx) const { return _caches.getCache(idx);}
+
+	AlignmentCacheInterface getCacheInterface(uint32_t idx) { return _caches.getCacheInterface(idx);}
+
 	// Update buffers, based on content of _srs
 	void reserveBuffers();
 
@@ -1587,16 +1592,34 @@ public:
 	// Assumes all prepareSearchAllSeeds were already called
 	void searchAllSeedsDoAll();
 
-	void searchAllSeedsOneFinalize(
-		uint32_t             idx,      // srs/als index
-		AlignmentCacheIface& cache) {  // local cache for seed alignments
-		_als[idx].searchAllSeedsFinalize(cache, _srs.getSR(idx));
+	// return False if No seed alignment
+	template <class ASW>
+	bool searchAllSeedsOneFinalize(
+		uint32_t        idx,      // srs/als index
+		ASW&            msinkwrap) { 
+		AlignmentCache& cache = _caches.getCache(idx);
+		SeedResults& sr = _srs.getSR(idx);
+		_als[idx].searchAllSeedsFinalize(cache, sr);
+		msinkwrap.updatePRM(sr);
+		assert(sr.repOk(&cache));
+		if (sr.empty()) {
+			return false;
+		} else {
+			msinkwrap.updateSHSCounters(sr);
+			return true;
+		}
+	}
+
+	// need to be called after all the other finalizers
+	void finalizeCaches() {
+		_caches.finalize();
 	}
 
 private:
 	const Ebwt*              _ebwtFw; // forward index (BWT)
 	MultiSeedResults&        _srs;
 	SeedAligner*             _als;
+	AlignmentMultiCache      _caches;
 
 	const int                _ftabLen;
 
