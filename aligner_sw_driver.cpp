@@ -55,216 +55,6 @@
 using namespace std;
 
 /**
- * Given end-to-end alignment results stored in the SeedResults structure, set
- * up all of our state for resolving and keeping track of reference offsets for
- * hits.  Order the list of ranges to examine such that all exact end-to-end
- * alignments are examined before any 1mm end-to-end alignments.
- *
- * Note: there might be a lot of hits and a lot of wide ranges to look for
- * here.  We use 'maxelt'.
- */
-bool SwDriver::eeSaTups(
-	const Read& rd,              // read
-	SeedResults& sh,             // seed hits to extend into full alignments
-	const Ebwt& ebwt,            // BWT
-	const BitPairReference& ref, // Reference strings
-	RandomSource& rnd,           // pseudo-random generator
-	size_t& nelt_out,            // out: # elements total
-    size_t maxelt,               // max elts we'll consider
-	bool all)                    // report all hits?
-{
-    assert_eq(0, nelt_out);
-	gws_.clear();
-	rands_.clear();
-	satpos_.clear();
-	eehits_.clear();
-	// First, count up the total number of satpos_, rands_, eehits_, and gws_
-	// we're going to tuse
-	size_t nobj = 0;
-	if(!sh.exactFwEEHit().empty()) nobj++;
-	if(!sh.exactRcEEHit().empty()) nobj++;
-	nobj += sh.mm1EEHits().size();
-    nobj = min(nobj, maxelt);
-	gws_.ensure(nobj);
-	rands_.ensure(nobj);
-	satpos_.ensure(nobj);
-	eehits_.ensure(nobj);
-	size_t tot = sh.exactFwEEHit().size() + sh.exactRcEEHit().size();
-	bool firstEe = true;
-    bool done = false;
-	if(tot > 0) {
-		bool fwFirst = true;
-        // Pick fw / rc to go first in a weighted random fashion
-#ifdef BOWTIE_64BIT_INDEX
-		TIndexOffU rn64 = rnd.nextU64();
-		TIndexOffU rn = rn64 % (uint64_t)tot;
-#else
-		TIndexOffU rn32 = rnd.nextU32();
-		TIndexOffU rn = rn32 % (uint32_t)tot;
-#endif        
-		if(rn >= sh.exactFwEEHit().size()) {
-			fwFirst = false;
-		}
-		for(int fwi = 0; fwi < 2 && !done; fwi++) {
-			bool fw = ((fwi == 0) == fwFirst);
-			EEHit hit = fw ? sh.exactFwEEHit() : sh.exactRcEEHit();
-			if(hit.empty()) {
-				continue;
-			}
-			assert(hit.fw == fw);
-			if(hit.bot > hit.top) {
-                // Possibly adjust bot and width if we would have exceeded maxelt
-                TIndexOffU tops[2] = { hit.top, 0 };
-                TIndexOffU bots[2] = { hit.bot, 0 };
-                TIndexOffU width = hit.bot - hit.top;
-                if(nelt_out + width > maxelt) {
-                    TIndexOffU trim = (TIndexOffU)((nelt_out + width) - maxelt);
-#ifdef BOWTIE_64BIT_INDEX
-                    TIndexOffU rn = rnd.nextU64() % width;
-#else
-                    TIndexOffU rn = rnd.nextU32() % width;
-#endif
-                    TIndexOffU newwidth = width - trim;
-                    if(hit.top + rn + newwidth > hit.bot) {
-                        // Two pieces
-                        tops[0] = hit.top + rn;
-                        bots[0] = hit.bot;
-                        tops[1] = hit.top;
-                        bots[1] = hit.top + newwidth - (bots[0] - tops[0]);
-                    } else {
-                        // One piece
-                        tops[0] = hit.top + rn;
-                        bots[0] = tops[0] + newwidth;
-                    }
-                    assert_leq(bots[0], hit.bot);
-                    assert_leq(bots[1], hit.bot);
-                    assert_geq(bots[0], tops[0]);
-                    assert_geq(bots[1], tops[1]);
-                    assert_eq(newwidth, (bots[0] - tops[0]) + (bots[1] - tops[1]));
-                }
-                for(int i = 0; i < 2 && !done; i++) {
-                    if(bots[i] <= tops[i]) break;
-                    TIndexOffU width = bots[i] - tops[i];
-                    TIndexOffU top = tops[i];
-                    // Clear list where resolved offsets are stored
-                    if(firstEe) {
-                        salistEe_.clear();
-                        firstEe = false;
-                    }
-                    // We have to be careful not to allocate excessive amounts of memory here
-                    TSlice o(salistEe_, (TIndexOffU)salistEe_.size(), width);
-                    for(TIndexOffU i = 0; i < width; i++) {
-                        salistEe_.push_back(OFF_MASK);
-                    }
-                    assert(!done);
-                    eehits_.push_back(hit);
-                    satpos_.expand();
-                    satpos_.back().sat.init(SAKey(), top, o);
-                    satpos_.back().sat.key.seq = MAX_U64;
-                    satpos_.back().sat.key.len = (uint32_t)rd.length();
-                    satpos_.back().pos.init(fw, 0, 0, (uint32_t)rd.length());
-                    satpos_.back().origSz = width;
-                    rands_.expand();
-                    rands_.back().init(width, all);
-                    gws_.expand();
-					SARangeWithOffs<TSlice> sa;
-					sa.topf = satpos_.back().sat.topf;
-					sa.len = satpos_.back().sat.key.len;
-					sa.offs = satpos_.back().sat.offs;
-                    gws_.back().init(
-                        ebwt,               // forward Bowtie index
-                        ref,                // reference sequences
-                        sa,                 // SATuple
-                        rnd);                // pseudo-random generator
-                    assert(gws_.back().repOk(sa));
-                    nelt_out += width;
-                    if(nelt_out >= maxelt) {
-                        done = true;
-                    }
-                }
-			}
-		}
-	}
-	if(!done && !sh.mm1EEHits().empty()) {
-		sh.sort1mmEe(rnd);
-		size_t sz = sh.mm1EEHits().size();
-		for(size_t i = 0; i < sz && !done; i++) {
-			EEHit hit = sh.mm1EEHits()[i];
-			assert(hit.repOk(rd));
-			assert(!hit.empty());
-            // Possibly adjust bot and width if we would have exceeded maxelt
-            TIndexOffU tops[2] = { hit.top, 0 };
-            TIndexOffU bots[2] = { hit.bot, 0 };
-            TIndexOffU width = hit.bot - hit.top;
-            if(nelt_out + width > maxelt) {
-                TIndexOffU trim = (TIndexOffU)((nelt_out + width) - maxelt);
-#ifdef BOWTIE_64BIT_INDEX
-                TIndexOffU rn = rnd.nextU64() % width;
-#else
-                TIndexOffU rn = rnd.nextU32() % width; 
-#endif
-                TIndexOffU newwidth = width - trim;
-                if(hit.top + rn + newwidth > hit.bot) {
-                    // Two pieces
-                    tops[0] = hit.top + rn;
-                    bots[0] = hit.bot;
-                    tops[1] = hit.top;
-                    bots[1] = hit.top + newwidth - (bots[0] - tops[0]);
-                } else {
-                    // One piece
-                    tops[0] = hit.top + rn;
-                    bots[0] = tops[0] + newwidth;
-                }
-                assert_leq(bots[0], hit.bot);
-                assert_leq(bots[1], hit.bot);
-                assert_geq(bots[0], tops[0]);
-                assert_geq(bots[1], tops[1]);
-                assert_eq(newwidth, (bots[0] - tops[0]) + (bots[1] - tops[1]));
-            }
-            for(int i = 0; i < 2 && !done; i++) {
-                if(bots[i] <= tops[i]) break;
-                TIndexOffU width = bots[i] - tops[i];
-                TIndexOffU top = tops[i];
-                // Clear list where resolved offsets are stored
-                if(firstEe) {
-                    salistEe_.clear();
-                    firstEe = false;
-                }
-                TSlice o(salistEe_, (TIndexOffU)salistEe_.size(), width);
-                for(size_t i = 0; i < width; i++) {
-                    salistEe_.push_back(OFF_MASK);
-                }
-                eehits_.push_back(hit);
-                satpos_.expand();
-                satpos_.back().sat.init(SAKey(), top, o);
-                satpos_.back().sat.key.seq = MAX_U64;
-                satpos_.back().sat.key.len = (uint32_t)rd.length();
-                satpos_.back().pos.init(hit.fw, 0, 0, (uint32_t)rd.length());
-                satpos_.back().origSz = width;
-                rands_.expand();
-                rands_.back().init(width, all);
-                gws_.expand();
-				SARangeWithOffs<TSlice> sa;
-				sa.topf = satpos_.back().sat.topf;
-				sa.len = satpos_.back().sat.key.len;
-				sa.offs = satpos_.back().sat.offs;
-                gws_.back().init(
-                    ebwt, // forward Bowtie index
-                    ref,  // reference sequences
-                    sa,   // SATuple
-                    rnd);  // pseudo-random generator
-                assert(gws_.back().repOk(sa));
-                nelt_out += width;
-                if(nelt_out >= maxelt) {
-                    done = true;
-                }
-            }
-		}
-	}
-	return true;
-}
-
-/**
  * Extend a seed hit out on either side.  Requires that we know the seed hit's
  * offset into the read and orientation.  Also requires that we know top/bot
  * for the seed hit in both the forward and (if we want to extend to the right)
@@ -764,60 +554,38 @@ int SwDriver::extendSeeds(
 	assert_geq(nceil, 0);
 	assert_leq((size_t)nceil, rd.length());
 	
-	// Calculate the largest possible number of read and reference gaps
-	const size_t rdlen = rd.length();
-	TAlScore perfectScore = sc.perfectScore(rdlen);
-
-	DynProgFramer dpframe(!reportOverhangs);
 	swa.reset();
 
 	// Initialize a set of GroupWalks, one for each seed.  Also, intialize the
 	// accompanying lists of reference seed hits (satups*)
 	const size_t nsm = 5;
 	const size_t nonz = sh.nonzeroOffsets(); // non-zero positions
-	size_t eeHits = sh.numE2eHits();
-	bool eeMode = eeHits > 0;
-	bool firstEe = true;
-	bool firstExtend = true;
+	if(nonz == 0) {
+		return EXTEND_EXHAUSTED_CANDIDATES; // No seed hits!  Bail.
+	}
+
+	//const bool eeMode = false;
 
 	// Reset all the counters related to streaks
 	prm.nEeFail = 0;
 	prm.nUgFail = 0;
 	prm.nDpFail = 0;
 
+	// Calculate the largest possible number of read and reference gaps
+	const size_t rdlen = rd.length();
+	TAlScore perfectScore = sc.perfectScore(rdlen);
+
+	if(minsc == perfectScore) {
+		return EXTEND_PERFECT_SCORE; // Already found all perfect hits!
+	}
+
+	DynProgFramer dpframe(!reportOverhangs);
+
 	size_t nelt = 0, neltLeft = 0;
 	size_t rows = rdlen;
 	size_t eltsDone = 0;
 	// cerr << "===" << endl;
-	while(true) {
-		if(eeMode) {
-			if(firstEe) {
-				firstEe = false;
-				eeMode = eeSaTups(
-					rd,           // read
-					sh,           // seed hits to extend into full alignments
-					ebwtFw,       // BWT
-					ref,          // Reference strings
-					rnd,          // pseudo-random generator
-					nelt,         // out: # elements total
-                    maxIters,     // max # to report
-					all);         // report all hits?
-				assert_eq(gws_.size(), rands_.size());
-				assert_eq(gws_.size(), satpos_.size());
-			} else {
-				eeMode = false;
-			}
-		}
-		if(!eeMode) {
-			if(nonz == 0) {
-				return EXTEND_EXHAUSTED_CANDIDATES; // No seed hits!  Bail.
-			}
-			if(minsc == perfectScore) {
-				return EXTEND_PERFECT_SCORE; // Already found all perfect hits!
-			}
-			if(firstExtend) {
-				nelt = 0;
-				prioritizeSATups(
+	prioritizeSATups(
 					rd,            // read
 					sh,            // seed hits to extend into full alignments
 					ebwtFw,        // BWT
@@ -834,20 +602,15 @@ int SwDriver::extendSeeds(
 					prm,           // per-read metrics
 					nelt,          // out: # elements total
 					all);          // report all hits?
-				assert_eq(gws_.size(), rands_.size());
-				assert_eq(gws_.size(), satpos_.size());
-				neltLeft = nelt;
-				firstExtend = false;
-			}
-			if(neltLeft == 0) {
-				// Finished examining gapped candidates
-				break;
-			}
+	assert_eq(gws_.size(), rands_.size());
+	assert_eq(gws_.size(), satpos_.size());
+	neltLeft = nelt;
+
+	while(neltLeft>0) {
+		if(minsc == perfectScore) {
+			return EXTEND_PERFECT_SCORE; // Already found all perfect hits!
 		}
 		for(size_t i = 0; i < gws_.size(); i++) {
-			if(eeMode && eehits_[i].score < minsc) {
-				return EXTEND_PERFECT_SCORE;
-			}
 			bool is_small       = satpos_[i].sat.size() < nsm;
 			bool fw             = satpos_[i].pos.fw;
 			uint32_t rdoff      = satpos_[i].pos.rdoff;
@@ -863,15 +626,13 @@ int SwDriver::extendSeeds(
 			// range is large, just investigate one and move on - we might come
 			// back to this range later.
 			size_t riter = 0;
-			while(!rands_[i].done() && (first || is_small || eeMode)) {
+			while(!rands_[i].done() && (first || is_small )) {
 				assert(!gws_[i].done());
 				riter++;
 				if(minsc == perfectScore) {
-					if(!eeMode || eehits_[i].score < perfectScore) {
+					if(eehits_[i].score < perfectScore) {
 						return EXTEND_PERFECT_SCORE;
 					}
-				} else if(eeMode && eehits_[i].score < minsc) {
-					break;
 				}
 				if(prm.nExDps >= maxDp || prm.nMateDps >= maxDp) {
 					return EXTEND_EXCEEDED_HARD_LIMIT;
@@ -894,10 +655,8 @@ int SwDriver::extendSeeds(
 				sa.offs = satpos_[i].sat.offs;
 				gws_[i].advanceElement((TIndexOffU)elt, ebwtFw, ref, sa, gwstate_, wr, prm);
 				eltsDone++;
-				if(!eeMode) {
-					assert_gt(neltLeft, 0);
-					neltLeft--;
-				}
+				assert_gt(neltLeft, 0);
+				neltLeft--;
 				assert_neq(OFF_MASK, wr.toff);
 				TIndexOffU tidx = 0, toff = 0, tlen = 0;
 				bool straddled = false;
@@ -907,15 +666,17 @@ int SwDriver::extendSeeds(
 					tidx,
 					toff,
 					tlen,
-					eeMode,     // reject straddlers?
+					false,     // reject straddlers?
 					straddled); // did it straddle?
+				/* tidx should not be OFF_MASK without straddlers rejection
 				if(tidx == OFF_MASK) {
 					// The seed hit straddled a reference boundary so the seed hit
 					// isn't valid
 					continue;
 				}
+				*/
 #ifndef NDEBUG
-				if(!eeMode && !straddled) { // Check that seed hit matches reference
+				if(!straddled) { // Check that seed hit matches reference
 					uint64_t key = satpos_[i].sat.key.seq;
 					for(size_t k = 0; k < wr.elt.len; k++) {
 						int c = ref.getBase(tidx, toff + wr.elt.len - k - 1);
@@ -952,45 +713,10 @@ int SwDriver::extendSeeds(
 				//
 				// We do #1 here, since it is simple and we have all the seed-hit
 				// information here.  #2 and #3 are handled in the DynProgFramer.
-				int readGaps = 0, refGaps = 0;
-				if(!eeMode) {
-					readGaps = sc.maxReadGaps(minsc, rdlen);
-					refGaps  = sc.maxRefGaps(minsc, rdlen);
-				}
+				int readGaps = sc.maxReadGaps(minsc, rdlen);
+				int refGaps  = sc.maxRefGaps(minsc, rdlen);
 				int state = FOUND_NONE;
 				bool found = false;
-				if(eeMode) {
-					resEe_.reset();
-					resEe_.alres.reset();
-					const EEHit& h = eehits_[i];
-					assert_leq(h.score, perfectScore);
-					resEe_.alres.setScore(AlnScore(h.score,
-						(int)(rdlen - h.mms()),
-						h.mms(), h.ns(), 0));
-					resEe_.alres.setShape(
-						refcoord.ref(),  // ref id
-						refcoord.off(),  // 0-based ref offset
-						tlen,            // length of reference
-						fw,              // aligned to Watson?
-						rdlen,           // read length
-						true,            // pretrim soft?
-						0,               // pretrim 5' end
-						0,               // pretrim 3' end
-						true,            // alignment trim soft?
-						0,               // alignment trim 5' end
-						0);              // alignment trim 3' end
-					resEe_.alres.setRefNs(h.refns());
-					if(h.mms() > 0) {
-						assert_eq(1, h.mms());
-						assert_lt(h.e1.pos, rd.length());
-						resEe_.alres.ned().push_back(h.e1);
-					}
-					assert(resEe_.repOk(rd));
-					state = FOUND_EE;
-					found = true;
-					Interval refival(refcoord, 1);
-					seenDiags1_.add(refival);
-				}
 				// int64_t pastedRefoff = (int64_t)wr.toff - rdoff;
 				DPRect rect;
 				if(state == FOUND_NONE) {
@@ -1425,15 +1151,7 @@ int SwDriver::extendSeedsPaired(
 		if(eeMode) {
 			if(firstEe) {
 				firstEe = false;
-				eeMode = eeSaTups(
-					rd,           // read
-					sh,           // seed hits to extend into full alignments
-					ebwtFw,       // BWT
-					ref,          // Reference strings
-					rnd,          // pseudo-random generator
-					nelt,         // out: # elements total
-                    maxIters,     // max elts to report
-					all);         // report all hits
+				eeMode = true;
 				assert_eq(gws_.size(), rands_.size());
 				assert_eq(gws_.size(), satpos_.size());
 				neltLeft = nelt;

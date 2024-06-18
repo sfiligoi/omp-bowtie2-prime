@@ -496,16 +496,6 @@ public:
 
 protected:
 
-	bool eeSaTups(
-		const Read& rd,              // read
-		SeedResults& sh,             // seed hits to extend into full alignments
-		const Ebwt& ebwt,            // BWT
-		const BitPairReference& ref, // Reference strings
-		RandomSource& rnd,           // pseudo-random generator
-		size_t& nelt_out,            // out: # elements total
-        size_t maxelts,              // max # elts to report
-		bool all);                   // report all hits?
-
 	void extend(
 		const Read& rd,       // read
 		const Ebwt& ebwtFw,   // Forward Bowtie index

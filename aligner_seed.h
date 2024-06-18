@@ -573,8 +573,7 @@ public:
 		sortedRc_(AL_CAT),
 		rankOffs_(AL_CAT),
 		rankFws_(AL_CAT),
-		numOffs_(0),
-		mm1Hit_(AL_CAT)
+		numOffs_(0)
 	{
 		clear();
 	}
@@ -589,7 +588,6 @@ public:
 		sortedRc_.set_alloc(alloc, propagate_alloc);
 		rankOffs_.set_alloc(alloc, propagate_alloc);
 		rankFws_.set_alloc(alloc, propagate_alloc);
-		mm1Hit_.set_alloc(alloc, propagate_alloc);
 		tmpMedian_.set_alloc(alloc, propagate_alloc);
 	}
 
@@ -727,11 +725,6 @@ public:
 	 */
 	void clear() {
 		clearSeeds();
-		exactFwHit_.reset();
-		exactRcHit_.reset();
-		mm1Hit_.clear();
-		mm1Sorted_ = false;
-		mm1Elt_ = 0;
 		assert(empty());
 	}
 	
@@ -1166,130 +1159,6 @@ public:
 
 	uint32_t seqs_len() const { return seqLen_; }
 
-	/**
-	 * Return exact end-to-end alignment of fw read.
-	 */
-	EEHit exactFwEEHit() const { return exactFwHit_; }
-
-	/**
-	 * Return exact end-to-end alignment of rc read.
-	 */
-	EEHit exactRcEEHit() const { return exactRcHit_; }
-	
-	/**
-	 * Return const ref to list of 1-mismatch end-to-end alignments.
-	 */
-	const EList<EEHit>& mm1EEHits() const { return mm1Hit_; }
-	
-	/**
-	 * Sort the end-to-end 1-mismatch alignments, prioritizing by score (higher
-	 * score = higher priority).
-	 */
-	void sort1mmEe(RandomSource& rnd) {
-		assert(!mm1Sorted_);
-		mm1Hit_.sort();
-		size_t streak = 0;
-		for(size_t i = 1; i < mm1Hit_.size(); i++) {
-			if(mm1Hit_[i].score == mm1Hit_[i-1].score) {
-				if(streak == 0) { streak = 1; }
-				streak++;
-			} else {
-				if(streak > 1) {
-					assert_geq(i, streak);
-					mm1Hit_.shufflePortion(i-streak, streak, rnd);
-				}
-				streak = 0;
-			}
-		}
-		if(streak > 1) {
-			mm1Hit_.shufflePortion(mm1Hit_.size() - streak, streak, rnd);
-		}
-		mm1Sorted_ = true;
-	}
-	
-	/**
-	 * Add an end-to-end 1-mismatch alignment.
-	 */
-	void add1mmEe(
-		TIndexOffU top,
-		TIndexOffU bot,
-		const Edit* e1,
-		const Edit* e2,
-		bool fw,
-		int64_t score)
-	{
-		mm1Hit_.expand();
-		mm1Hit_.back().init(top, bot, e1, e2, fw, score);
-		mm1Elt_ += (bot - top);
-	}
-
-	/**
-	 * Add an end-to-end exact alignment.
-	 */
-	void addExactEeFw(
-		TIndexOffU top,
-		TIndexOffU bot,
-		const Edit* e1,
-		const Edit* e2,
-		bool fw,
-		int64_t score)
-	{
-		exactFwHit_.init(top, bot, e1, e2, fw, score);
-	}
-
-	/**
-	 * Add an end-to-end exact alignment.
-	 */
-	void addExactEeRc(
-		TIndexOffU top,
-		TIndexOffU bot,
-		const Edit* e1,
-		const Edit* e2,
-		bool fw,
-		int64_t score)
-	{
-		exactRcHit_.init(top, bot, e1, e2, fw, score);
-	}
-	
-	/**
-	 * Clear out the end-to-end exact alignments.
-	 */
-	void clearExactE2eHits() {
-		exactFwHit_.reset();
-		exactRcHit_.reset();
-	}
-	
-	/**
-	 * Clear out the end-to-end 1-mismatch alignments.
-	 */
-	void clear1mmE2eHits() {
-		mm1Hit_.clear();     // 1-mismatch end-to-end hits
-		mm1Elt_ = 0;         // number of 1-mismatch hit rows
-		mm1Sorted_ = false;  // true iff we've sorted the mm1Hit_ list
-	}
-
-	/**
-	 * Return the number of distinct exact and 1-mismatch end-to-end hits
-	 * found.
-	 */
-	size_t numE2eHits() const {
-		return exactFwHit_.size() + exactRcHit_.size() + mm1Elt_;
-	}
-
-	/**
-	 * Return the number of distinct exact end-to-end hits found.
-	 */
-	size_t numExactE2eHits() const {
-		return exactFwHit_.size() + exactRcHit_.size();
-	}
-
-	/**
-	 * Return the number of distinct 1-mismatch end-to-end hits found.
-	 */
-	size_t num1mmE2eHits() const {
-		return mm1Elt_;
-	}
-	
 protected:
 
 	// As seed hits and edits are added they're sorted into these
@@ -1330,12 +1199,6 @@ protected:
 	int		    off_;       // offset into read to start extracting
 	int		    per_;       // interval between seeds
 	
-	EEHit               exactFwHit_; // end-to-end exact hit for fw read
-	EEHit               exactRcHit_; // end-to-end exact hit for rc read
-	EList<EEHit>        mm1Hit_;     // 1-mismatch end-to-end hits
-	size_t              mm1Elt_;     // number of 1-mismatch hit rows
-	bool                mm1Sorted_;  // true iff we've sorted the mm1Hit_ list
-
 	EList<size_t> tmpMedian_; // temporary storage for calculating median
 };
 
