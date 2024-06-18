@@ -3233,24 +3233,6 @@ public:
 		return insert(el.first, el.second);
 	}
 
-	bool insertEx(const K& key, const V& val, size_t& i) {
-		const size_t cur = klist_.size();
-		if(cur == 0) {
-			i = 0;
-			push_back(key, val);
-			return true;
-		}
-		i = klist_.lsearch(key);
-		if (i!=cur) return false; // already there
-		push_back(el); // always insert at the end
-		i = cur;
-		return true; // not already there
-	}
-
-	bool insertEx(const std::pair<K, V>& el, size_t& i) {
-		return insertEx(el.first, el.second, i);
-	}
-
 	/**
 	 * Return true iff this set contains 'el'.
 	 */
