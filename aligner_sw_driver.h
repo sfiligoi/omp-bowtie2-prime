@@ -323,7 +323,6 @@ public:
 		redAnchor_(DP_CAT),
 		redMate1_(DP_CAT),
 		redMate2_(DP_CAT),
-		salistEe_(DP_CAT),
 		gwstate_(GW_CAT),
 		reportOverhangs(gReportOverhangs) { }
 
@@ -354,12 +353,6 @@ public:
 		redMate1_.set_alloc(alloc,propagate_alloc);
 		redMate2_.set_alloc(alloc,propagate_alloc);
 		resGap_.set_alloc(alloc,propagate_alloc);
-		oresGap_.set_alloc(alloc,propagate_alloc);
-		resUngap_.set_alloc(alloc,propagate_alloc);
-		oresUngap_.set_alloc(alloc,propagate_alloc);
-		resEe_.set_alloc(alloc,propagate_alloc);
-		oresEe_.set_alloc(alloc,propagate_alloc);
-		salistEe_.set_alloc(alloc,propagate_alloc);
 		gwstate_.set_alloc(alloc,propagate_alloc);
 	}
 
@@ -556,13 +549,7 @@ protected:
 
 	// For holding results for anchor (res_) and opposite (ores_) mates
 	SwResult       resGap_;    // temp holder for alignment result
-	SwResult       oresGap_;   // temp holder for alignment result, opp mate
-	SwResult       resUngap_;  // temp holder for ungapped alignment result
-	SwResult       oresUngap_; // temp holder for ungap. aln. opp mate
-	SwResult       resEe_;     // temp holder for ungapped alignment result
-	SwResult       oresEe_;    // temp holder for ungap. aln. opp mate
 	
-	TSAList        salistEe_;  // PList for offsets for end-to-end hits
 	GroupWalkState gwstate_;   // some per-thread state shared by all GroupWalks
 	const bool reportOverhangs;
 

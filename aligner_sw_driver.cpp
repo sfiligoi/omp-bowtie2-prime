@@ -715,11 +715,10 @@ int SwDriver::extendSeeds(
 				// information here.  #2 and #3 are handled in the DynProgFramer.
 				int readGaps = sc.maxReadGaps(minsc, rdlen);
 				int refGaps  = sc.maxRefGaps(minsc, rdlen);
-				int state = FOUND_NONE;
 				bool found = false;
 				// int64_t pastedRefoff = (int64_t)wr.toff - rdoff;
 				DPRect rect;
-				if(state == FOUND_NONE) {
+				{
 					found = dpframe.frameSeedExtensionRect(
 						refoff,   // ref offset implied by seed hit assuming no gaps
 						rows,     // length of read sequence used in DP table
@@ -746,7 +745,7 @@ int SwDriver::extendSeeds(
 				// when calculating leftShift.  We'll account for this later.
 				// pastedRefoff -= leftShift;
 				size_t nsInLeftShift = 0;
-				if(state == FOUND_NONE) {
+				{
 					if(!swa.initedRead()) {
 						// Initialize the aligner with a new read
 						swa.initRead(
@@ -807,17 +806,7 @@ int SwDriver::extendSeeds(
 				while(true) {
 					assert(found);
 					SwResult *res = NULL;
-					if(state == FOUND_EE) {
-						if(!firstInner) {
-							break;
-						}
-						res = &resEe_;
-					} else if(state == FOUND_UNGAPPED) {
-						if(!firstInner) {
-							break;
-						}
-						res = &resUngap_;
-					} else {
+					{
 						resGap_.reset();
 						assert(resGap_.empty());
 						if(swa.done()) {
