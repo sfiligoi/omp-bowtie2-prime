@@ -1,4 +1,54 @@
-<h2>Version 2.5.1 - Jan 17, 2023</h2>
+<h2 id="version-2.5.4---may-16-2024">Version 2.5.4 - May 16, 2024</h2>
+<h3 id="bowtie2">bowtie2</h3>
+<ul>
+  <li>Added <code><a href="manual.shtml#bowtie2-sam-opt-config">--sam-opt-config</a></code> command line option for toggling
+    SAM Opt flags. See MANUAL for details.</li>
+  <li>Fixed an issue causing <code>bowtie2</code>’s memory usage to
+    increase over time when aligning BAM files.</li>
+  <li>Changed bowtie2 to continue flushing output in the event of a
+    partial write.</li>
+  <li>Changed the behavior of <code>bowtie2-build</code> to throw an
+    exception if it is unable to write the BWT (.1.bt2, .1.rev.bt2). In
+    prior versions <code>bowtie2-build</code>, would silently ignore the
+    error which has led some to report the absence of the BWT files in a
+    “completed” index build.</li>
+  <li>Reverted the changes made in v2.5.0 that sometimes caused unique
+    concordant alignments to be overcounted.</li>
+</ul>
+
+<h2>New Indexes for Cow, Chimp, and Rat, added to the sidebar - May 08, 2024</h2>
+<ul>
+   <li><a href="https://genome-idx.s3.amazonaws.com/bt/ARS-UCD2.0.zip"><i>B. taurus</i>, ARS-UCD2.0</a></li>
+   <li><a href="https://genome-idx.s3.amazonaws.com/bt/NHGRI_mPanTro3-v2.0.zip"><i>P. troglodytes</i>, mPanTro3-v2</a></li>
+   <li><a href="https://genome-idx.s3.amazonaws.com/bt/GRCr8.zip"><i>R. norvegicus</i>, GRCr8</a></li>
+</ul>
+
+<h2>Version 2.5.3 - Jan 16, 2024</h2>
+<h3 id="bowtie2">bowtie2</h3>
+<ul>
+  <li>Fixed an issue causing <code>bowtie2</code>'s memory usage to increase over time.</li>
+  <li>Fixed an issue causing <code>bowtie2</code> to crash when processing eempty FASTQ records.</li>
+  <li>Fixed an issue causing <code>bowtie2</code> to erroneously treat <code><a href="manual.shtml#bowtie2-options-f">-f</a></code>
+      and <code><a href="manual.shtml#bowtie2-options-F">-F</a></code> as mutually exclusive.</li>
+</ul>
+<h3 id="bowtie2-build">bowtie2-build</h3>
+<ul>
+  <li>Add optional support for <code><a href="https://github.com/IlyaGrebnov/libsais">libsais</a></code>
+      to <code>bowtie2-build</code> for faster index building.</li>
+  N.B. -- small indexes are capped at <em>2GB</em> when using <code>libsais</code> as opposed to <em>4GB</em> when using
+  the default blockwise algorithm. See <a href="manual.shtml#building-from-source">MANUAL</a> for details.
+</ul>
+
+<h2>Version 2.5.2 - Oct 13, 2023</h2>
+<h3 id="bowtie2">bowtie2</h3>
+<ul>
+  <li>Fixed an issue preventing <code>bowtie2</code> from utilizing the specified number of CPU cores</li>
+  <li>Fixed an issue causing <code>bowtie2</code> to segfault when reading compressed inputs on Windows</li>
+  <li>Fixed an issue causing <code>bowtie2</code> to segfault while parsing interleaved reads</li>
+  <li>Overhauled the FASTQ parser with better tolerance for empty lines</li>
+</ul>
+
+<h2>Version 2.5.1 - Feb 17, 2023</h2>
 <h3 id="bowtie2">bowtie2</h3>
 <ul>
     <li>Fixed an issue affecting <code>bowtie2</code> alignment accuracy.</li>
