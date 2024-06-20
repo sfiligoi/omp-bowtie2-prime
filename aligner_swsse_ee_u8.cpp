@@ -280,14 +280,10 @@ static bool cellOkEnd2EndU8(
  * unsigned 8-bit values packed into a single 128-bit register.
  */
 template<typename TIdxSize>
-inline EEU8_TCScore EEU8_alignNucleotides(SSEData &d,
+inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[], SSEMatrix &mat,
 					const char   rf[], const TIdxSize rfd,
-					const size_t dpRows,
+					const TIdxSize iter, const size_t lastWordIdx,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
-	const TIdxSize iter =
-		(dpRows + (EEU8_NWORDS_PER_REG-1)) / EEU8_NWORDS_PER_REG; // iter = segLen
-
-        const size_t lastWordIdx = EEU8_NWORDS_PER_REG*(d.lastIter_*ROWSTRIDE)+d.lastWord_;
 
 	// Many thanks to Michael Farrar for releasing his striped Smith-Waterman
 	// implementation:
@@ -344,31 +340,32 @@ inline EEU8_TCScore EEU8_alignNucleotides(SSEData &d,
 	// calculated by the Farrar algorithm.
 	// const SSERegI *pvScore; // points into the query profile
 
-	d.mat_.init(dpRows, rfd, EEU8_NWORDS_PER_REG);
-	const size_t colstride = d.mat_.colstride();
-	//const size_t rowstride = d.mat_.rowstride();
+	const size_t colstride = mat.colstride();
 	assert_eq(ROWSTRIDE, colstride / iter);
 	
 	// Initialize the H and E vectors in the first matrix column
-	SSERegI *pvHTmp = d.mat_.tmpvec(0, 0);
-	SSERegI *pvETmp = d.mat_.evec(0, 0);
+	{
+	  SSERegI *pvHTmp = mat.tmpvec(0, 0);
+	  SSERegI *pvETmp = mat.evec(0, 0);
 	
-	// Maximum score in final row
-	EEU8_TCScore lrmax = MIN_U8;
-	
-	for(size_t i = 0; i < iter; i++) {
+	  for(size_t i = 0; i < iter; i++) {
 		sse_store_siall(pvETmp, vlo);
 		sse_store_siall(pvHTmp, vlo); // start high in end-to-end mode
 		pvETmp += ROWSTRIDE;
 		pvHTmp += ROWSTRIDE;
+	  }
 	}
+
 	// These are swapped just before the innermost loop
-	SSERegI *pvHStore = d.mat_.hvec(0, 0);
-	SSERegI *pvHLoad  = d.mat_.tmpvec(0, 0);
-	SSERegI *pvELoad  = d.mat_.evec(0, 0);
-	SSERegI *pvEStore = d.mat_.evecUnsafe(0, 1);
-	SSERegI *pvFStore = d.mat_.fvec(0, 0);
+	SSERegI *pvHStore = mat.hvec(0, 0);
+	SSERegI *pvHLoad  = mat.tmpvec(0, 0);
+	SSERegI *pvELoad  = mat.evec(0, 0);
+	SSERegI *pvEStore = mat.evecUnsafe(0, 1);
+	SSERegI *pvFStore = mat.fvec(0, 0);
 	SSERegI *pvFTmp   = NULL;
+	
+	// Maximum score in final row
+	EEU8_TCScore lrmax = MIN_U8;
 	
 	// Fill in the table as usual but instead of using the same gap-penalty
 	// vector for each iteration of the inner loop, load words out of a
@@ -382,10 +379,9 @@ inline EEU8_TCScore EEU8_alignNucleotides(SSEData &d,
 	// it difficult to use the first-row results in the next row, but it might
 	// be the simplest and least disruptive way to deal with the st_ constraint.
 
-        const SSERegI * const profbuf = d.profbuf_.ptr();
 	for(TIdxSize i = 0; i < rfd; i++) {
-		assert(pvFStore == d.mat_.fvec(0, i));
-		assert(pvHStore == d.mat_.hvec(0, i));
+		assert(pvFStore == mat.fvec(0, i));
+		assert(pvHStore == mat.hvec(0, i));
 		
 		// Fetch the appropriate query profile.  Note that elements of rf must
 		// be numbers, not masks.
@@ -572,6 +568,8 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 	assert_eq(0, d.maxBonus_);
 	const size_t iter =
 		(dpRows() + (EEU8_NWORDS_PER_REG-1)) / EEU8_NWORDS_PER_REG; // iter = segLen
+        const size_t lastWordIdx = EEU8_NWORDS_PER_REG*(d.lastIter_*ROWSTRIDE)+d.lastWord_;
+
 
 	assert_gt(sc_->refGapOpen(), 0);
 	assert_leq(sc_->refGapOpen(), MAX_U8);
@@ -602,10 +600,13 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 		return MIN_I64;
 	}
 
+	d.mat_.init(dpRows(), rff_-rfi_, EEU8_NWORDS_PER_REG);
+
 	assert_leq(iter,      (size_t)MAX_U16);
 	assert_leq(rff_-rfi_, (size_t)MAX_U16);
-	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d, rf_+rfi_, rff_-rfi_,
-                                        dpRows(), sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), d.mat_, rf_+rfi_, rff_-rfi_,
+                                        iter, lastWordIdx,
+					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
 	
 	// Update metrics
 	if(!debug) {
