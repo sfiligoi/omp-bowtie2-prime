@@ -279,29 +279,13 @@ static bool cellOkEnd2EndU8(
  * Solve the current alignment problem using SSE instructions that operate on 16
  * unsigned 8-bit values packed into a single 128-bit register.
  */
-TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
-	assert_leq(rdf_, rd_->length());
-	assert_leq(rdf_, qu_->length());
-	assert_lt(rfi_, rff_);
-	assert_lt(rdi_, rdf_);
-	assert_eq(rd_->length(), qu_->length());
-	assert_geq(sc_->gapbar, 1);
-	assert(repOk());
-#ifndef NDEBUG
-	for(size_t i = (size_t)rfi_; i < (size_t)rff_; i++) {
-		assert_range(0, 16, (int)rf_[i]);
-	}
-#endif
-
-	SSEData& d = fw_ ? sseU8fw_ : sseU8rc_;
-	SSEMetrics& met = extend_ ? sseU8ExtendMet_ : sseU8MateMet_;
-	if(!debug) met.dp++;
-	buildQueryProfileEnd2EndSseU8(fw_);
-	assert(!d.profbuf_.empty());
-
-	assert_eq(0, d.maxBonus_);
-	const size_t iter =
-		(dpRows() + (EEU8_NWORDS_PER_REG-1)) / EEU8_NWORDS_PER_REG; // iter = segLen
+template<typename TIdxSize>
+inline EEU8_TCScore EEU8_alignNucleotides(SSEData &d,
+					const char   rf[], const TIdxSize rfd,
+					const size_t dpRows,
+					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
+	const TIdxSize iter =
+		(dpRows + (EEU8_NWORDS_PER_REG-1)) / EEU8_NWORDS_PER_REG; // iter = segLen
 
         const size_t lastWordIdx = EEU8_NWORDS_PER_REG*(d.lastIter_*ROWSTRIDE)+d.lastWord_;
 
@@ -322,10 +306,6 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 	SSERegI ve       = sse_setzero_siall();
 	SSERegI vf       = sse_setzero_siall();
 	SSERegI vh       = sse_setzero_siall();
-#if 0
-	SSERegI vhd      = sse_setzero_siall();
-	SSERegI vhdtmp   = sse_setzero_siall();
-#endif
 	SSERegI vtmp     = sse_setzero_siall();
 	SSERegI vzero    = sse_setzero_siall();
 	SSERegI vhilsw   = sse_setzero_siall();
@@ -333,26 +313,22 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 	SSERegI vs0     = sse_setzero_siall();
 	SSERegI vs1     = sse_setzero_siall();
 
-	assert_gt(sc_->refGapOpen(), 0);
-	assert_leq(sc_->refGapOpen(), MAX_U8);
-	sse_fill_u8(sc_->refGapOpen(), rfgapo);
+	assert_gt(refGapOpen, 0);
+	sse_fill_i8(refGapOpen, rfgapo);
 	
 	// Set all elts to reference gap extension penalty
-	assert_gt(sc_->refGapExtend(), 0);
-	assert_leq(sc_->refGapExtend(), MAX_U8);
-	assert_leq(sc_->refGapExtend(), sc_->refGapOpen());
-	sse_fill_u8(sc_->refGapExtend(), rfgape);
+	assert_gt(refGapExtend, 0);
+	assert_leq(refGapExtend, refGapOpen);
+	sse_fill_i8(refGapExtend, rfgape);
 
 	// Set all elts to read gap open penalty
-	assert_gt(sc_->readGapOpen(), 0);
-	assert_leq(sc_->readGapOpen(), MAX_U8);
-	sse_fill_u8(sc_->readGapOpen(), rdgapo);
+	assert_gt(readGapOpen, 0);
+	sse_fill_i8(readGapOpen, rdgapo);
 	
 	// Set all elts to read gap extension penalty
-	assert_gt(sc_->readGapExtend(), 0);
-	assert_leq(sc_->readGapExtend(), MAX_U8);
-	assert_leq(sc_->readGapExtend(), sc_->readGapOpen());
-	sse_fill_u8(sc_->readGapExtend(), rdgape);
+	assert_gt(readGapExtend, 0);
+	assert_leq(readGapExtend, readGapOpen);
+	sse_fill_i8(readGapExtend, rdgape);
 
 	sse_fill_u8_opt(0xff, vhi);
 	sse_fill_u8_opt(0, vlo);	
@@ -366,9 +342,9 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 	// from the F matrix.  If index % 3 == 2, then they're from the H matrix.
 	// Blocks of cells are organized in the same interleaved manner as they are
 	// calculated by the Farrar algorithm.
-	const SSERegI *pvScore; // points into the query profile
+	// const SSERegI *pvScore; // points into the query profile
 
-	d.mat_.init(dpRows(), rff_ - rfi_, EEU8_NWORDS_PER_REG);
+	d.mat_.init(dpRows, rfd, EEU8_NWORDS_PER_REG);
 	const size_t colstride = d.mat_.colstride();
 	//const size_t rowstride = d.mat_.rowstride();
 	assert_eq(ROWSTRIDE, colstride / iter);
@@ -378,7 +354,6 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 	SSERegI *pvETmp = d.mat_.evec(0, 0);
 	
 	// Maximum score in final row
-	bool found = false;
 	EEU8_TCScore lrmax = MIN_U8;
 	
 	for(size_t i = 0; i < iter; i++) {
@@ -395,9 +370,6 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 	SSERegI *pvFStore = d.mat_.fvec(0, 0);
 	SSERegI *pvFTmp   = NULL;
 	
-	assert_gt(sc_->gapbar, 0);
-	size_t nfixup = 0;
-	
 	// Fill in the table as usual but instead of using the same gap-penalty
 	// vector for each iteration of the inner loop, load words out of a
 	// pre-calculated gap vector parallel to the query profile.  The pre-
@@ -410,18 +382,16 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 	// it difficult to use the first-row results in the next row, but it might
 	// be the simplest and least disruptive way to deal with the st_ constraint.
 
-	colstop_ = rff_ - 1;
-	lastsolcol_ = 0;
-
-	for(size_t i = (size_t)rfi_; i < (size_t)rff_; i++) {
-		assert(pvFStore == d.mat_.fvec(0, i - rfi_));
-		assert(pvHStore == d.mat_.hvec(0, i - rfi_));
+        const SSERegI * const profbuf = d.profbuf_.ptr();
+	for(TIdxSize i = 0; i < rfd; i++) {
+		assert(pvFStore == d.mat_.fvec(0, i));
+		assert(pvHStore == d.mat_.hvec(0, i));
 		
-		// Fetch the appropriate query profile.  Note that elements of rf_ must
+		// Fetch the appropriate query profile.  Note that elements of rf must
 		// be numbers, not masks.
-		const int refc = (int)rf_[i];
-		size_t off = (size_t)firsts5[refc] * iter * 2;
-		pvScore = d.profbuf_.ptr() + off; // even elts = query profile, odd = gap barrier
+		size_t off = (size_t)firsts5[ rf[i] ] * iter * 2;
+		// points into the query profile
+		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 		
 		// Set all cells to low value
 		vf = sse_xor_siall(vf, vf);
@@ -434,8 +404,7 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 		vh = sse_or_siall(vh, vhilsw);
 		
 		// For each character in the reference text:
-		size_t j;
-		for(j = 0; j < iter; j++) {
+		for(TIdxSize j = 0; j < iter; j++) {
 			vs0 = sse_load_siall(pvScore);
                         pvScore++;
 			vs1 = sse_load_siall(pvScore);
@@ -466,26 +435,15 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 			
 			// Update vE value
 			vtmp = vh;
-#if 0
-			vhdtmp = vhd;
-			vhd = sse_subs_epu8(vhd, rdgapo);
-			vhd = sse_subs_epu8(vhd, vs1); // veto some read gap opens
-			ve = sse_subs_epu8(ve, rdgape);
-			ve = sse_max_epu8(ve, vhd);
-#else
 			vh = sse_subs_epu8(vh, rdgapo);
 			vh = sse_subs_epu8(vh, vs1); // veto some read gap opens
 			ve = sse_subs_epu8(ve, rdgape);
 			ve = sse_max_epu8(ve, vh);
-#endif
+
 			assert_all_lt(ve, vhi);
 			
 			// Load the next h value
-#if 0
-			vh = vhdtmp;
-#else
 			vh = sse_load_siall(pvHLoad);
-#endif
 			pvHLoad += ROWSTRIDE;
 			
 			// Save E values
@@ -521,14 +479,11 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 		vh = sse_load_siall(pvHStore);
 		pvHLoad = pvHStore;    // new pvHLoad = pvHStore
 		
-#if 0
-#else
 		pvEStore -= colstride; // reset to start of column
 		ve = sse_load_siall(pvEStore);
-#endif
 		
 		// If any element of vtmp is greater than H - gap-open...
-		j = 0;
+		TIdxSize j = 0;
 		while(cmp != SSE_MASK_ALL) {
 			// Store this vf
 			sse_store_siall(pvFStore, vf);
@@ -574,34 +529,11 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 
 			// Load after computing cmp, so the result is afailable by the time it is tested
 			vh = sse_load_siall(pvHStore);     // load next vh 
-#if 0
-#else
 			ve = sse_load_siall(pvEStore);     // load next ve
-#endif
-			
-			nfixup++;
 		}
-		
-#ifndef NDEBUG
-		if(true && (rand() & 15) == 0) {
-			// This is a work-intensive sanity check; each time we finish filling
-			// a column, we check that each H, E, and F is sensible.
-			for(size_t k = 0; k < dpRows(); k++) {
-				assert(cellOkEnd2EndU8(
-					d,
-					k,                   // row
-					i - rfi_,            // col
-					refc,                // reference mask
-					(int)(*rd_)[rdi_+k], // read char
-					(int)(*qu_)[rdi_+k], // read quality
-					*sc_));              // scoring scheme
-			}
-		}
-#endif
 		
 		// Note: we may not want to extract from the final row
 		EEU8_TCScore lr = ((EEU8_TCScore*)(pvHLoad))[lastWordIdx];
-		found = true;
 		if(lr > lrmax) {
 			lrmax = lr;
 		}
@@ -613,6 +545,67 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 		pvEStore = pvELoad + colstride;
 		pvFStore = pvFTmp;
 	}
+
+	return lrmax;
+}
+
+TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
+	assert_leq(rdf_, rd_->length());
+	assert_leq(rdf_, qu_->length());
+	assert_lt(rfi_, rff_);
+	assert_lt(rdi_, rdf_);
+	assert_eq(rd_->length(), qu_->length());
+	assert_geq(sc_->gapbar, 1);
+	assert(repOk());
+#ifndef NDEBUG
+	for(size_t i = (size_t)rfi_; i < (size_t)rff_; i++) {
+		assert_range(0, 16, (int)rf_[i]);
+	}
+#endif
+
+	SSEData& d = fw_ ? sseU8fw_ : sseU8rc_;
+	SSEMetrics& met = extend_ ? sseU8ExtendMet_ : sseU8MateMet_;
+	if(!debug) met.dp++;
+	buildQueryProfileEnd2EndSseU8(fw_);
+	assert(!d.profbuf_.empty());
+
+	assert_eq(0, d.maxBonus_);
+	const size_t iter =
+		(dpRows() + (EEU8_NWORDS_PER_REG-1)) / EEU8_NWORDS_PER_REG; // iter = segLen
+
+	assert_gt(sc_->refGapOpen(), 0);
+	assert_leq(sc_->refGapOpen(), MAX_U8);
+	
+	// Set all elts to reference gap extension penalty
+	assert_gt(sc_->refGapExtend(), 0);
+	assert_leq(sc_->refGapExtend(), MAX_U8);
+	assert_leq(sc_->refGapExtend(), sc_->refGapOpen());
+
+	// Set all elts to read gap open penalty
+	assert_gt(sc_->readGapOpen(), 0);
+	assert_leq(sc_->readGapOpen(), MAX_U8);
+	
+	// Set all elts to read gap extension penalty
+	assert_gt(sc_->readGapExtend(), 0);
+	assert_leq(sc_->readGapExtend(), MAX_U8);
+	assert_leq(sc_->readGapExtend(), sc_->readGapOpen());
+
+	assert_gt(sc_->gapbar, 0);
+
+	colstop_ = rff_ - 1;
+	lastsolcol_ = 0;
+
+	// should never get in here, but just in case
+	if (rfi_>=rff_) {
+		flag = -1; // no solution
+		if(!debug) met.dpfail++;
+		return MIN_I64;
+	}
+
+	assert_leq(iter,      (size_t)MAX_U16);
+	assert_leq(rff_-rfi_, (size_t)MAX_U16);
+	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d, rf_+rfi_, rff_-rfi_,
+                                        dpRows(), sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
 	
 	// Update metrics
 	if(!debug) {
@@ -620,24 +613,15 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 		met.col   += (rff_ - rfi_);             // DP columns
 		met.cell  += (ninner * EEU8_NWORDS_PER_REG); // DP cells
 		met.inner += ninner;                    // DP inner loop iters
-		met.fixup += nfixup;                    // DP fixup loop iters
+		met.fixup += 0; // deprecated nfixup;                    // DP fixup loop iters
 	}
 	
-	flag = 0;
-	
 	// Did we find a solution?
-	TAlScore score = MIN_I64;
-	if(!found) {
+	const TAlScore score = (TAlScore)(lrmax - 0xff);
+	if(score < minsc_) {
 		flag = -1; // no
 		if(!debug) met.dpfail++;
-		return MIN_I64;
-	} else {
-		score = (TAlScore)(lrmax - 0xff);
-		if(score < minsc_) {
-			flag = -1; // no
-			if(!debug) met.dpfail++;
-			return score;
-		}
+		return score;
 	}
 	
 	// Could we have saturated?
@@ -648,6 +632,7 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 	}
 	
 	// Return largest score
+	flag = 0;
 	if(!debug) met.dpsucc++;
 	return score;
 }

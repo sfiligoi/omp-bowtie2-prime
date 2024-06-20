@@ -57,6 +57,7 @@ typedef __m256i SSERegI;
 #define sse_subs_epu8(x, y) _mm256_subs_epu8(x, y)
 #define sse_xor_siall(x, y) _mm256_xor_si256(x, y)
 #define sse_set1_epi16(x) _mm256_set1_epi16(x)
+#define sse_set1_epi8(x) _mm256_set1_epi8(x)
 
 /* AVX2 does not have a native 256-bit shift instruction */
 /* Note only works for y<=16, which is OK for this code */
@@ -232,9 +233,15 @@ inline uint16_t sse_movemask_epi8(const SSERegI x) {
   return out;
 };
 
-inline SSERegI sse_set1_epi16(const uint16_t a) {
+inline SSERegI sse_set1_epi16(const int16_t a) {
   SSERegI out;
-  for (int j=0; j<8; j++) out.u16.el[j] = a;
+  for (int j=0; j<8; j++) out.i16.el[j] = a;
+  return out;
+};
+
+inline SSERegI sse_set1_epi8(const int8_t a) {
+  SSERegI out;
+  for (int j=0; j<16; j++) out.i8.el[j] = a;
   return out;
 };
 
@@ -395,6 +402,7 @@ typedef simde__m128i SSERegI;
 #define sse_subs_epu8(x, y) simde_mm_subs_epu8(x, y)
 #define sse_xor_siall(x, y) simde_mm_xor_si128(x, y)
 #define sse_set1_epi16(x) simde_mm_set1_epi16(x)
+#define sse_set1_epi8(x) simde_mm_set1_epi8(x)
 
 #else
 typedef __m128i SSERegI;
@@ -424,6 +432,7 @@ typedef __m128i SSERegI;
 #define sse_subs_epu8(x, y) _mm_subs_epu8(x, y)
 #define sse_xor_siall(x, y) _mm_xor_si128(x, y)
 #define sse_set1_epi16(x) _mm_set1_epi16(x)
+#define sse_set1_epi8(x) _mm_set1_epi8(x)
 
 #endif
 
@@ -460,6 +469,7 @@ typedef __m128i SSERegI;
 /* Fill all elements in outval with inval */
 /* opt version will check for special ivals that can use shortcuts */
 #define sse_fill_i16(inval, outval) outval=sse_set1_epi16(inval)
+#define sse_fill_i8(inval, outval) outval=sse_set1_epi8(inval)
 
 #define sse_fill_i16_opt(inval, outval) { \
 	if (inval==0xffff) outval = sse_cmpeq_epi16(outval, outval); \
