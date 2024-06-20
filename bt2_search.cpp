@@ -165,6 +165,7 @@ static bool sam_print_zi;
 static bool sam_print_zp;
 static bool sam_print_zu;
 static bool sam_print_zt;
+static EList<string> sam_opt_flags;
 static bool preserve_tags;     // Only applies when aligning BAM files
 static bool align_paired_reads; // Process only the paired reads in BAM file
 static bool gSeedLenIsSet;
@@ -642,6 +643,7 @@ static struct option long_options[] = {
 	{(char*)"sra-acc",                     required_argument,  0,                   ARG_SRA_ACC},
 #endif
 	{(char*)"sam-append-comment",          no_argument,        0,                   ARG_SAM_APPEND_COMMENT},
+        {(char*)"sam-opt-config",              required_argument,  0,                   ARG_SAM_OPT_CONFIG},
 	{(char*)0,                             0,                  0,                   0} //  terminator
 };
 
@@ -737,7 +739,7 @@ static void printUsage(ostream& out) {
 	    << "  -f                 query input files are (multi-)FASTA .fa/.mfa" << endl
 	    << "  -r                 query input files are raw one-sequence-per-line" << endl
 	    << "  -F k:<int>,i:<int> query input files are continuous FASTA where reads" << endl
-	    << "                     are substrings (k-mers) extracted from a FASTA file <s>" << endl
+	    << "                     are substrings (k-mers) extracted from the FASTA file" << endl
 	    << "                     and aligned at offsets 1, 1+i, 1+2i ... end of reference" << endl
 	    << "  -c                 <m1>, <m2>, <r> are sequences themselves, not files" << endl
 	    << "  -s/--skip <int>    skip the first <int> reads/pairs in the input (none)" << endl
@@ -848,9 +850,11 @@ static void printUsage(ostream& out) {
 	    << "                     at the expense of generating non-standard SAM." << endl
 	    << "  --xeq              Use '='/'X', instead of 'M,' to specify matches/mismatches in SAM record." << endl
 	    << "  --soft-clipped-unmapped-tlen" << endl
-	    << "                     Exclude soft-clipped bases when reporting TLEN" << endl
+	    << "                     Exclude soft-clipped bases when reporting TLEN." << endl
 	    << "  --sam-append-comment" << endl
-	    << "                     Append FASTA/FASTQ comment to SAM record" << endl
+	    << "                     Append FASTA/FASTQ comment to SAM record." << endl
+            << "  --sam-opt-config <config>" << endl
+            << "                     Use <config>, example '-MD,YP,-AS', to toggle SAM Optional fields." << endl
 	    << endl
 	    << " Performance:" << endl
 		//    << "  -o/--offrate <int> override offrate of index; must be >= index's offrate" << endl
@@ -1019,8 +1023,15 @@ static void parseOption(int next_option, const char *arg) {
 		saw_bam = true;
 		break;
 	}
-	case 'f': set_format(format, FASTA); break;
+	case 'f': {
+		if (format != FASTA_CONT)
+			set_format(format, FASTA);
+		break;
+	}
 	case 'F': {
+		if (format == FASTA) {
+			format = UNKNOWN;
+		}
 		set_format(format, FASTA_CONT);
 		pair<uint32_t, uint32_t> p = parsePair<uint32_t>(arg, ',');
 		fastaContLen = p.first;
@@ -1527,6 +1538,16 @@ static void parseOption(int next_option, const char *arg) {
 		}
 		break;
 	}
+        case ARG_SAM_OPT_CONFIG: {
+                // string no_defaults("-as,-xs,-xn,-x0,-x1,-xm,-xo,-xg,-nm,-md,-yf,-yt,-ys");
+                // string defaults("as,xs,xn,x0,x1,xm,xo,xg,nm,md,yf,yt,ys");
+
+                // if (strncmp(arg, "-default", 8) == 0) {
+                //         no_defaults += arg;
+                // }
+                tokenize(arg, ",", sam_opt_flags);
+                break;
+        }
 	case ARG_DESC: printArgDesc(cout); throw 0;
 	case 'S': outfile = arg; break;
 	case 'U': {
@@ -4184,6 +4205,7 @@ static void multiseedSearch(
 	}
 #endif
 
+
 	// Important: Need at least nthreads+1 elements, more is OK
 	PatternSourceReadAheadFactory readahead_factory(patsrc,pp,2*nthreads+1);
 	multiseed_readahead_factory = &readahead_factory;
@@ -4415,6 +4437,12 @@ static void driver(
 			sam_print_zp,
 			sam_print_zu,
 			sam_print_zt);
+
+                if (sam_opt_flags.size() > 0) {
+                        for (size_t i = 0; i < sam_opt_flags.size(); i++) {
+                                samc.toggleOptFlagByName(sam_opt_flags[i]);
+                        }
+                }
 		// Set up hit sink; if sanityCheck && !os.empty() is true,
 		// then instruct the sink to "retain" hits in a vector in
 		// memory so that we can easily sanity check them later on

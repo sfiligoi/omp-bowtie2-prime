@@ -253,9 +253,18 @@ pair<bool, int> DualPatternComposer::nextBatch(PerThreadReadBuf& pt) {
 				assert_eq((*srca_)[cur]->readCount(),
 				          (*srcb_)[cur]->readCount());
 			}
-			if(resa.second < resb.second) {
-				cerr << "Error, fewer reads in file specified with -1 "
-				     << "than in file specified with -2" << endl;
+                        if (resa.second < resb.second) {
+                                cerr << "Error, fewer reads in file specified with -1 "
+                                     << "than in file specified with -2.";
+                                if (resb.second > 0) {
+                                        const char *readOrigBuf = pt.bufb_[resb.second - 1].readOrigBuf.buf();
+                                        const char *newline = strchr(readOrigBuf, '\n');
+
+                                        size_t headerLength = newline - readOrigBuf;
+                                        string header = string(readOrigBuf, headerLength);
+                                        cerr << " Last successfully parsed mate: " << header << ".";
+                                }
+                                cerr << endl;
 				throw 1;
 			} else if(resa.second == 0 && resb.second == 0) {
 				ThreadSafe ts(mutex_m);
@@ -264,9 +273,19 @@ pair<bool, int> DualPatternComposer::nextBatch(PerThreadReadBuf& pt) {
 				}
 				cur = cur_; // Move on to next PatternSource
 				continue; // on to next pair of PatternSources
-			} else if(resb.second < resa.second) {
-				cerr << "Error, fewer reads in file specified with -2 "
-				     << "than in file specified with -1" << endl;
+                        } else if (resb.second < resa.second) {
+                                cerr << "Error, fewer reads in file specified with -2 "
+                                     << "than in file specified with -1.";
+
+                                if (resa.second > 0) {
+                                        const char *readOrigBuf = pt.bufa_[resa.second - 1].readOrigBuf.buf();
+                                        const char *newline = strchr(readOrigBuf, '\n');
+
+                                        size_t headerLength = newline - readOrigBuf;
+                                        string header = string(readOrigBuf, headerLength);
+                                        cerr << " Last successfully parsed mate: " << header << ".";
+                                }
+                                cerr << endl;
 				throw 1;
 			}
 			assert_eq(resa.first, resb.first);
@@ -481,6 +500,8 @@ void CFilePatternSource::open() {
 	while(filecur_ < infiles_.size()) {
 		if(infiles_[filecur_] == "-") {
 			int fd = dup(fileno(stdin));
+			SET_BINARY_MODE(fd);
+
 			if (pp_.format == BAM) {
 				compressionType_ = CompressionType::NONE;
 				fp_ = fdopen(fd, "rb");
@@ -511,16 +532,20 @@ void CFilePatternSource::open() {
 
 			bool err = false;
                         if (pp_.format == BAM) {
+				SET_BINARY_MODE(fd);
 				err = CHECK_ERROR(fp_ = fdopen(fd, "rb"));
 				compressionType_ = CompressionType::NONE;
                         } else if (is_fifo) {
+				SET_BINARY_MODE(fd);
 				err = CHECK_ERROR(zfp_ = gzdopen(fd, "rb"));
 				compressionType_ = CompressionType::GZIP;
                         } else if (is_gzipped_file(fd)) {
+				SET_BINARY_MODE(fd);
 				err = CHECK_ERROR(zfp_ = gzdopen(fd, "rb"));
 				compressionType_ = CompressionType::GZIP;
 #ifdef WITH_ZSTD
                         } else if (is_zstd_file(fd)) {
+				SET_BINARY_MODE(fd);
 				err = CHECK_ERROR(zstdfp_ = zstdFdOpen(fd));
 				compressionType_ = CompressionType::ZSTD;
 #endif
@@ -655,7 +680,7 @@ bool VectorPatternSource::parse(Read& ra, Read& rb, TReadId rdid) const {
 	int c = '\t';
 	size_t cur = 0;
 	const size_t buflen = ra.readOrigBuf.length();
-	
+
 	// Loop over the two ends
 	for(int endi = 0; endi < 2 && c == '\t'; endi++) {
 		Read& r = ((endi == 0) ? ra : rb);
@@ -701,7 +726,7 @@ bool VectorPatternSource::parse(Read& ra, Read& rb, TReadId rdid) const {
 		r.trimmed5 = (int)(nchar - r.patFw.length());
 		// record amt trimmed from 3' end due to --trim3
 		r.trimmed3 = (int)(r.patFw.trimEnd(pp_.trim3));
-		
+
 		// Parse qualities
 		assert(r.qual.empty());
 		c = ra.readOrigBuf[cur++];
@@ -785,7 +810,7 @@ pair<bool, int> FastaPatternSource::nextBatchFromFile(
 
 	}
 	// Immediate EOF case
-	if(done && (*readbuf)[readi-1].readOrigBuf.length() == 1) {
+	if(done && readi > 0 && (*readbuf)[readi-1].readOrigBuf.length() == 1) {
 		readi--;
 	}
 	return make_pair(done, readi);
@@ -968,7 +993,7 @@ bool FastaContinuousPatternSource::parse(
 	int c = '\t';
 	size_t cur = 0;
 	const size_t buflen = ra.readOrigBuf.length();
-	
+
 	// Parse read name
 	c = ra.readOrigBuf[cur++];
 	while(c != '\t' && cur < buflen) {
@@ -997,7 +1022,7 @@ bool FastaContinuousPatternSource::parse(
 	ra.trimmed5 = (int)(nchar - ra.patFw.length());
 	// record amt trimmed from 3' end due to --trim3
 	ra.trimmed3 = (int)(ra.patFw.trimEnd(pp_.trim3));
-	
+
 	// Make fake qualities
 	assert(ra.qual.empty());
 	const size_t len = ra.patFw.length();
@@ -1037,32 +1062,46 @@ pair<bool, int> FastqPatternSource::nextBatchFromFile(
 		(*readbuf)[readi].readOrigBuf.append('@');
 	}
 
-	bool done = false, aborted = false;
+	bool done = false, previous_was_newline = false;
 	// Read until we run out of input or until we've filled the buffer
 	while (readi < pt.max_buf_ && !done) {
 		Read::TBuf& buf = (*readbuf)[readi].readOrigBuf;
 		int newlines = 4;
 		while(newlines) {
 			c = getc_wrapper();
+			// We check that buf.length == 0 so that empty lines
+			// at the beginning of a batch can get discarded.
+			if ((previous_was_newline || buf.length() == 0)
+			    && (c == '\n' || c == '\r')) {
+				continue;
+			}
+			// We've encountered a new record implying that the
+			// previous record was incomplete. Move on to the next
+			// record, the parser will take care of the partial record.
+			// We cannot simply assume that if we see an '@' and the
+			// number of newlines != 4 then it is a partial record since
+			// the quality string can also contain the '@' character.
+			if (previous_was_newline && c == '@' && newlines > 1 && newlines < 4) {
+				ungetc_wrapper(c);
+				break;
+			}
+			previous_was_newline = false;
 			done = c < 0;
 			if(c == '\n' || (done && newlines == 1)) {
 				// Saw newline, or EOF that we're
 				// interpreting as final newline
 				newlines--;
 				c = '\n';
-			} else if(done) {
-				// account for newline at the end of the file
-				if (newlines == 4) {
-					newlines = 0;
-				}
-				else {
-					aborted = true; // Unexpected EOF
-				}
+				previous_was_newline = true;
+			}
+			if(done) {
 				break;
 			}
 			buf.append(c);
 		}
-		if (c > 0) {
+		// Accept potentially incomplete or empty reads. Let the parser
+		// take care of validating those reads.
+		if (newlines < 4) {
 			if (interleaved_) {
 				// alternate between read buffers
 				batch_a = !batch_a;
@@ -1075,9 +1114,7 @@ pair<bool, int> FastqPatternSource::nextBatchFromFile(
 			}
 		}
 	}
-	if(aborted) {
-		readi--;
-	}
+
 	return make_pair(done, readi);
 }
 
@@ -1107,7 +1144,7 @@ bool FastqPatternSource::parse(Read &r, Read& rb, TReadId rdid) const {
 		}
 		r.name.append(c);
 	}
-	
+
 	// Parse sequence
 	int nchar = 0;
 	assert(r.patFw.empty());
@@ -1126,7 +1163,7 @@ bool FastqPatternSource::parse(Read &r, Read& rb, TReadId rdid) const {
 	}
 	r.trimmed5 = (int)(nchar - r.patFw.length());
 	r.trimmed3 = (int)(r.patFw.trimEnd(pp_.trim3));
-	
+
 	assert_eq('+', c);
 	do {
 		assert(cur < r.readOrigBuf.length());
@@ -1135,7 +1172,7 @@ bool FastqPatternSource::parse(Read &r, Read& rb, TReadId rdid) const {
 	while(cur < buflen && (c == '\n' || c == '\r')) {
 		c = r.readOrigBuf[cur++];
 	}
-	
+
 	assert(r.qual.empty());
 	if(nchar > 0) {
 		int nqual = 0;
@@ -1193,6 +1230,7 @@ bool FastqPatternSource::parse(Read &r, Read& rb, TReadId rdid) const {
 	if(!rb.parsed && !rb.readOrigBuf.empty()) {
 		return parse(rb, r, rdid);
 	}
+
 	return true;
 }
 
@@ -1277,7 +1315,7 @@ std::pair<bool, int> BAMPatternSource::nextBatch(PerThreadReadBuf& pt, bool batc
 	uint16_t cdata_len;
 	unsigned nread = 0;
 
-	ThreadSafe ts(mutex);
+	// ThreadSafe ts(mutex);
 	do {
 		if (alignment_offset >= alignment_batch.size()) {
 			BGZF block;
@@ -1406,7 +1444,7 @@ int BAMPatternSource::decompress_bgzf_block(uint8_t *dst, size_t dst_len, uint8_
 		return ret;
 	}
 
-	return inflateReset(&stream);
+	return inflateEnd(&stream);
 }
 
 bool BAMPatternSource::parse(Read& ra, Read& rb, TReadId rdid) const {
@@ -1494,7 +1532,7 @@ bool TabbedPatternSource::parse(Read& ra, Read& rb, TReadId rdid) const {
 	int c = '\t';
 	size_t cur = 0;
 	const size_t buflen = ra.readOrigBuf.length();
-	
+
 	// Loop over the two ends
 	for(int endi = 0; endi < 2 && c == '\t'; endi++) {
 		Read& r = ((endi == 0) ? ra : rb);
@@ -1540,7 +1578,7 @@ bool TabbedPatternSource::parse(Read& ra, Read& rb, TReadId rdid) const {
 		r.trimmed5 = (int)(nchar - r.patFw.length());
 		// record amt trimmed from 3' end due to --trim3
 		r.trimmed3 = (int)(r.patFw.trimEnd(pp_.trim3));
-		
+
 		// Parse qualities
 		assert(r.qual.empty());
 		c = ra.readOrigBuf[cur++];
@@ -1648,12 +1686,12 @@ bool RawPatternSource::parse(Read& r, Read& rb, TReadId rdid) const {
 	r.trimmed5 = (int)(nchar - r.patFw.length());
 	// record amt trimmed from 3' end due to --trim3
 	r.trimmed3 = (int)(r.patFw.trimEnd(pp_.trim3));
-	
+
 	// Give the name field a dummy value
 	char cbuf[20];
 	itoa10<TReadId>(rdid, cbuf);
 	r.name.install(cbuf);
-	
+
 	// Give the base qualities dummy values
 	assert(r.qual.empty());
 	const size_t len = r.patFw.length();
