@@ -280,9 +280,10 @@ static bool cellOkEnd2EndU8(
  * unsigned 8-bit values packed into a single 128-bit register.
  */
 template<typename TIdxSize>
-inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[], SSEMatrix &mat,
+inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 					const char   rf[], const TIdxSize rfd,
-					const TIdxSize iter, const size_t lastWordIdx,
+					SSERegI pmat[],
+					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
 
 	// Many thanks to Michael Farrar for releasing his striped Smith-Waterman
@@ -340,13 +341,12 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[], SSEMatrix &ma
 	// calculated by the Farrar algorithm.
 	// const SSERegI *pvScore; // points into the query profile
 
-	const size_t colstride = mat.colstride();
 	assert_eq(ROWSTRIDE, colstride / iter);
-	
+
 	// Initialize the H and E vectors in the first matrix column
 	{
-	  SSERegI *pvHTmp = mat.tmpvec(0, 0);
-	  SSERegI *pvETmp = mat.evec(0, 0);
+	  SSERegI *pvHTmp = pmat + SSEMatrix::TMP;
+	  SSERegI *pvETmp = pmat + SSEMatrix::E;
 	
 	  for(size_t i = 0; i < iter; i++) {
 		sse_store_siall(pvETmp, vlo);
@@ -357,11 +357,11 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[], SSEMatrix &ma
 	}
 
 	// These are swapped just before the innermost loop
-	SSERegI *pvHStore = mat.hvec(0, 0);
-	SSERegI *pvHLoad  = mat.tmpvec(0, 0);
-	SSERegI *pvELoad  = mat.evec(0, 0);
-	SSERegI *pvEStore = mat.evecUnsafe(0, 1);
-	SSERegI *pvFStore = mat.fvec(0, 0);
+	SSERegI *pvHStore = pmat + SSEMatrix::H;
+	SSERegI *pvHLoad  = pmat + SSEMatrix::TMP;
+	SSERegI *pvELoad  = pmat + SSEMatrix::E;
+	SSERegI *pvEStore = pmat + colstride + SSEMatrix::E;
+	SSERegI *pvFStore = pmat + SSEMatrix::F;
 	SSERegI *pvFTmp   = NULL;
 	
 	// Maximum score in final row
@@ -380,8 +380,8 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[], SSEMatrix &ma
 	// be the simplest and least disruptive way to deal with the st_ constraint.
 
 	for(TIdxSize i = 0; i < rfd; i++) {
-		assert(pvFStore == mat.fvec(0, i));
-		assert(pvHStore == mat.hvec(0, i));
+		assert(pvFStore == (pmat + i*colstride + SSEMatrix::F));
+		assert(pvHStore == (pmat + i*colstride + SSEMatrix::H));
 		
 		// Fetch the appropriate query profile.  Note that elements of rf must
 		// be numbers, not masks.
@@ -604,8 +604,9 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 
 	assert_leq(iter,      (size_t)MAX_U16);
 	assert_leq(rff_-rfi_, (size_t)MAX_U16);
-	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), d.mat_, rf_+rfi_, rff_-rfi_,
-                                        iter, lastWordIdx,
+	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_+rfi_, rff_-rfi_,
+					d.mat_.ptr(),
+                                        iter, d.mat_.colstride(), lastWordIdx,
 					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
 	
 	// Update metrics

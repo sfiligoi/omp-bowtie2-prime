@@ -98,10 +98,10 @@ struct SSEMatrix {
 
 	// Each matrix element is a quartet of vectors.  These constants are used
 	// to identify members of the quartet.
-	const static size_t E   = 0;
-	const static size_t F   = 1;
-	const static size_t H   = 2;
-	const static size_t TMP = 3;
+	constexpr static size_t E   = 0;
+	constexpr static size_t F   = 1;
+	constexpr static size_t H   = 2;
+	constexpr static size_t TMP = 3;
 
 	SSEMatrix(int cat = 0) : nvecPerCell_(4), matbuf_(cat) { }
 
