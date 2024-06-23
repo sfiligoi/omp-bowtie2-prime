@@ -71,13 +71,12 @@ void SwAligner::initRef(
 	size_t rfi,            // offset of first reference char to align to
 	size_t rff,            // offset of last reference char to align to
 	TRefOff reflen,        // length of reference sequence
-	const Scoring& sc,     // scoring scheme
 	TAlScore minsc,        // minimum score
 	bool enable8,          // use 8-bit SSE if possible?
 	bool extend)           // is this a seed extension?
 {
-	size_t readGaps = sc.maxReadGaps(minsc, rdfw_->length());
-	size_t refGaps  = sc.maxRefGaps(minsc, rdfw_->length());
+	size_t readGaps = sc_->maxReadGaps(minsc, rdfw_->length());
+	size_t refGaps  = sc_->maxRefGaps(minsc, rdfw_->length());
 	assert_geq(readGaps, 0);
 	assert_geq(refGaps, 0);
 	assert_gt(rff, rfi);
@@ -115,7 +114,6 @@ void SwAligner::initRef(
 	const DPRect& rect,    // DP rectangle
 	const BitPairReference& refs, // Reference strings
 	TRefOff reflen,        // length of reference sequence
-	const Scoring& sc,     // scoring scheme
 	TAlScore minsc,        // minimum score
 	bool enable8,          // use 8-bit SSE if possible?
 	bool extend,           // true iff this is a seed extension
@@ -215,7 +213,6 @@ void SwAligner::initRef(
 		0,           // use the whole thing
 		(size_t)(rff - rfi), // ditto
 		reflen,      // reference length
-		sc,          // scoring scheme
 		minsc,       // minimum score
 		enable8,     // use 8-bit SSE if possible?
 		extend);     // true iff this is a seed extension

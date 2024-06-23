@@ -270,7 +270,6 @@ public:
 		size_t rfi,            // offset of first reference char to align to
 		size_t rff,            // offset of last reference char to align to
 		TRefOff reflen,        // length of reference sequence
-		const Scoring& sc,     // scoring scheme
 		TAlScore minsc,        // minimum score
 		bool enable8,          // use 8-bit SSE if possible?
 		bool extend);          // true iff this is a seed extension
@@ -294,7 +293,6 @@ public:
 		const DPRect& rect,    // DP rectangle
 		const BitPairReference& refs, // Reference strings
 		TRefOff reflen,        // length of reference sequence
-		const Scoring& sc,     // scoring scheme
 		TAlScore minsc,        // minimum alignment score
 		bool enable8,          // use 8-bit SSE if possible?
 		bool extend,           // true iff this is a seed extension

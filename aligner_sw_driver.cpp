@@ -576,6 +576,16 @@ int SwDriver::extendSeeds(
 		return EXTEND_PERFECT_SCORE; // Already found all perfect hits!
 	}
 
+	// Initialize the aligner with a new read
+	swa.initRead(
+		rd.patFw,  // fw version of query
+		rd.patRc,  // rc version of query
+		rd.qual,   // fw version of qualities
+		rd.qualRev,// rc version of qualities
+		0,         // off of first char in 'rd' to consider
+		rdlen,     // off of last char (excl) in 'rd' to consider
+		sc);       // scoring scheme
+
 	DynProgFramer dpframe(!reportOverhangs);
 
 	size_t nelt = 0, neltLeft = 0;
@@ -743,24 +753,12 @@ int SwDriver::extendSeeds(
 				// pastedRefoff -= leftShift;
 				size_t nsInLeftShift = 0;
 				{
-					if(!swa.initedRead()) {
-						// Initialize the aligner with a new read
-						swa.initRead(
-							rd.patFw,  // fw version of query
-							rd.patRc,  // rc version of query
-							rd.qual,   // fw version of qualities
-							rd.qualRev,// rc version of qualities
-							0,         // off of first char in 'rd' to consider
-							rdlen,     // off of last char (excl) in 'rd' to consider
-							sc);       // scoring scheme
-					}
 					swa.initRef(
 						fw,        // whether to align forward or revcomp read
 						tidx,      // reference aligned against
 						rect,      // DP rectangle
 						ref,       // Reference strings
 						tlen,      // length of reference sequence
-						sc,        // scoring scheme
 						minsc,     // minimum score permitted
 						enable8,   // use 8-bit SSE if possible?
 						true,      // this is a seed extension - not finding a mate
@@ -1382,24 +1380,12 @@ int SwDriver::extendSeedsPaired(
 				// pastedRefoff -= leftShift;
 				size_t nsInLeftShift = 0;
 				if(state == FOUND_NONE) {
-					if(!swa.initedRead()) {
-						// Initialize the aligner with a new read
-						swa.initRead(
-							rd.patFw,  // fw version of query
-							rd.patRc,  // rc version of query
-							rd.qual,   // fw version of qualities
-							rd.qualRev,// rc version of qualities
-							0,         // off of first char in 'rd' to consider
-							rdlen,     // off of last char (excl) in 'rd' to consider
-							sc);       // scoring scheme
-					}
 					swa.initRef(
 						fw,        // whether to align forward or revcomp read
 						tidx,      // reference aligned against
 						rect,      // DP rectangle
 						ref,       // Reference strings
 						tlen,      // length of reference sequence
-						sc,        // scoring scheme
 						minsc,     // minimum score permitted
 						enable8,   // use 8-bit SSE if possible?
 						true,      // this is a seed extension - not finding a mate
