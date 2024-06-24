@@ -275,6 +275,11 @@ static bool cellOkEnd2EndU8(
 #endif
 
 
+#define sse_anygt_epu8(val1,val2,outval) { \
+	SSERegI s = sse_subs_epu8(val1, val2); \
+        s = sse_cmpeq_epi8(s, vzero); \
+        outval = (sse_movemask_epi8(s) != SSE_MASK_ALL); }
+
 /**
  * Solve the current alignment problem using SSE instructions that operate on 16
  * unsigned 8-bit values packed into a single 128-bit register.
@@ -466,9 +471,8 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		
 		vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
 		vf = sse_max_epu8(vtmp, vf);
-		vtmp = sse_subs_epu8(vf, vtmp);
-		vtmp = sse_cmpeq_epi8(vtmp, vzero);
-		int cmp = sse_movemask_epi8(vtmp);
+		bool anygt;
+		sse_anygt_epu8(vf,vtmp,anygt);
 	
 		// Load after computing cmp, so the result is ready by the time it is tested in while
 		pvHStore -= colstride; // reset to start of column
@@ -480,7 +484,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		
 		// If any element of vtmp is greater than H - gap-open...
 		TIdxSize j = 0;
-		while(cmp != SSE_MASK_ALL) {
+		while(anygt) {
 			// Store this vf
 			sse_store_siall(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
@@ -519,9 +523,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 			vf = sse_subs_epu8(vf, rfgape);
 			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
 			vf = sse_max_epu8(vtmp, vf);
-			vtmp = sse_subs_epu8(vf, vtmp);
-			vtmp = sse_cmpeq_epi8(vtmp, vzero);
-			cmp = sse_movemask_epi8(vtmp);
+			sse_anygt_epu8(vf,vtmp,anygt);
 
 			// Load after computing cmp, so the result is afailable by the time it is tested
 			vh = sse_load_siall(pvHStore);     // load next vh 
