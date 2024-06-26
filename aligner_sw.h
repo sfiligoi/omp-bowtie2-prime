@@ -218,9 +218,6 @@ public:
 		btcells_(DP_CAT),
 		btdiag_(),
 		btncand_(DP_CAT),
-		btncanddone_(DP_CAT),
-		btncanddoneSucc_(0),
-		btncanddoneFail_(0),
 		cper_(),
 		cperMinlen_(),
 		cperPerPow2_(),
@@ -248,7 +245,6 @@ public:
 		btcells_.set_alloc(alloc, propagate_alloc);
 		btdiag_.set_alloc(alloc, propagate_alloc);
 		btncand_.set_alloc(alloc, propagate_alloc);
-		btncanddone_.set_alloc(alloc, propagate_alloc);
 		bter_.set_alloc(alloc, propagate_alloc);
 		cper_.set_alloc(alloc, propagate_alloc);
 	}
@@ -474,11 +470,7 @@ protected:
 	 */
 	TAlScore alignNucleotidesEnd2EndSseU8(  // unsigned 8-bit elements
 		int& flag, bool debug);
-	TAlScore alignNucleotidesLocalSseU8(    // unsigned 8-bit elements
-		int& flag, bool debug);
 	TAlScore alignNucleotidesEnd2EndSseI16( // signed 16-bit elements
-		int& flag, bool debug);
-	TAlScore alignNucleotidesLocalSseI16(   // signed 16-bit elements
 		int& flag, bool debug);
 	
 	/**
@@ -515,7 +507,6 @@ protected:
 	 * the segment of the query we're currently working on.
 	 */
 	void buildQueryProfileEnd2EndSseU8(bool fw);
-	void buildQueryProfileLocalSseU8(bool fw);
 
 	/**
 	 * Build query profile look up tables for the read.  The query profile look
@@ -524,31 +515,11 @@ protected:
 	 * the segment of the query we're currently working on.
 	 */
 	void buildQueryProfileEnd2EndSseI16(bool fw);
-	void buildQueryProfileLocalSseI16(bool fw);
 	
-	bool gatherCellsNucleotidesLocalSseU8(TAlScore best);
 	bool gatherCellsNucleotidesEnd2EndSseU8(TAlScore best);
 
-	bool gatherCellsNucleotidesLocalSseI16(TAlScore best);
 	bool gatherCellsNucleotidesEnd2EndSseI16(TAlScore best);
 
-	bool backtraceNucleotidesLocalSseU8(
-		TAlScore       escore, // in: expected score
-		SwResult&      res,    // out: store results (edits and scores) here
-		size_t&        off,    // out: store diagonal projection of origin
-		size_t&        nbts,   // out: # backtracks
-		size_t         row,    // start in this rectangle row
-		size_t         col,    // start in this rectangle column
-		RandomSource&  rand);  // random gen, to choose among equal paths
-
-	bool backtraceNucleotidesLocalSseI16(
-		TAlScore       escore, // in: expected score
-		SwResult&      res,    // out: store results (edits and scores) here
-		size_t&        off,    // out: store diagonal projection of origin
-		size_t&        nbts,   // out: # backtracks
-		size_t         row,    // start in this rectangle row
-		size_t         col,    // start in this rectangle column
-		RandomSource&  rand);  // random gen, to choose among equal paths
 
 	bool backtraceNucleotidesEnd2EndSseU8(
 		TAlScore       escore, // in: expected score
@@ -649,9 +620,6 @@ protected:
 
 	NBest<DpBtCandidate> btdiag_;      // per-diagonal backtrace candidates
 	EList<DpBtCandidate> btncand_;     // cells we might backtrace from
-	EList<DpBtCandidate> btncanddone_; // candidates that we investigated
-	size_t              btncanddoneSucc_; // # investigated and succeeded
-	size_t              btncanddoneFail_; // # investigated and failed
 	
 	BtBranchTracer       bter_;        // backtracer
 	

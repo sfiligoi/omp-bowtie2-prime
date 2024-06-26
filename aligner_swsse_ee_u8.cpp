@@ -1181,7 +1181,6 @@ bool SwAligner::gatherCellsNucleotidesEnd2EndSseU8(TAlScore best) {
 	const size_t nrow = dpRows();
 	assert_gt(nrow, 0);
 	btncand_.clear();
-	btncanddone_.clear();
 	SSEData& d = fw_ ? sseU8fw_ : sseU8rc_;
 	SSEMetrics& met = extend_ ? sseU8ExtendMet_ : sseU8MateMet_;
 	assert(!d.profbuf_.empty());

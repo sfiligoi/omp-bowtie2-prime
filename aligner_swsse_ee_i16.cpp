@@ -1206,7 +1206,6 @@ bool SwAligner::gatherCellsNucleotidesEnd2EndSseI16(TAlScore best) {
 	const size_t nrow = dpRows();
 	assert_gt(nrow, 0);
 	btncand_.clear();
-	btncanddone_.clear();
 	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
 	SSEMetrics& met = extend_ ? sseI16ExtendMet_ : sseI16MateMet_;
 	assert(!d.profbuf_.empty());
