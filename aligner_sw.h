@@ -218,11 +218,6 @@ public:
 		btcells_(DP_CAT),
 		btdiag_(),
 		btncand_(DP_CAT),
-		cper_(),
-		cperMinlen_(),
-		cperPerPow2_(),
-		cperEf_(),
-		cperTri_(),
 		colstop_(0),
 		lastsolcol_(0),
 		cural_(0)
@@ -245,8 +240,6 @@ public:
 		btcells_.set_alloc(alloc, propagate_alloc);
 		btdiag_.set_alloc(alloc, propagate_alloc);
 		btncand_.set_alloc(alloc, propagate_alloc);
-		bter_.set_alloc(alloc, propagate_alloc);
-		cper_.set_alloc(alloc, propagate_alloc);
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
@@ -313,30 +306,6 @@ public:
 		bool extend,           // true iff this is a seed extension
 		size_t  upto,          // count the number of Ns up to this offset
 		size_t& nsUpto);       // output: the number of Ns up to 'upto'
-
-	/**
-	 * Given a read, an alignment orientation, a range of characters in a
-	 * referece sequence, and a bit-encoded version of the reference, set up
-	 * and execute the corresponding ungapped alignment problem.  There can
-	 * only be one solution.
-	 *
-	 * The caller has already narrowed down the relevant portion of the
-	 * reference.
-	 *
-	 * Does not handle the case where we'd like to scan a large section of the
-	 * reference for an ungapped alignment, e.g., if we're searching for the
-	 * opposite mate after finding an alignment for the anchor mate.
-	 */
-	int ungappedAlign(
-		const BTDnaString&      rd,     // read sequence (could be RC)
-		const BTString&         qu,     // qual sequence (could be rev)
-		const Coord&            coord,  // coordinate aligned to
-		const BitPairReference& refs,   // Reference strings
-		size_t                  reflen, // length of reference sequence
-		const Scoring&          sc,     // scoring scheme
-		bool                    ohang,  // allow overhang?
-		TAlScore                minsc,  // minimum score
-		SwResult&               res);   // put alignment result here
 
 	/**
 	 * Align read 'rd' to reference using read & reference information given
@@ -539,36 +508,6 @@ protected:
 		size_t         col,    // start in this rectangle column
 		RandomSource&  rand);  // random gen, to choose among equal paths
 
-	bool backtrace(
-		TAlScore       escore, // in: expected score
-		bool           fill,   // in: use mini-fill?
-		bool           usecp,  // in: use checkpoints?
-		SwResult&      res,    // out: store results (edits and scores) here
-		size_t&        off,    // out: store diagonal projection of origin
-		size_t         row,    // start in this rectangle row
-		size_t         col,    // start in this rectangle column
-		size_t         maxiter,// max # extensions to try
-		size_t&        niter,  // # extensions tried
-		RandomSource&  rnd)    // random gen, to choose among equal paths
-	{
-		bter_.initBt(
-			escore,              // in: alignment score
-			row,                 // in: start in this row
-			col,                 // in: start in this column
-			fill,                // in: use mini-fill?
-			usecp,               // in: use checkpoints?
-			cperTri_,            // in: triangle-shaped mini-fills?
-			rnd);                // in: random gen, to choose among equal paths
-		assert(bter_.inited());
-		size_t nrej = 0;
-		if(bter_.emptySolution()) {
-			return false;
-		} else {
-			return bter_.nextAlignment(maxiter, res, off, nrej, niter, rnd);
-		}
-	}
-	
-	
 
 	const BTDnaString  *rd_;     // read sequence
 	const BTString     *qu_;     // read qualities
@@ -620,14 +559,6 @@ protected:
 
 	NBest<DpBtCandidate> btdiag_;      // per-diagonal backtrace candidates
 	EList<DpBtCandidate> btncand_;     // cells we might backtrace from
-	
-	BtBranchTracer       bter_;        // backtracer
-	
-	Checkpointer         cper_;        // structure for saving checkpoint cells
-	size_t               cperMinlen_;  // minimum length for using checkpointer
-	size_t               cperPerPow2_; // checkpoint every 1 << perpow2 diags (& next)
-	bool                 cperEf_;      // store E and F in addition to H?
-	bool                 cperTri_;     // checkpoint for triangular mini-fills?
 	
 	size_t              colstop_;      // bailed on DP loop after this many cols
 	size_t              lastsolcol_;   // last DP col with valid cell

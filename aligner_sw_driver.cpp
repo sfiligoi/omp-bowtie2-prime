@@ -1360,30 +1360,6 @@ int SwDriver::extendSeedsPaired(
 					prm.nExEes++;
 					prm.nEeFail++; // say it's failed until proven successful
 					prm.nExEeFails++;
-				} else if(doUngapped && ungapped) {
-					resUngap_.reset();
-					int al = swa.ungappedAlign(
-						fw ? rd.patFw : rd.patRc,
-						fw ? rd.qual  : rd.qualRev,
-						refcoord,
-						ref,
-						tlen,
-						sc,
-						reportOverhangs,
-						minsc, // minimum
-						resUngap_);
-					Interval refival(refcoord, 1);
-					seenDiags.add(refival);
-					prm.nExUgs++;
-					prm.nUgFail++; // say it's failed until proven successful
-					prm.nExUgFails++;
-					if(al == 0) {
-						continue;
-					} else if(al == -1) {
-					} else {
-						found = true;
-						state = FOUND_UNGAPPED;
-					}
 				}
 				// int64_t pastedRefoff = (int64_t)wr.toff - rdoff;
 				DPRect rect;
