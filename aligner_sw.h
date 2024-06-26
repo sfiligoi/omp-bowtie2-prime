@@ -211,7 +211,6 @@ public:
 		sseI16rc_(DP_CAT),
 		state_(STATE_UNINIT),
 		initedRead_(false),
-		readSse16_(false),
 		initedRef_(false),
 		rfwbuf_(DP_CAT),
 		btnstack_(DP_CAT),
@@ -304,6 +303,8 @@ public:
 	 * last time init() was called.  Uses dynamic programming.
 	 */
 	bool align(TAlScore& best);
+	bool alignEnd2EndSseU8(TAlScore& best);
+	bool alignEnd2EndSseI16(TAlScore& best);
 	
 	/**
 	 * Populate the given SwResult with information about the "next best"
@@ -524,8 +525,6 @@ protected:
 	TAlScore            minsc_;  // penalty ceiling for valid alignments
 	int                 nceil_;  // max # Ns allowed in ref portion of aln
 
-	bool                sse8succ_;  // whether 8-bit worked
-	bool                sse16succ_; // whether 16-bit worked
 	SSEData             sseU8fw_;   // buf for fw query, 8-bit score
 	SSEData             sseU8rc_;   // buf for rc query, 8-bit score
 	SSEData             sseI16fw_;  // buf for fw query, 16-bit score
@@ -542,7 +541,6 @@ protected:
 
 	int                 state_;        // state
 	bool                initedRead_;   // true iff initialized with initRead
-	bool                readSse16_;    // true -> sse16 from now on for read
 	bool                initedRef_;    // true iff initialized with initRef
 	EList<uint32_t>     rfwbuf_;       // buffer for wordized ref stretches
 	

@@ -672,7 +672,6 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 bool SwAligner::gatherCellsNucleotidesEnd2EndSseU8(TAlScore best) {
 	// What's the minimum number of rows that can possibly be spanned by an
 	// alignment that meets the minimum score requirement?
-	assert(sse8succ_);
 	const size_t ncol = rff_ - rfi_;
 	const size_t nrow = dpRows();
 	assert_gt(nrow, 0);
@@ -698,6 +697,31 @@ bool SwAligner::gatherCellsNucleotidesEnd2EndSseU8(TAlScore best) {
 	assert(sawbest);
 	if(!btncand_.empty()) {
 		d.mat_.initMasks();
+	}
+	return !btncand_.empty();
+}
+
+/**
+ * Align read 'rd' to reference using read & reference information given
+ * last time init() was called.
+ */
+bool SwAligner::alignEnd2EndSseU8(
+	TAlScore& best)    // best alignment score observed in DP matrix
+{
+	assert(initedRef() && initedRead());
+	assert_eq(STATE_INITED, state_);
+	state_ = STATE_ALIGNED;
+	// Reset solutions lists
+	btncand_.clear();
+	int flag;
+	best = alignNucleotidesEnd2EndSseU8(flag, false);
+	cural_ = 0;
+	if(flag!=0) {
+		return false;
+	}
+	gatherCellsNucleotidesEnd2EndSseU8(best);
+	if(!btncand_.empty()) {
+		btncand_.sort();
 	}
 	return !btncand_.empty();
 }
