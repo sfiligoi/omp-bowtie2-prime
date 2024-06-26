@@ -1371,11 +1371,9 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_EXACT_UPFRONT:    /* noop */ break;
 	case ARG_1MM_UPFRONT:      /* noop */ break;
 	case ARG_EXACT_UPFRONT_NO:
-		cerr << "WARNING: No doExactUpFront not supported" << endl; 
-		break;
+		break; // the default now
 	case ARG_1MM_UPFRONT_NO:
-		cerr << "WARNING: do1mmUpFront not supported" << endl; 
-		break;
+		break; // the default now
 	case ARG_1MM_MINLEN:       do1mmMinLen = parse<size_t>(arg); break;
 	case ARG_NOISY_HPOLY: noisyHpolymer = true; break;
 	case 'x': bt2index = arg; break;
