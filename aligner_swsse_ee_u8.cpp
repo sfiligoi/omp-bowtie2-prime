@@ -289,6 +289,8 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 					const char   rf[], const TIdxSize rfd,
 					SSERegI pmat[],
 					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
+					const TAlScore minsc, const size_t nrow,
+					DpBtCandidate btncand[], TIdxSize& btnfilled_,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
 
 	// Many thanks to Michael Farrar for releasing his striped Smith-Waterman
@@ -371,7 +373,10 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
-	
+
+	// keep a local copy
+	TIdxSize btnfilled = 0;
+
 	// Fill in the table as usual but instead of using the same gap-penalty
 	// vector for each iteration of the inner loop, load words out of a
 	// pre-calculated gap vector parallel to the query profile.  The pre-
@@ -532,8 +537,14 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		
 		// Note: we may not want to extract from the final row
 		EEU8_TCScore lr = ((EEU8_TCScore*)(pvHLoad))[lastWordIdx];
+		TAlScore sc = (TAlScore)(lr - 0xff);
 		if(lr > lrmax) {
 			lrmax = lr;
+		}
+		if(sc >= minsc) {
+			// Yes, this is legit
+			btncand[btnfilled].init(nrow-1, i, lr);
+			btnfilled++;
 		}
 
 		// pvELoad and pvHLoad are already where they need to be
@@ -544,6 +555,8 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		pvFStore = pvFTmp;
 	}
 
+
+	btnfilled_ = btnfilled;  // pass it out
 	return lrmax;
 }
 
@@ -606,10 +619,16 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 
 	assert_leq(iter,      (size_t)MAX_U16);
 	assert_leq(rff_-rfi_, (size_t)MAX_U16);
+	uint16_t btnfilled = 0;
+	btncand_.resizeNoCopy(rff_-rfi_); // cannot be bigger that this
+
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_+rfi_, rff_-rfi_,
 					d.mat_.ptr(),
                                         iter, d.mat_.colstride(), lastWordIdx,
+					minsc_, dpRows(),
+					btncand_.ptr(), btnfilled,
 					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+	btncand_.trim(btnfilled);
 	
 	// Update metrics
 	if(!debug) {
@@ -670,31 +689,10 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
  * 
  */
 bool SwAligner::gatherCellsNucleotidesEnd2EndSseU8(TAlScore best) {
-	// What's the minimum number of rows that can possibly be spanned by an
-	// alignment that meets the minimum score requirement?
-	const size_t ncol = rff_ - rfi_;
-	const size_t nrow = dpRows();
-	assert_gt(nrow, 0);
-	btncand_.clear();
 	SSEData& d = fw_ ? sseU8fw_ : sseU8rc_;
 	SSEMetrics& met = extend_ ? sseU8ExtendMet_ : sseU8MateMet_;
-	assert(!d.profbuf_.empty());
-	const size_t colstride = d.mat_.colstride();
-	ASSERT_ONLY(bool sawbest = false);
-	SSERegI *pvH = d.mat_.hvec(d.lastIter_, 0);
-	for(size_t j = 0; j < ncol; j++) {
-		TAlScore sc = (TAlScore)(((EEU8_TCScore*)pvH)[d.lastWord_] - 0xff);
-		assert_leq(sc, best);
-		ASSERT_ONLY(sawbest = (sawbest || sc == best));
-		if(sc >= minsc_) {
-			// Yes, this is legit
-			met.gathsol++;
-			btncand_.expand();
-			btncand_.back().init(nrow-1, j, sc);
-		}
-		pvH += colstride;
-	}
-	assert(sawbest);
+	// btncand_ has already been filled as part of alignNucleotides
+	met.gathsol += btncand_.size();
 	if(!btncand_.empty()) {
 		d.mat_.initMasks();
 	}
@@ -716,14 +714,12 @@ bool SwAligner::alignEnd2EndSseU8(
 	int flag;
 	best = alignNucleotidesEnd2EndSseU8(flag, false);
 	cural_ = 0;
-	if(flag!=0) {
-		return false;
-	}
-	gatherCellsNucleotidesEnd2EndSseU8(best);
-	if(!btncand_.empty()) {
+	bool success = (flag==0);
+	if (success) success =  gatherCellsNucleotidesEnd2EndSseU8(best);
+	if(success) {
 		btncand_.sort();
 	}
-	return !btncand_.empty();
+	return success;
 }
 
 #define MOVE_VEC_PTR_UP(vec, rowvec, rowelt) { \
