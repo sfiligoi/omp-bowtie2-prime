@@ -74,9 +74,6 @@ void SwAligner::initRef(
 	const Scoring& sc,     // scoring scheme
 	TAlScore minsc,        // minimum score
 	bool enable8,          // use 8-bit SSE if possible?
-	size_t cminlen,        // minimum length for using checkpointing scheme
-	size_t cpow2,          // interval b/t checkpointed diags; 1 << this
-	bool doTri,            // triangular mini-fills?
 	bool extend)           // is this a seed extension?
 {
 	size_t readGaps = sc.maxReadGaps(minsc, rdfw_->length());
@@ -121,9 +118,6 @@ void SwAligner::initRef(
 	const Scoring& sc,     // scoring scheme
 	TAlScore minsc,        // minimum score
 	bool enable8,          // use 8-bit SSE if possible?
-	size_t cminlen,        // minimum length for using checkpointing scheme
-	size_t cpow2,          // interval b/t checkpointed diags; 1 << this
-	bool doTri,            // triangular mini-fills?
 	bool extend,           // true iff this is a seed extension
 	size_t  upto,          // count the number of Ns up to this offset
 	size_t& nsUpto)        // output: the number of Ns up to 'upto'
@@ -224,9 +218,6 @@ void SwAligner::initRef(
 		sc,          // scoring scheme
 		minsc,       // minimum score
 		enable8,     // use 8-bit SSE if possible?
-		cminlen,     // minimum length for using checkpointing scheme
-		cpow2,       // interval b/t checkpointed diags; 1 << this
-		doTri,       // triangular mini-fills?
 		extend);     // true iff this is a seed extension
 }
 

@@ -273,9 +273,6 @@ public:
 		const Scoring& sc,     // scoring scheme
 		TAlScore minsc,        // minimum score
 		bool enable8,          // use 8-bit SSE if possible?
-		size_t cminlen,        // minimum length for using checkpointing scheme
-		size_t cpow2,          // interval b/t checkpointed diags; 1 << this
-		bool doTri,            // triangular mini-fills?
 		bool extend);          // true iff this is a seed extension
 
 	/**
@@ -300,9 +297,6 @@ public:
 		const Scoring& sc,     // scoring scheme
 		TAlScore minsc,        // minimum alignment score
 		bool enable8,          // use 8-bit SSE if possible?
-		size_t cminlen,        // minimum length for using checkpointing scheme
-		size_t cpow2,          // interval b/t checkpointed diags; 1 << this
-		bool doTri,            // triangular mini-fills?
 		bool extend,           // true iff this is a seed extension
 		size_t  upto,          // count the number of Ns up to this offset
 		size_t& nsUpto);       // output: the number of Ns up to 'upto'

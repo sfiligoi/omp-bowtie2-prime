@@ -224,9 +224,6 @@ static size_t maxStreakIncr;  // amt to add to streak for each -k > 1
 static size_t maxMateStreak;  // stop seed range after this many mate-find fails
 static bool doExtend;         // extend seed hits
 static bool enable8;          // use 8-bit SSE where possible?
-static size_t cminlen;        // longer reads use checkpointing
-static size_t cpow2;          // checkpoint interval log2
-static bool doTri;            // do triangular mini-fills?
 static string defaultPreset;  // default preset; applied immediately
 static bool ignoreQuals;      // all mms incur same penalty, regardless of qual
 static string wrapper;        // type of wrapper script, so we can print correct usage
@@ -421,9 +418,6 @@ static void resetOptions() {
 	maxMateStreak	    = 10;	// in PE: abort seed range after N mate-find fails
 	doExtend	    = true;	// do seed extensions
 	enable8		    = true;	// use 8-bit SSE where possible?
-	cminlen		    = 2000;	// longer reads use checkpointing
-	cpow2		    = 4;	// checkpoint interval log2
-	doTri		    = false;	// do triangular mini-fills?
 	defaultPreset	    = "sensitive%LOCAL%";	// default preset; applied immediately
 	extra_opts.clear();
 	extra_opts_cur	    = 0;
@@ -1297,13 +1291,13 @@ static void parseOption(int next_option, const char *arg) {
 		cerr << "WARNING: sampleFrac not supported" << endl; 
 		break;
 	case ARG_CP_MIN:
-		cminlen = parse<size_t>(arg);
+		// silently ignore
 		break;
 	case ARG_CP_IVAL:
-		cpow2 = parse<size_t>(arg);
+		//silently ignore
 		break;
 	case ARG_TRI:
-		doTri = true;
+		// silently ignore
 		break;
 	case ARG_READ_PASSTHRU: {
 		sam_print_xr = true;
@@ -2179,11 +2173,8 @@ public:
 		, norc( gNorc )
 		, extend( doExtend )
 		, doEnable8( enable8 )
-		, tri( doTri )
 		, doTighten( tighten)
 		, maxHalf( maxhalf )
-		, cMinLen( cminlen )
-		, cPow2( cpow2 )
 		, mxKHMul( (khits > 1) ? (khits-1) : 0 )
 		, streak( maxDpStreak + mxKHMul * maxStreakIncr )
 		, mxDp(   maxDp       + mxKHMul * maxItersIncr  )
@@ -2201,11 +2192,8 @@ public:
 
 	const bool extend;
 	const bool doEnable8;
-	const bool tri; 
 	const int  doTighten; 
 	const size_t maxHalf;
-	const size_t cMinLen; 
-	const size_t cPow2;
 
 	// Calculate streak length
 	const size_t mxKHMul;
@@ -2657,9 +2645,6 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 										msconsts->streak,         // stop after streak of this many ungap fails
 										msconsts->extend,       // extend seed hits
 										msconsts->doEnable8,        // use 8-bit SSE where possible
-										msconsts->cMinLen,        // checkpoint if read is longer
-										msconsts->cPow2,          // checkpointer interval, log2
-										msconsts->tri,          // triangular mini-fills?
 										msconsts->doTighten,        // -M score tightening mode
 										als.getCacheInterface(mate),  // seed alignment cache
 										msobj.rnd,      // pseudo-random source
@@ -3120,9 +3105,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 									mtStreak[mate], // max mate fails per seed range
 									doExtend,       // extend seed hits
 									enable8,        // use 8-bit SSE where possible
-									cminlen,        // checkpoint if read is longer
-									cpow2,          // checkpointer interval, log2
-									doTri,          // triangular mini-fills?
 									tighten,        // -M score tightening mode
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
@@ -3158,9 +3140,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 									streak[mate],   // stop after streak of this many ungap fails
 									doExtend,       // extend seed hits
 									enable8,        // use 8-bit SSE where possible
-									cminlen,        // checkpoint if read is longer
-									cpow2,          // checkpointer interval, log2
-									doTri,          // triangular mini-fills
 									tighten,        // -M score tightening mode
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
@@ -3291,9 +3270,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 									mtStreak[mate], // max mate fails per seed range
 									doExtend,       // extend seed hits
 									enable8,        // use 8-bit SSE where possible
-									cminlen,        // checkpoint if read is longer
-									cpow2,          // checkpointer interval, log2
-									doTri,          // triangular mini-fills?
 									tighten,        // -M score tightening mode
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
@@ -3329,9 +3305,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 									streak[mate],   // stop after streak of this many ungap fails
 									doExtend,       // extend seed hits
 									enable8,        // use 8-bit SSE where possible
-									cminlen,        // checkpoint if read is longer
-									cpow2,          // checkpointer interval, log2
-									doTri,          // triangular mini-fills?
 									tighten,        // -M score tightening mode
 									ca,             // seed alignment cache
 									rnd,            // pseudo-random source
@@ -3555,9 +3528,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 										mtStreak[mate], // max mate fails per seed range
 										doExtend,       // extend seed hits
 										enable8,        // use 8-bit SSE where possible
-										cminlen,        // checkpoint if read is longer
-										cpow2,          // checkpointer interval, log2
-										doTri,          // triangular mini-fills?
 										tighten,        // -M score tightening mode
 										ca,             // seed alignment cache
 										rnd,            // pseudo-random source
@@ -3593,9 +3563,6 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 										streak[mate],   // stop after streak of this many ungap fails
 										doExtend,       // extend seed hits
 										enable8,        // use 8-bit SSE where possible
-										cminlen,        // checkpoint if read is longer
-										cpow2,          // checkpointer interval, log2
-										doTri,          // triangular mini-fills?
 										tighten,        // -M score tightening mode
 										ca,             // seed alignment cache
 										rnd,            // pseudo-random source
