@@ -274,6 +274,34 @@ static bool cellOkEnd2EndU8(
 }
 #endif
 
+/**
+ * Given a filled-in DP table, populate the btncand_ list with candidate cells
+ * that might be at the ends of valid alignments.  No need to do this unless
+ * the maximum score returned by the align*() func is >= the minimum.
+ *
+ * Only cells that are exhaustively scored are candidates.  Those are the
+ * cells inside the shape made of o's in this:
+ *
+ *  |-maxgaps-|
+ *  *********************************    -
+ *   ********************************    |
+ *    *******************************    |
+ *     ******************************    |
+ *      *****************************    |
+ *       **************************** read len
+ *        ***************************    |
+ *         **************************    |
+ *          *************************    |
+ *           ************************    |
+ *            ***********oooooooooooo    -
+ *            |-maxgaps-|
+ *  |-readlen-|
+ *  |-------skip--------|
+ *
+ * And it's possible for the shape to be truncated on the left and right sides.
+ *
+ * 
+ */
 
 #define sse_anygt_epu8(val1,val2,outval) { \
 	SSERegI s = sse_subs_epu8(val1, val2); \
@@ -560,7 +588,18 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	return lrmax;
 }
 
-TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
+/**
+ * Align read 'rd' to reference using read & reference information given
+ * last time init() was called.
+ */
+bool SwAligner::alignEnd2EndSseU8(
+	TAlScore& best)    // best alignment score observed in DP matrix
+{
+	constexpr bool debug = false;
+
+	assert(initedRef() && initedRead());
+	assert_eq(STATE_INITED, state_);
+
 	assert_leq(rdf_, rd_->length());
 	assert_leq(rdf_, qu_->length());
 	assert_lt(rfi_, rff_);
@@ -610,9 +649,10 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 
 	// should never get in here, but just in case
 	if (rfi_>=rff_) {
-		flag = -1; // no solution
+		btncand_.clear();
 		if(!debug) met.dpfail++;
-		return MIN_I64;
+		best = MIN_I64;
+		return false;
 	}
 
 	d.mat_.init(dpRows(), rff_-rfi_, EEU8_NWORDS_PER_REG);
@@ -629,7 +669,9 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 					btncand_.ptr(), btnfilled,
 					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
 	btncand_.trim(btnfilled);
-	
+	state_ = STATE_ALIGNED;
+	cural_ = 0;
+
 	// Update metrics
 	if(!debug) {
 		size_t ninner = (rff_ - rfi_) * iter;
@@ -642,84 +684,31 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseU8(int& flag, bool debug) {
 	// Did we find a solution?
 	const TAlScore score = (TAlScore)(lrmax - 0xff);
 	if(score < minsc_) {
-		flag = -1; // no
+		// no
 		if(!debug) met.dpfail++;
-		return score;
+		best = score;
+		return false;
 	}
 	
 	// Could we have saturated?
 	if(lrmax == MIN_U8) {
-		flag = -2; // yes
+		// yes
 		if(!debug) met.dpsat++;
-		return MIN_I64;
+		best = MIN_I64;
+		return false;
 	}
 	
 	// Return largest score
-	flag = 0;
 	if(!debug) met.dpsucc++;
-	return score;
-}
 
-/**
- * Given a filled-in DP table, populate the btncand_ list with candidate cells
- * that might be at the ends of valid alignments.  No need to do this unless
- * the maximum score returned by the align*() func is >= the minimum.
- *
- * Only cells that are exhaustively scored are candidates.  Those are the
- * cells inside the shape made of o's in this:
- *
- *  |-maxgaps-|
- *  *********************************    -
- *   ********************************    |
- *    *******************************    |
- *     ******************************    |
- *      *****************************    |
- *       **************************** read len
- *        ***************************    |
- *         **************************    |
- *          *************************    |
- *           ************************    |
- *            ***********oooooooooooo    -
- *            |-maxgaps-|
- *  |-readlen-|
- *  |-------skip--------|
- *
- * And it's possible for the shape to be truncated on the left and right sides.
- *
- * 
- */
-bool SwAligner::gatherCellsNucleotidesEnd2EndSseU8(TAlScore best) {
-	SSEData& d = fw_ ? sseU8fw_ : sseU8rc_;
-	SSEMetrics& met = extend_ ? sseU8ExtendMet_ : sseU8MateMet_;
-	// btncand_ has already been filled as part of alignNucleotides
-	met.gathsol += btncand_.size();
-	if(!btncand_.empty()) {
+	if (btnfilled>0) {
+		met.gathsol += btnfilled;
 		d.mat_.initMasks();
-	}
-	return !btncand_.empty();
-}
-
-/**
- * Align read 'rd' to reference using read & reference information given
- * last time init() was called.
- */
-bool SwAligner::alignEnd2EndSseU8(
-	TAlScore& best)    // best alignment score observed in DP matrix
-{
-	assert(initedRef() && initedRead());
-	assert_eq(STATE_INITED, state_);
-	state_ = STATE_ALIGNED;
-	// Reset solutions lists
-	btncand_.clear();
-	int flag;
-	best = alignNucleotidesEnd2EndSseU8(flag, false);
-	cural_ = 0;
-	bool success = (flag==0);
-	if (success) success =  gatherCellsNucleotidesEnd2EndSseU8(best);
-	if(success) {
 		btncand_.sort();
 	}
-	return success;
+
+	best = score;
+	return !btncand_.empty();
 }
 
 #define MOVE_VEC_PTR_UP(vec, rowvec, rowelt) { \

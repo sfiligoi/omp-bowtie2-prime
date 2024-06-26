@@ -430,36 +430,7 @@ protected:
 	 * 0 if an alignment is found, -1 if no valid alignment is found, or -2 if
 	 * the score saturated at any point during alignment.
 	 */
-	TAlScore alignNucleotidesEnd2EndSseU8(  // unsigned 8-bit elements
-		int& flag, bool debug);
 	TAlScore alignNucleotidesEnd2EndSseI16( // signed 16-bit elements
-		int& flag, bool debug);
-	
-	/**
-	 * Aligns by filling a dynamic programming matrix with the SSE-accelerated,
-	 * banded DP approach of Farrar.  As it goes, it determines which cells we
-	 * might backtrace from and tallies the best (highest-scoring) N backtrace
-	 * candidate cells per diagonal.  Also returns the alignment score of the best
-	 * alignment in the matrix.
-	 *
-	 * This routine does *not* maintain a matrix holding the entire matrix worth of
-	 * scores, nor does it maintain any other dense O(mn) data structure, as this
-	 * would quickly exhaust memory for queries longer than about 10,000 kb.
-	 * Instead, in the fill stage it maintains two columns worth of scores at a
-	 * time (current/previous, or right/left) - these take O(m) space.  When
-	 * finished with the current column, it determines which cells from the
-	 * previous column, if any, are candidates we might backtrace from to find a
-	 * full alignment.  A candidate cell has a score that rises above the threshold
-	 * and isn't improved upon by a match in the next column.  The best N
-	 * candidates per diagonal are stored in a O(m + n) data structure.
-	 */
-	TAlScore alignGatherEE8(                // unsigned 8-bit elements
-		int& flag, bool debug);
-	TAlScore alignGatherLoc8(               // unsigned 8-bit elements
-		int& flag, bool debug);
-	TAlScore alignGatherEE16(               // signed 16-bit elements
-		int& flag, bool debug);
-	TAlScore alignGatherLoc16(              // signed 16-bit elements
 		int& flag, bool debug);
 	
 	/**
@@ -478,8 +449,6 @@ protected:
 	 */
 	void buildQueryProfileEnd2EndSseI16(bool fw);
 	
-	bool gatherCellsNucleotidesEnd2EndSseU8(TAlScore best);
-
 	bool gatherCellsNucleotidesEnd2EndSseI16(TAlScore best);
 
 
