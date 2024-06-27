@@ -314,8 +314,11 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			const SSERegI *pvScore,
 			const SSERegI *pvHLoad, const SSERegI *pvELoad,
 			SSERegI *pvHStore, SSERegI *pvEStore, SSERegI *pvFStore,
-			const SSERegI vhilsw,
 			const SSERegI rfgapo, const SSERegI rfgape, const SSERegI rdgapo, const SSERegI rdgape) {
+		// vhilsw: topmost (least sig) word set to 0xff, all other words=0
+		SSERegI vhilsw   = sse_setzero_siall();
+		sse_set_low_u8(0xff, vhilsw);	
+	
 		// Set all cells to low value
 		SSERegI vf       = sse_setzero_siall();
 
@@ -376,6 +379,77 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 		return vf;
 }
 
+template<typename TIdxSize>
+inline void EEU8_lazyF(const SSERegI vf0,
+			const TIdxSize iter, const size_t colstride,
+			const SSERegI *pvScore,
+			SSERegI *pvHStore, SSERegI *pvEStore, SSERegI *pvFStore,
+			const SSERegI rfgape, const SSERegI rdgapo) {
+		const SSERegI vzero    = sse_setzero_siall();  // needed by sse_anygt_epu8
+
+		// vf from last row gets shifted down by one to overlay the first row
+		// rfgape has already been subtracted from it.
+		SSERegI vf = sse_slli_siall(vf0, EEU8_NBYTES_PER_WORD);
+		
+		pvScore += 1;
+	        SSERegI vs1 = sse_load_siall(pvScore);
+		SSERegI vtmp = sse_load_siall(pvFStore);
+		
+		vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
+		vf = sse_max_epu8(vtmp, vf);
+		bool anygt;
+		sse_anygt_epu8(vf,vtmp,anygt);
+	
+		// Load after computing cmp, so the result is ready by the time it is tested in while
+		SSERegI vh = sse_load_siall(pvHStore);
+		SSERegI ve = sse_load_siall(pvEStore);
+		
+		// If any element of vtmp is greater than H - gap-open...
+		TIdxSize j = 0;
+		while(anygt) {
+			// Store this vf
+			sse_store_siall(pvFStore, vf);
+			pvFStore += ROWSTRIDE;
+			
+			// Update vh w/r/t new vf
+			vh = sse_max_epu8(vh, vf);
+			
+			// Save vH values
+			sse_store_siall(pvHStore, vh);
+			pvHStore += ROWSTRIDE;
+			
+			// Update E in case it can be improved using our new vh
+			vh = sse_subs_epu8(vh, rdgapo);
+			vh = sse_subs_epu8(vh, vs1); // veto some read gap opens
+			ve = sse_max_epu8(ve, vh);
+			sse_store_siall(pvEStore, ve);
+			pvEStore += ROWSTRIDE;
+			pvScore += 2;
+			
+			assert_lt(j, iter);
+			if(++j == iter) {
+				pvScore -= iter*2;
+				j = 0;
+				pvFStore -= colstride;
+				pvHStore -= colstride;
+				pvEStore -= colstride;
+				vf = sse_slli_siall(vf, EEU8_NBYTES_PER_WORD);
+			}
+			vs1 = sse_load_siall(pvScore);
+			vtmp = sse_load_siall(pvFStore);   // load next vf ASAP
+
+			// Update F with another gap extension
+			vf = sse_subs_epu8(vf, rfgape);
+			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
+			vf = sse_max_epu8(vtmp, vf);
+			sse_anygt_epu8(vf,vtmp,anygt);
+
+			// Load after computing cmp, so the result is afailable by the time it is tested
+			vh = sse_load_siall(pvHStore);     // load next vh 
+			ve = sse_load_siall(pvEStore);     // load next ve
+		}
+}
+
 /**
  * Solve the current alignment problem using SSE instructions that operate on 16
  * unsigned 8-bit values packed into a single 128-bit register.
@@ -401,10 +475,6 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	SSERegI rfgape   = sse_setzero_siall();
 	SSERegI rdgapo   = sse_setzero_siall();
 	SSERegI rdgape   = sse_setzero_siall();
-	SSERegI vlo      = sse_setzero_siall();
-	SSERegI vhi      = sse_setzero_siall();
-	SSERegI vzero    = sse_setzero_siall();
-	SSERegI vhilsw   = sse_setzero_siall();
 
 	assert_gt(refGapOpen, 0);
 	sse_fill_i8(refGapOpen, rfgapo);
@@ -423,12 +493,6 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	assert_leq(readGapExtend, readGapOpen);
 	sse_fill_i8(readGapExtend, rdgape);
 
-	sse_fill_u8_opt(0xff, vhi);
-	sse_fill_u8_opt(0, vlo);	
-	
-	// vhilsw: topmost (least sig) word set to 0xff, all other words=0
-	sse_set_low_u8(0xff, vhilsw);	
-	
 	// Points to a long vector of SSERegI where each element is a block of
 	// contiguous cells in the E, F or H matrix.  If the index % 3 == 0, then
 	// the block of cells is from the E matrix.  If index % 3 == 1, they're
@@ -443,6 +507,8 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	{
 	  SSERegI *pvHTmp = pmat + SSEMatrix::TMP;
 	  SSERegI *pvETmp = pmat + SSEMatrix::E;
+	  SSERegI vlo      = sse_setzero_siall();
+	  sse_fill_u8_opt(0, vlo);	
 	
 	  for(size_t i = 0; i < iter; i++) {
 		sse_store_siall(pvETmp, vlo);
@@ -453,12 +519,11 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	}
 
 	// These are swapped just before the innermost loop
-	SSERegI *pvHStore = pmat + SSEMatrix::H;
 	SSERegI *pvHLoad  = pmat + SSEMatrix::TMP;
+	SSERegI *pvHStore = pmat + SSEMatrix::H;
 	SSERegI *pvELoad  = pmat + SSEMatrix::E;
 	SSERegI *pvEStore = pmat + colstride + SSEMatrix::E;
 	SSERegI *pvFStore = pmat + SSEMatrix::F;
-	SSERegI *pvFTmp   = NULL;
 	
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
@@ -493,77 +558,14 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
                         	pvScore,
                         	pvHLoad, pvELoad,
                         	pvHStore, pvEStore, pvFStore,
-                        	vhilsw,
                         	rfgapo, rfgape, rdgapo, rdgape);
 
-		// vf from last row gets shifted down by one to overlay the first row
-		// rfgape has already been subtracted from it.
-		vf = sse_slli_siall(vf, EEU8_NBYTES_PER_WORD);
-		
-		pvScore += 1;
-	        SSERegI vs1 = sse_load_siall(pvScore);
-
-		SSERegI * pvFTmp = pvFStore;
-		SSERegI vtmp = sse_load_siall(pvFStore);
-		
-		vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
-		vf = sse_max_epu8(vtmp, vf);
-		bool anygt;
-		sse_anygt_epu8(vf,vtmp,anygt);
-	
-		// Load after computing cmp, so the result is ready by the time it is tested in while
-		SSERegI vh = sse_load_siall(pvHStore);
+		EEU8_lazyF(vf,
+				iter, colstride,
+				pvScore,
+				pvHStore, pvEStore, pvFStore,
+				rfgape, rdgapo);
 		pvHLoad = pvHStore;    // new pvHLoad = pvHStore
-		
-		SSERegI ve = sse_load_siall(pvEStore);
-		
-		// If any element of vtmp is greater than H - gap-open...
-		TIdxSize j = 0;
-		while(anygt) {
-			// Store this vf
-			sse_store_siall(pvFStore, vf);
-			pvFStore += ROWSTRIDE;
-			
-			// Update vh w/r/t new vf
-			vh = sse_max_epu8(vh, vf);
-			
-			// Save vH values
-			sse_store_siall(pvHStore, vh);
-			pvHStore += ROWSTRIDE;
-			
-			// Update E in case it can be improved using our new vh
-#if 0
-#else
-			vh = sse_subs_epu8(vh, rdgapo);
-			vh = sse_subs_epu8(vh, vs1); // veto some read gap opens
-			ve = sse_max_epu8(ve, vh);
-			sse_store_siall(pvEStore, ve);
-			pvEStore += ROWSTRIDE;
-#endif
-			pvScore += 2;
-			
-			assert_lt(j, iter);
-			if(++j == iter) {
-				pvScore -= iter*2;
-				j = 0;
-				pvFStore -= colstride;
-				pvHStore -= colstride;
-				pvEStore -= colstride;
-				vf = sse_slli_siall(vf, EEU8_NBYTES_PER_WORD);
-			}
-			vs1 = sse_load_siall(pvScore);
-			vtmp = sse_load_siall(pvFStore);   // load next vf ASAP
-
-			// Update F with another gap extension
-			vf = sse_subs_epu8(vf, rfgape);
-			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
-			vf = sse_max_epu8(vtmp, vf);
-			sse_anygt_epu8(vf,vtmp,anygt);
-
-			// Load after computing cmp, so the result is afailable by the time it is tested
-			vh = sse_load_siall(pvHStore);     // load next vh 
-			ve = sse_load_siall(pvEStore);     // load next ve
-		}
 		
 		// Note: we may not want to extract from the final row
 		EEU8_TCScore lr = ((EEU8_TCScore*)(pvHLoad))[lastWordIdx];
@@ -580,10 +582,10 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		// pvHLoad are already where they need to be
 		
 		// Adjust the load and store vectors here.  
-		pvELoad  = pvELoad + colstride;
-		pvHStore = pvHLoad + colstride;
-		pvEStore = pvELoad + colstride;
-		pvFStore = pvFTmp + colstride;
+		pvHStore = pvHStore + colstride;
+		pvELoad  = pvELoad  + colstride;
+		pvEStore = pvEStore + colstride;
+		pvFStore = pvFStore + colstride;
 	}
 
 
