@@ -273,36 +273,51 @@ static bool cellOkEnd2EndI16(
 }
 #endif
 
+/**
+ * Given a filled-in DP table, populate the btncand_ list with candidate cells
+ * that might be at the ends of valid alignments.  No need to do this unless
+ * the maximum score returned by the align*() func is >= the minimum.
+ *
+ * Only cells that are exhaustively scored are candidates.  Those are the
+ * cells inside the shape made of o's in this:
+ *
+ *  |-maxgaps-|
+ *  *********************************    -
+ *   ********************************    |
+ *    *******************************    |
+ *     ******************************    |
+ *      *****************************    |
+ *       **************************** read len
+ *        ***************************    |
+ *         **************************    |
+ *          *************************    |
+ *           ************************    |
+ *            ***********oooooooooooo    -
+ *            |-maxgaps-|
+ *  |-readlen-|
+ *  |-------skip--------|
+ *
+ * And it's possible for the shape to be truncated on the left and right sides.
+ *
+ * 
+ */
+
+#define sse_anygt_epi16(val1,val2,outval) { \
+	SSERegI s = sse_cmpgt_epi16(val1, val2); \
+        outval = (sse_movemask_epi8(s) != 0); }
 
 /**
  * Solve the current alignment problem using SSE instructions that operate on 8
  * signed 16-bit values packed into a single 128-bit register.
  */
-TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
-	assert_leq(rdf_, rd_->length());
-	assert_leq(rdf_, qu_->length());
-	assert_lt(rfi_, rff_);
-	assert_lt(rdi_, rdf_);
-	assert_eq(rd_->length(), qu_->length());
-	assert_geq(sc_->gapbar, 1);
-	assert(repOk());
-#ifndef NDEBUG
-	for(size_t i = (size_t)rfi_; i < (size_t)rff_; i++) {
-		assert_range(0, 16, (int)rf_[i]);
-	}
-#endif
-
-	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
-	SSEMetrics& met = extend_ ? sseI16ExtendMet_ : sseI16MateMet_;
-	if(!debug) met.dp++;
-	buildQueryProfileEnd2EndSseI16(fw_);
-	assert(!d.profbuf_.empty());
-
-	assert_eq(0, d.maxBonus_);
-	const size_t iter =
-		(dpRows() + (EEI16_NWORDS_PER_REG-1)) / EEI16_NWORDS_PER_REG; // iter = segLen
-
-        const size_t lastWordIdx = EEI16_NWORDS_PER_REG*(d.lastIter_*ROWSTRIDE)+d.lastWord_;
+template<typename TIdxSize>
+inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
+					const char   rf[], const TIdxSize rfd,
+					SSERegI pmat[],
+					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
+					const TAlScore minsc, const size_t nrow,
+					DpBtCandidate btncand[], TIdxSize& btnfilled_,
+					const int16_t refGapOpen, const int16_t refGapExtend, const int16_t readGapOpen, const int16_t readGapExtend) {
 
 	// Many thanks to Michael Farrar for releasing his striped Smith-Waterman
 	// implementation:
@@ -322,44 +337,34 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 	SSERegI ve       = sse_setzero_siall();
 	SSERegI vf       = sse_setzero_siall();
 	SSERegI vh       = sse_setzero_siall();
-#if 0
-	SSERegI vhd      = sse_setzero_siall();
-	SSERegI vhdtmp   = sse_setzero_siall();
-#endif
 	SSERegI vtmp     = sse_setzero_siall();
 
 	SSERegI vs0     = sse_setzero_siall();
 	SSERegI vs1     = sse_setzero_siall();
 
-	assert_gt(sc_->refGapOpen(), 0);
-	assert_leq(sc_->refGapOpen(), MAX_I16);
-	sse_fill_i16(sc_->refGapOpen(), rfgapo);
+	assert_gt(refGapOpen, 0);
+	assert_leq(refGapOpen, MAX_I16);
+	sse_fill_i16(refGapOpen, rfgapo);
 	
 	// Set all elts to reference gap extension penalty
-	assert_gt(sc_->refGapExtend(), 0);
-	assert_leq(sc_->refGapExtend(), MAX_I16);
-	assert_leq(sc_->refGapExtend(), sc_->refGapOpen());
-	sse_fill_i16(sc_->refGapExtend(), rfgape);
+	assert_gt(refGapExtend, 0);
+	assert_leq(refGapExtend, MAX_I16);
+	assert_leq(refGapExtend, refGapOpen);
+	sse_fill_i16(refGapExtend, rfgape);
 
 	// Set all elts to read gap open penalty
-	assert_gt(sc_->readGapOpen(), 0);
-	assert_leq(sc_->readGapOpen(), MAX_I16);
-	sse_fill_i16(sc_->readGapOpen(), rdgapo);
+	assert_gt(readGapOpen, 0);
+	assert_leq(readGapOpen, MAX_I16);
+	sse_fill_i16(readGapOpen, rdgapo);
 	
 	// Set all elts to read gap extension penalty
-	assert_gt(sc_->readGapExtend(), 0);
-	assert_leq(sc_->readGapExtend(), MAX_I16);
-	assert_leq(sc_->readGapExtend(), sc_->readGapOpen());
-	sse_fill_i16(sc_->readGapExtend(), rdgape);
+	assert_gt(readGapExtend, 0);
+	assert_leq(readGapExtend, MAX_I16);
+	assert_leq(readGapExtend, readGapOpen);
+	sse_fill_i16(readGapExtend, rdgape);
 
 	// Set all elts to 0x8000 (min value for signed 16-bit)
 	sse_fill_i16(0x8000, vlo);
-
-#ifndef NDEBUG	
-	// Set all elts to 0x7fff (max value for signed 16-bit)
-	SSERegI vhi      = sse_setzero_siall();
-	sse_fill_i16(0x7fff, vhi);
-#endif
 
 	// vlolsw: topmost (least sig) word set to 0x8000, all other words=0
 	sse_set_low_i16(0x8000, vlolsw);
@@ -373,21 +378,16 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 	// from the F matrix.  If index % 3 == 2, then they're from the H matrix.
 	// Blocks of cells are organized in the same interleaved manner as they are
 	// calculated by the Farrar algorithm.
-	const SSERegI *pvScore; // points into the query profile
+	// const SSERegI *pvScore; // points into the query profile
 
-	d.mat_.init(dpRows(), rff_ - rfi_, EEI16_NWORDS_PER_REG);
-	const size_t colstride = d.mat_.colstride();
 	assert_eq(ROWSTRIDE, colstride / iter);
-	
+
 	// Initialize the H and E vectors in the first matrix column
-	SSERegI *pvHTmp = d.mat_.tmpvec(0, 0);
-	SSERegI *pvETmp = d.mat_.evec(0, 0);
+	{
+	  SSERegI *pvHTmp = pmat + SSEMatrix::TMP;
+	  SSERegI *pvETmp = pmat + SSEMatrix::E;
 	
-	// Maximum score in final row
-	bool found = false;
-	EEI16_TCScore lrmax = MIN_I16;
-	
-	for(size_t i = 0; i < iter; i++) {
+	  for(size_t i = 0; i < iter; i++) {
 		sse_store_siall(pvETmp, vlo);
 		// Could initialize Hs to high or low.  If high, cells in the lower
 		// triangle will have somewhat more legitiate scores, but still won't
@@ -395,18 +395,23 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 		sse_store_siall(pvHTmp, vlo);
 		pvETmp += ROWSTRIDE;
 		pvHTmp += ROWSTRIDE;
+	  }
 	}
+
 	// These are swapped just before the innermost loop
-	SSERegI *pvHStore = d.mat_.hvec(0, 0);
-	SSERegI *pvHLoad  = d.mat_.tmpvec(0, 0);
-	SSERegI *pvELoad  = d.mat_.evec(0, 0);
-	SSERegI *pvEStore = d.mat_.evecUnsafe(0, 1);
-	SSERegI *pvFStore = d.mat_.fvec(0, 0);
+	SSERegI *pvHStore = pmat + SSEMatrix::H;
+	SSERegI *pvHLoad  = pmat + SSEMatrix::TMP;
+	SSERegI *pvELoad  = pmat + SSEMatrix::E;
+	SSERegI *pvEStore = pmat + colstride + SSEMatrix::E;
+	SSERegI *pvFStore = pmat + SSEMatrix::F;
 	SSERegI *pvFTmp   = NULL;
 	
-	assert_gt(sc_->gapbar, 0);
-	size_t nfixup = 0;
-	
+	// Maximum score in final row
+	EEI16_TCScore lrmax = MIN_I16;
+
+	// keep a local copy
+	TIdxSize btnfilled = 0;
+
 	// Fill in the table as usual but instead of using the same gap-penalty
 	// vector for each iteration of the inner loop, load words out of a
 	// pre-calculated gap vector parallel to the query profile.  The pre-
@@ -418,19 +423,16 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 	// separates the processing of the first row from the others and might make
 	// it difficult to use the first-row results in the next row, but it might
 	// be the simplest and least disruptive way to deal with the st_ constraint.
-	
-	colstop_ = rff_ - 1;
-	lastsolcol_ = 0;
-	
-	for(size_t i = (size_t)rfi_; i < (size_t)rff_; i++) {
-		assert(pvFStore == d.mat_.fvec(0, i - rfi_));
-		assert(pvHStore == d.mat_.hvec(0, i - rfi_));
+
+	for(TIdxSize i = 0; i < rfd; i++) {
+		assert(pvFStore == (pmat + i*colstride + SSEMatrix::F));
+		assert(pvHStore == (pmat + i*colstride + SSEMatrix::H));
 		
-		// Fetch the appropriate query profile.  Note that elements of rf_ must
+		// Fetch the appropriate query profile.  Note that elements of rf must
 		// be numbers, not masks.
-		const int refc = (int)rf_[i];
-		size_t off = (size_t)firsts5[refc] * iter * 2;
-		pvScore = d.profbuf_.ptr() + off; // even elts = query profile, odd = gap barrier
+		size_t off = (size_t)firsts5[ rf[i] ] * iter * 2;
+		// points into the query profile
+		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 		
 		// Set all cells to low value
 		vf = sse_cmpeq_epi16(vf, vf);
@@ -445,17 +447,13 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 		vh = sse_or_siall(vh, vhilsw);
 		
 		// For each character in the reference text:
-		size_t j;
-		for(j = 0; j < iter; j++) {
+		for(TIdxSize j = 0; j < iter; j++) {
 			vs0 = sse_load_siall(pvScore);
                         pvScore++;
 			vs1 = sse_load_siall(pvScore);
                         pvScore++;
 			// Load cells from E, calculated previously
 			ve = sse_load_siall(pvELoad);
-#if 0
-			vhd = sse_load_siall(pvHLoad);
-#endif
 			assert_all_lt(ve, vhi);
 			pvELoad += ROWSTRIDE;
 			
@@ -478,28 +476,16 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 			
 			// Update vE value
 			vtmp = vh;
-#if 0
-			vhdtmp = vhd;
-			vhd = sse_subs_epi16(vhd, rdgapo);
-			vhd = sse_adds_epi16(vhd, vs1); // veto some read gap opens
-			vhd = sse_adds_epi16(vhd, vs1); // veto some read gap opens
-			ve = sse_subs_epi16(ve, rdgape);
-			ve = sse_max_epi16(ve, vhd);
-#else
 			vh = sse_subs_epi16(vh, rdgapo);
 			vh = sse_adds_epi16(vh, vs1); // veto some read gap opens
 			vh = sse_adds_epi16(vh, vs1); // veto some read gap opens
 			ve = sse_subs_epi16(ve, rdgape);
 			ve = sse_max_epi16(ve, vh);
-#endif
+
 			assert_all_lt(ve, vhi);
 			
 			// Load the next h value
-#if 0
-			vh = vhdtmp;
-#else
 			vh = sse_load_siall(pvHLoad);
-#endif
 			pvHLoad += ROWSTRIDE;
 			
 			// Save E values
@@ -528,23 +514,19 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 		vf = sse_adds_epi16(vf, vs1); // veto some ref gap extensions
 		vf = sse_adds_epi16(vf, vs1); // veto some ref gap extensions
 		vf = sse_max_epi16(vtmp, vf);
-		vtmp = sse_cmpgt_epi16(vf, vtmp);
-		int cmp = sse_movemask_epi8(vtmp);
-		
+		bool anygt;
+		sse_anygt_epi16(vf,vtmp,anygt);
 		// Load after computing cmp, so the result is ready by the time it is tested in while
 		pvHStore -= colstride; // reset to start of column
 		vh = sse_load_siall(pvHStore);
 		pvHLoad = pvHStore;    // new pvHLoad = pvHStore
 		
-#if 0
-#else
 		pvEStore -= colstride; // reset to start of column
 		ve = sse_load_siall(pvEStore);
-#endif
 		
 		// If any element of vtmp is greater than H - gap-open...
-		j = 0;
-		while(cmp != 0x0000) {
+		TIdxSize j = 0;
+		while(anygt) {
 			// Store this vf
 			sse_store_siall(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
@@ -589,40 +571,23 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 			vf = sse_adds_epi16(vf, vs1); // veto some ref gap extensions
 			vf = sse_adds_epi16(vf, vs1); // veto some ref gap extensions
 			vf = sse_max_epi16(vtmp, vf);
-			vtmp = sse_cmpgt_epi16(vf, vtmp);
-			cmp = sse_movemask_epi8(vtmp);
+			sse_anygt_epi16(vf,vtmp,anygt);
 
 			// Load after computing cmp, so the result is afailable by the time it is tested
 			vh = sse_load_siall(pvHStore);     // load next vh ASAP
-#if 0
-#else
 			ve = sse_load_siall(pvEStore);     // load next vh ASAP
-#endif
-			nfixup++;
 		}
-
-#ifndef NDEBUG
-		if((rand() & 15) == 0) {
-			// This is a work-intensive sanity check; each time we finish filling
-			// a column, we check that each H, E, and F is sensible.
-			for(size_t k = 0; k < dpRows(); k++) {
-				assert(cellOkEnd2EndI16(
-					d,
-					k,                   // row
-					i - rfi_,            // col
-					refc,                // reference mask
-					(int)(*rd_)[rdi_+k], // read char
-					(int)(*qu_)[rdi_+k], // read quality
-					*sc_));              // scoring scheme
-			}
-		}
-#endif
 		
 		// Note: we may not want to extract from the final row
 		EEI16_TCScore lr = ((EEI16_TCScore*)(pvHLoad))[lastWordIdx];
-		found = true;
+		TAlScore sc = (TAlScore)(lr - 0x7fff);
 		if(lr > lrmax) {
 			lrmax = lr;
+		}
+		if(sc >= minsc) {
+			// Yes, this is legit
+			btncand[btnfilled].init(nrow-1, i, lr);
+			btnfilled++;
 		}
 
 		// pvELoad and pvHLoad are already where they need to be
@@ -632,103 +597,10 @@ TAlScore SwAligner::alignNucleotidesEnd2EndSseI16(int& flag, bool debug) {
 		pvEStore = pvELoad + colstride;
 		pvFStore = pvFTmp;
 	}
-	
-	// Update metrics
-	if(!debug) {
-		size_t ninner = (rff_ - rfi_) * iter;
-		met.col   += (rff_ - rfi_);             // DP columns
-		met.cell  += (ninner * EEI16_NWORDS_PER_REG); // DP cells
-		met.inner += ninner;                    // DP inner loop iters
-		met.fixup += nfixup;                    // DP fixup loop iters
-	}
-	
-	flag = 0;
-	
-	// Did we find a solution?
-	TAlScore score = MIN_I64;
-	if(!found) {
-		flag = -1; // no
-		if(!debug) met.dpfail++;
-		return MIN_I64;
-	} else {
-		score = (TAlScore)(lrmax - 0x7fff);
-		if(score < minsc_) {
-			flag = -1; // no
-			if(!debug) met.dpfail++;
-			return score;
-		}
-	}
-	
-	// Could we have saturated?
-	if(lrmax == MIN_I16) {
-		flag = -2; // yes
-		if(!debug) met.dpsat++;
-		return MIN_I64;
-	}
-	
-	// Return largest score
-	if(!debug) met.dpsucc++;
-	return score;
-}
 
-/**
- * Given a filled-in DP table, populate the btncand_ list with candidate cells
- * that might be at the ends of valid alignments.  No need to do this unless
- * the maximum score returned by the align*() func is >= the minimum.
- *
- * Only cells that are exhaustively scored are candidates.  Those are the
- * cells inside the shape made of o's in this:
- *
- *  |-maxgaps-|
- *  *********************************    -
- *   ********************************    |
- *    *******************************    |
- *     ******************************    |
- *      *****************************    |
- *       **************************** read len
- *        ***************************    |
- *         **************************    |
- *          *************************    |
- *           ************************    |
- *            ***********oooooooooooo    -
- *            |-maxgaps-|
- *  |-readlen-|
- *  |-------skip--------|
- *
- * And it's possible for the shape to be truncated on the left and right sides.
- *
- * 
- */
-bool SwAligner::gatherCellsNucleotidesEnd2EndSseI16(TAlScore best) {
-	// What's the minimum number of rows that can possibly be spanned by an
-	// alignment that meets the minimum score requirement?
-	const size_t ncol = rff_ - rfi_;
-	const size_t nrow = dpRows();
-	assert_gt(nrow, 0);
-	btncand_.clear();
-	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
-	SSEMetrics& met = extend_ ? sseI16ExtendMet_ : sseI16MateMet_;
-	assert(!d.profbuf_.empty());
-	const size_t colstride = d.mat_.colstride();
-	ASSERT_ONLY(bool sawbest = false);
-	SSERegI *pvH = d.mat_.hvec(d.lastIter_, 0);
-	for(size_t j = 0; j < ncol; j++) {
-		TAlScore sc = (TAlScore)(((EEI16_TCScore*)pvH)[d.lastWord_] - 0x7fff);
-		assert_leq(sc, best);
-		ASSERT_ONLY(sawbest = (sawbest || sc == best));
-		if(sc >= minsc_) {
-			// Yes, this is legit
-			met.gathsol++;
-			btncand_.expand();
-			btncand_.back().init(nrow-1, j, sc);
-		}
-		pvH += colstride;
-	}
-	assert(sawbest);
-	if(!btncand_.empty()) {
-		d.mat_.initMasks();
-	}
-	return !btncand_.empty();
+
+	btnfilled_ = btnfilled;  // pass it out
+	return lrmax;
 }
 
 /**
@@ -738,21 +610,119 @@ bool SwAligner::gatherCellsNucleotidesEnd2EndSseI16(TAlScore best) {
 bool SwAligner::alignEnd2EndSseI16(
 	TAlScore& best)    // best alignment score observed in DP matrix
 {
+	constexpr bool debug = false;
+
 	assert(initedRef() && initedRead());
 	assert_eq(STATE_INITED, state_);
-	state_ = STATE_ALIGNED;
-	// Reset solutions lists
-	btncand_.clear();
-	int flag;
-	best = alignNucleotidesEnd2EndSseI16(flag, false);
-	cural_ = 0;
-	if(flag!=0) {
+
+	assert_leq(rdf_, rd_->length());
+	assert_leq(rdf_, qu_->length());
+	assert_lt(rfi_, rff_);
+	assert_lt(rdi_, rdf_);
+	assert_eq(rd_->length(), qu_->length());
+	assert_geq(sc_->gapbar, 1);
+	assert(repOk());
+#ifndef NDEBUG
+	for(size_t i = (size_t)rfi_; i < (size_t)rff_; i++) {
+		assert_range(0, 16, (int)rf_[i]);
+	}
+#endif
+
+	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
+	SSEMetrics& met = extend_ ? sseI16ExtendMet_ : sseI16MateMet_;
+	if(!debug) met.dp++;
+	buildQueryProfileEnd2EndSseI16(fw_);
+	assert(!d.profbuf_.empty());
+
+	assert_eq(0, d.maxBonus_);
+	const size_t iter =
+		(dpRows() + (EEI16_NWORDS_PER_REG-1)) / EEI16_NWORDS_PER_REG; // iter = segLen
+        const size_t lastWordIdx = EEI16_NWORDS_PER_REG*(d.lastIter_*ROWSTRIDE)+d.lastWord_;
+
+
+	assert_gt(sc_->refGapOpen(), 0);
+	assert_leq(sc_->refGapOpen(), MAX_I16);
+	
+	// Set all elts to reference gap extension penalty
+	assert_gt(sc_->refGapExtend(), 0);
+	assert_leq(sc_->refGapExtend(), MAX_I16);
+	assert_leq(sc_->refGapExtend(), sc_->refGapOpen());
+
+	// Set all elts to read gap open penalty
+	assert_gt(sc_->readGapOpen(), 0);
+	assert_leq(sc_->readGapOpen(), MAX_I16);
+	
+	// Set all elts to read gap extension penalty
+	assert_gt(sc_->readGapExtend(), 0);
+	assert_leq(sc_->readGapExtend(), MAX_I16);
+	assert_leq(sc_->readGapExtend(), sc_->readGapOpen());
+
+	assert_gt(sc_->gapbar, 0);
+
+	colstop_ = rff_ - 1;
+	lastsolcol_ = 0;
+
+	// should never get in here, but just in case
+	if (rfi_>=rff_) {
+		btncand_.clear();
+		if(!debug) met.dpfail++;
+		best = MIN_I64;
 		return false;
 	}
-	gatherCellsNucleotidesEnd2EndSseI16(best);
-	if(!btncand_.empty()) {
+
+	d.mat_.init(dpRows(), rff_-rfi_, EEI16_NWORDS_PER_REG);
+
+	assert_leq(iter,      (size_t)MAX_U16);
+	assert_leq(rff_-rfi_, (size_t)MAX_U16);
+	uint16_t btnfilled = 0;
+	btncand_.resizeNoCopy(rff_-rfi_); // cannot be bigger that this
+
+	const EEI16_TCScore lrmax = EEI16_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_+rfi_, rff_-rfi_,
+					d.mat_.ptr(),
+                                        iter, d.mat_.colstride(), lastWordIdx,
+					minsc_, dpRows(),
+					btncand_.ptr(), btnfilled,
+					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+	btncand_.trim(btnfilled);
+	state_ = STATE_ALIGNED;
+	cural_ = 0;
+
+	// Update metrics
+	if(!debug) {
+		size_t ninner = (rff_ - rfi_) * iter;
+		met.col   += (rff_ - rfi_);             // DP columns
+		met.cell  += (ninner * EEI16_NWORDS_PER_REG); // DP cells
+		met.inner += ninner;                    // DP inner loop iters
+		met.fixup += 0; // deprecated nfixup;                    // DP fixup loop iters
+	}
+	
+	// Did we find a solution?
+	const TAlScore score = (TAlScore)(lrmax - 0xff);
+	if(score < minsc_) {
+		// no
+		if(!debug) met.dpfail++;
+		best = score;
+		return false;
+	}
+	
+	// Could we have saturated?
+	if(lrmax == MIN_I16) {
+		// yes
+		if(!debug) met.dpsat++;
+		best = MIN_I64;
+		return false;
+	}
+	
+	// Return largest score
+	if(!debug) met.dpsucc++;
+
+	if (btnfilled>0) {
+		met.gathsol += btnfilled;
+		d.mat_.initMasks();
 		btncand_.sort();
 	}
+
+	best = score;
 	return !btncand_.empty();
 }
 

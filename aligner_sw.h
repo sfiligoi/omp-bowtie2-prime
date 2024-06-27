@@ -449,9 +449,6 @@ protected:
 	 */
 	void buildQueryProfileEnd2EndSseI16(bool fw);
 	
-	bool gatherCellsNucleotidesEnd2EndSseI16(TAlScore best);
-
-
 	bool backtraceNucleotidesEnd2EndSseU8(
 		TAlScore       escore, // in: expected score
 		SwResult&      res,    // out: store results (edits and scores) here
