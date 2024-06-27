@@ -211,7 +211,6 @@ public:
 		sseI16rc_(DP_CAT),
 		state_(STATE_UNINIT),
 		initedRead_(false),
-		readSse16_(false),
 		initedRef_(false),
 		rfwbuf_(DP_CAT),
 		btnstack_(DP_CAT),
@@ -270,7 +269,6 @@ public:
 		size_t rfi,            // offset of first reference char to align to
 		size_t rff,            // offset of last reference char to align to
 		TRefOff reflen,        // length of reference sequence
-		const Scoring& sc,     // scoring scheme
 		TAlScore minsc,        // minimum score
 		bool enable8,          // use 8-bit SSE if possible?
 		bool extend);          // true iff this is a seed extension
@@ -294,7 +292,6 @@ public:
 		const DPRect& rect,    // DP rectangle
 		const BitPairReference& refs, // Reference strings
 		TRefOff reflen,        // length of reference sequence
-		const Scoring& sc,     // scoring scheme
 		TAlScore minsc,        // minimum alignment score
 		bool enable8,          // use 8-bit SSE if possible?
 		bool extend,           // true iff this is a seed extension
@@ -306,6 +303,8 @@ public:
 	 * last time init() was called.  Uses dynamic programming.
 	 */
 	bool align(TAlScore& best);
+	bool alignEnd2EndSseU8(TAlScore& best);
+	bool alignEnd2EndSseI16(TAlScore& best);
 	
 	/**
 	 * Populate the given SwResult with information about the "next best"
@@ -431,36 +430,7 @@ protected:
 	 * 0 if an alignment is found, -1 if no valid alignment is found, or -2 if
 	 * the score saturated at any point during alignment.
 	 */
-	TAlScore alignNucleotidesEnd2EndSseU8(  // unsigned 8-bit elements
-		int& flag, bool debug);
 	TAlScore alignNucleotidesEnd2EndSseI16( // signed 16-bit elements
-		int& flag, bool debug);
-	
-	/**
-	 * Aligns by filling a dynamic programming matrix with the SSE-accelerated,
-	 * banded DP approach of Farrar.  As it goes, it determines which cells we
-	 * might backtrace from and tallies the best (highest-scoring) N backtrace
-	 * candidate cells per diagonal.  Also returns the alignment score of the best
-	 * alignment in the matrix.
-	 *
-	 * This routine does *not* maintain a matrix holding the entire matrix worth of
-	 * scores, nor does it maintain any other dense O(mn) data structure, as this
-	 * would quickly exhaust memory for queries longer than about 10,000 kb.
-	 * Instead, in the fill stage it maintains two columns worth of scores at a
-	 * time (current/previous, or right/left) - these take O(m) space.  When
-	 * finished with the current column, it determines which cells from the
-	 * previous column, if any, are candidates we might backtrace from to find a
-	 * full alignment.  A candidate cell has a score that rises above the threshold
-	 * and isn't improved upon by a match in the next column.  The best N
-	 * candidates per diagonal are stored in a O(m + n) data structure.
-	 */
-	TAlScore alignGatherEE8(                // unsigned 8-bit elements
-		int& flag, bool debug);
-	TAlScore alignGatherLoc8(               // unsigned 8-bit elements
-		int& flag, bool debug);
-	TAlScore alignGatherEE16(               // signed 16-bit elements
-		int& flag, bool debug);
-	TAlScore alignGatherLoc16(              // signed 16-bit elements
 		int& flag, bool debug);
 	
 	/**
@@ -479,11 +449,6 @@ protected:
 	 */
 	void buildQueryProfileEnd2EndSseI16(bool fw);
 	
-	bool gatherCellsNucleotidesEnd2EndSseU8(TAlScore best);
-
-	bool gatherCellsNucleotidesEnd2EndSseI16(TAlScore best);
-
-
 	bool backtraceNucleotidesEnd2EndSseU8(
 		TAlScore       escore, // in: expected score
 		SwResult&      res,    // out: store results (edits and scores) here
@@ -526,8 +491,6 @@ protected:
 	TAlScore            minsc_;  // penalty ceiling for valid alignments
 	int                 nceil_;  // max # Ns allowed in ref portion of aln
 
-	bool                sse8succ_;  // whether 8-bit worked
-	bool                sse16succ_; // whether 16-bit worked
 	SSEData             sseU8fw_;   // buf for fw query, 8-bit score
 	SSEData             sseU8rc_;   // buf for rc query, 8-bit score
 	SSEData             sseI16fw_;  // buf for fw query, 16-bit score
@@ -544,7 +507,6 @@ protected:
 
 	int                 state_;        // state
 	bool                initedRead_;   // true iff initialized with initRead
-	bool                readSse16_;    // true -> sse16 from now on for read
 	bool                initedRef_;    // true iff initialized with initRef
 	EList<uint32_t>     rfwbuf_;       // buffer for wordized ref stretches
 	

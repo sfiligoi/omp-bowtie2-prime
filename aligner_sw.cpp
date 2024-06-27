@@ -31,7 +31,7 @@
 /**
  * Initialize with a new read.
  */
-void SwAligner::initRead(
+inline void SwAligner::initRead(
 	const BTDnaString& rdfw, // forward read sequence
 	const BTDnaString& rdrc, // revcomp read sequence
 	const BTString& qufw,    // forward read qualities
@@ -50,7 +50,6 @@ void SwAligner::initRead(
 	rdf_     = rdf;        // offset of last read char to align
 	sc_      = &sc;        // scoring scheme
 	nceil_   = nceil;      // max # Ns allowed in ref portion of aln
-	readSse16_ = false;    // true -> sse16 from now on for this read
 	initedRead_ = true;
 #ifndef NO_SSE
 	sseU8fwBuilt_  = false;  // built fw query profile, 8-bit score
@@ -63,7 +62,7 @@ void SwAligner::initRead(
 /**
  * Initialize with a new alignment problem.
  */
-void SwAligner::initRef(
+inline void SwAligner::initRef(
 	bool fw,               // whether to forward or revcomp read is aligning
 	TRefId refidx,         // id of reference aligned against
 	const DPRect& rect,    // DP rectangle
@@ -71,13 +70,12 @@ void SwAligner::initRef(
 	size_t rfi,            // offset of first reference char to align to
 	size_t rff,            // offset of last reference char to align to
 	TRefOff reflen,        // length of reference sequence
-	const Scoring& sc,     // scoring scheme
 	TAlScore minsc,        // minimum score
 	bool enable8,          // use 8-bit SSE if possible?
 	bool extend)           // is this a seed extension?
 {
-	size_t readGaps = sc.maxReadGaps(minsc, rdfw_->length());
-	size_t refGaps  = sc.maxRefGaps(minsc, rdfw_->length());
+	size_t readGaps = sc_->maxReadGaps(minsc, rdfw_->length());
+	size_t refGaps  = sc_->maxRefGaps(minsc, rdfw_->length());
 	assert_geq(readGaps, 0);
 	assert_geq(refGaps, 0);
 	assert_gt(rff, rfi);
@@ -96,7 +94,7 @@ void SwAligner::initRef(
 	minsc_       = minsc;    // minimum score
 	cural_       = 0;        // idx of next alignment to give out
 	initedRef_   = true;     // indicate we've initialized the ref portion
-	enable8_     = enable8;  // use 8-bit SSE if possible?
+	enable8_     = enable8 && minsc >= -254;  // use 8-bit SSE if possible?
 	extend_      = extend;   // true iff this is a seed extension
 }
 	
@@ -115,7 +113,6 @@ void SwAligner::initRef(
 	const DPRect& rect,    // DP rectangle
 	const BitPairReference& refs, // Reference strings
 	TRefOff reflen,        // length of reference sequence
-	const Scoring& sc,     // scoring scheme
 	TAlScore minsc,        // minimum score
 	bool enable8,          // use 8-bit SSE if possible?
 	bool extend,           // true iff this is a seed extension
@@ -215,7 +212,6 @@ void SwAligner::initRef(
 		0,           // use the whole thing
 		(size_t)(rff - rfi), // ditto
 		reflen,      // reference length
-		sc,          // scoring scheme
 		minsc,       // minimum score
 		enable8,     // use 8-bit SSE if possible?
 		extend);     // true iff this is a seed extension
@@ -225,53 +221,11 @@ void SwAligner::initRef(
  * Align read 'rd' to reference using read & reference information given
  * last time init() was called.
  */
-bool SwAligner::align(
+inline bool SwAligner::align(
 	TAlScore& best)    // best alignment score observed in DP matrix
 {
-	assert(initedRef() && initedRead());
-	assert_eq(STATE_INITED, state_);
-	state_ = STATE_ALIGNED;
-	// Reset solutions lists
-	btncand_.clear();
-	best = std::numeric_limits<TAlScore>::min();
-	sse8succ_ = sse16succ_ = false;
-	int flag = 0;
-	size_t rdlen = rdf_ - rdi_;
-	// assert(!checkpointed)
 	assert(sc_->monotone);
-	{
-		// End-to-end
-		if(enable8_ && !readSse16_ && minsc_ >= -254) {
-			// 8-bit end-to-end
-			best = alignNucleotidesEnd2EndSseU8(flag, false);
-			sse8succ_ = (flag == 0);
-		} else {
-			// 16-bit end-to-end
-			best = alignNucleotidesEnd2EndSseI16(flag, false);
-			sse16succ_ = (flag == 0);
-		}
-	}
-	assert(repOk());
-	cural_ = 0;
-	if(best == MIN_I64 || best < minsc_) {
-		return false;
-	}
-	// assert(!gathered)
-	{
-		// Look for solutions using SSE matrix
-		assert(sse8succ_ || sse16succ_);
-		{
-			if(sse8succ_) {
-				gatherCellsNucleotidesEnd2EndSseU8(best);
-			} else {
-				gatherCellsNucleotidesEnd2EndSseI16(best);
-			}
-		}
-	}
-	if(!btncand_.empty()) {
-		btncand_.sort();
-	}
-	return !btncand_.empty();
+	return (enable8_) ? alignEnd2EndSseU8(best) : alignEnd2EndSseI16(best);
 }
 
 /**
@@ -310,12 +264,11 @@ bool SwAligner::nextAlignment(
 			nbtfiltsc_++; cural_++; continue;
 		}
 		nbts = 0;
-		assert(sse8succ_ || sse16succ_);
 		size_t row = btncand_[cural_].row;
 		size_t col = btncand_[cural_].col;
 		assert_lt(row, dpRows());
 		assert_lt((TRefOff)col, rff_-rfi_);
-		if(sse16succ_) {
+		if(!enable8_) {
 			SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
 			if (d.mat_.reset_[row] && d.mat_.reportedThrough(row, col)) {
 				// Skipping this candidate because a previous candidate already
@@ -324,7 +277,7 @@ bool SwAligner::nextAlignment(
 				//cerr << "  skipped becuase starting cell was covered" << endl;
 				nbtfiltst_++; cural_++; continue;
 			}
-		} else if(sse8succ_) {
+		} else {
 			SSEData& d = fw_ ? sseU8fw_ : sseU8rc_;
 			if (d.mat_.reset_[row] && d.mat_.reportedThrough(row, col)) {
 				// Skipping this candidate because a previous candidate already
@@ -337,7 +290,7 @@ bool SwAligner::nextAlignment(
 		assert(sc_->monotone);
 		{
 			bool ret = false;
-			if(sse8succ_) {
+			if(enable8_) {
 				uint32_t reseed = rnd.nextU32() + 1;
 				rnd.init(reseed);
 				res.reset();
@@ -350,7 +303,7 @@ bool SwAligner::nextAlignment(
 						col,    // start in this rectangle column
 						rnd);   // random gen, to choose among equal paths
 				rnd.init(reseed+1); // debug/release pseudo-randoms in lock step
-			} else if(sse16succ_) {
+			} else {
 				uint32_t reseed = rnd.nextU32() + 1;
 				res.reset();
 				ret = backtraceNucleotidesEnd2EndSseI16(

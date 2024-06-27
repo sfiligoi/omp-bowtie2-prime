@@ -868,6 +868,14 @@ public:
 	}
 
 	/**
+	 * Similar to resizeNoCopy, but sz MUST be smaller than sz_
+	 */
+	void trim(size_t sz) {
+		assert_leq(sz, sz_);
+		cur_ = sz;
+	}
+
+	/**
 	 * If size is less than requested size, resize up to exactly sz and set
 	 * cur_ to requested sz.
 	 */
