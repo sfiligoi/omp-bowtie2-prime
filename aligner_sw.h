@@ -378,18 +378,12 @@ public:
 	 * Merge tallies in the counters related to filling the DP table.
 	 */
 	void merge(
-		SSEMetrics& sseU8ExtendMet,
-		SSEMetrics& sseU8MateMet,
-		SSEMetrics& sseI16ExtendMet,
-		SSEMetrics& sseI16MateMet,
+		SSEMetrics& sseMet,
 		uint64_t&   nbtfiltst,
 		uint64_t&   nbtfiltsc,
 		uint64_t&   nbtfiltdo)
 	{
-		sseU8ExtendMet.merge(sseU8ExtendMet_);
-		sseU8MateMet.merge(sseU8MateMet_);
-		sseI16ExtendMet.merge(sseI16ExtendMet_);
-		sseI16MateMet.merge(sseI16MateMet_);
+		sseMet.merge(sseMet_);
 		nbtfiltst += nbtfiltst_;
 		nbtfiltsc += nbtfiltsc_;
 		nbtfiltdo += nbtfiltdo_;
@@ -399,10 +393,7 @@ public:
 	 * Reset all the counters related to filling in the DP table to 0.
 	 */
 	void resetCounters() {
-		sseU8ExtendMet_.reset();
-		sseU8MateMet_.reset();
-		sseI16ExtendMet_.reset();
-		sseI16MateMet_.reset();
+		sseMet_.reset();
 		nbtfiltst_ = nbtfiltsc_ = nbtfiltdo_ = 0;
 	}
 	
@@ -500,10 +491,7 @@ protected:
 	bool                sseI16fwBuilt_;  // built fw query profile, 16-bit score
 	bool                sseI16rcBuilt_;  // built rc query profile, 16-bit score
 
-	SSEMetrics			sseU8ExtendMet_;
-	SSEMetrics			sseU8MateMet_;
-	SSEMetrics			sseI16ExtendMet_;
-	SSEMetrics			sseI16MateMet_;
+	SSEMetrics	    sseMet_;
 
 	int                 state_;        // state
 	bool                initedRead_;   // true iff initialized with initRead

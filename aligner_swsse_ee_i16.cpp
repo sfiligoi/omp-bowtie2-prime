@@ -629,7 +629,7 @@ bool SwAligner::alignEnd2EndSseI16(
 #endif
 
 	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
-	SSEMetrics& met = extend_ ? sseI16ExtendMet_ : sseI16MateMet_;
+	SSEMetrics& met = sseMet_;
 	if(!debug) met.dp++;
 	buildQueryProfileEnd2EndSseI16(fw_);
 	assert(!d.profbuf_.empty());
@@ -811,7 +811,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	assert_lt(row, dpRows());
 	assert_lt(col, (size_t)(rff_ - rfi_));
 	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
-	SSEMetrics& met = extend_ ? sseI16ExtendMet_ : sseI16MateMet_;
+	SSEMetrics& met = sseMet_;
 	met.bt++;
 	assert(!d.profbuf_.empty());
 	assert_lt(row, rd_->length());
