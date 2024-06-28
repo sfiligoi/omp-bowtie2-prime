@@ -222,18 +222,7 @@ static bool cellOkEnd2EndI16(
 }
 #endif /*ndef NDEBUG*/
 
-#ifdef NDEBUG
-
 #define assert_all_lt(x, y)
-
-#else
-
-#define assert_all_lt(x, y) { \
-	SSERegI tmp = sse_cmplt_epi16(x, y); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#endif
 
 /**
  * Given a filled-in DP table, populate the btncand_ list with candidate cells
@@ -263,10 +252,6 @@ static bool cellOkEnd2EndI16(
  *
  * 
  */
-
-#define sse_anygt_epi16(val1,val2,outval) { \
-	SSERegI s = sse_cmpgt_epi16(val1, val2); \
-        outval = (sse_movemask_epi8(s) != 0); }
 
 /**
  * Solve the current alignment problem using SSE instructions that operate on 8
@@ -397,7 +382,7 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 		
 		// Set all cells to low value
-		vf = sse_cmpeq_epi16(vf, vf);
+		sse_setall_ff(vf);
 		vf = sse_slli_epi16(vf, EEI16_NBITS_PER_WORD-1);
 		vf = sse_or_siall(vf, vlolsw);
 		
