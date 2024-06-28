@@ -50,7 +50,7 @@ typedef __m256i SSERegI;
 #define sse_slli_siall(x, y) \
 	_mm256_alignr_epi8(x, _mm256_permute2x128_si256(x, x, _MM_SHUFFLE(0, 0, 2, 0)), 16-y)
 
-
+#ifdef ENABLE_I16
 #define sse_adds_epi16(x, y) _mm256_adds_epi16(x, y)
 #define sse_subs_epi16(x, y) _mm256_subs_epi16(x, y)
 #define sse_set1_epi16(x) _mm256_set1_epi16(x)
@@ -59,6 +59,7 @@ typedef __m256i SSERegI;
 
 #define sse_cmpeq_epi16(x, y) _mm256_cmpeq_epi16(x, y)
 #define sse_cmpgt_epi16(x, y) _mm256_cmpgt_epi16(x, y)
+#endif
 
 #else /* no SSE_AVX2 */
 
@@ -167,6 +168,7 @@ inline SSERegI sse_slli_siall(const SSERegI x, const unsigned int i) {
 };
 
 
+#ifdef ENABLE_I16
 // Note: We are not using saturation, not needed
 
 inline SSERegI sse_adds_epi16(const SSERegI x, const SSERegI y) {
@@ -249,6 +251,8 @@ inline SSERegI nosse_set_low_i16(const uint16_t v) {
 
 #define sse_cmplt_epi16(x, y) sse_cmpgt_epi16(y, x)
 
+#endif /* ENABLE_I16 */ 
+
 #else /* no SSE_DISABLE */
 
 #if defined(__aarch64__) || defined(__s390x__) || defined(__powerpc__)
@@ -274,6 +278,7 @@ typedef simde__m128i SSERegI;
 #define sse_slli_siall(x, y) simde_mm_slli_si128(x, y)
 
 
+#ifdef ENABLE_I16
 #define sse_adds_epi16(x, y) simde_mm_adds_epi16(x, y)
 #define sse_subs_epi16(x, y) simde_mm_subs_epi16(x, y)
 #define sse_set1_epi16(x) simde_mm_set1_epi16(x)
@@ -282,6 +287,7 @@ typedef simde__m128i SSERegI;
 
 #define sse_cmpeq_epi16(x, y) simde_mm_cmpeq_epi16(x, y)
 #define sse_cmpgt_epi16(x, y) simde_mm_cmpgt_epi16(x, y)
+#endif
 
 #else
 typedef __m128i SSERegI;
@@ -299,6 +305,7 @@ typedef __m128i SSERegI;
 #define sse_slli_siall(x, y) _mm_slli_si128(x, y)
 
 
+#ifdef ENABLE_I16
 #define sse_adds_epi16(x, y) _mm_adds_epi16(x, y)
 #define sse_subs_epi16(x, y) _mm_subs_epi16(x, y)
 #define sse_set1_epi16(x) _mm_set1_epi16(x)
@@ -307,6 +314,7 @@ typedef __m128i SSERegI;
 
 #define sse_cmpeq_epi16(x, y) _mm_cmpeq_epi16(x, y)
 #define sse_cmpgt_epi16(x, y) _mm_cmpgt_epi16(x, y)
+#endif
 
 #endif
 
@@ -337,6 +345,7 @@ typedef __m128i SSERegI;
 #define sse_set_low_u8(inval, outval) sse_set_low_i16(inval, outval)
 
 
+#ifdef ENABLE_I16
 
 #define sse_slli_i16(x) sse_slli_siall(x, 2)
 
@@ -349,5 +358,7 @@ typedef __m128i SSERegI;
         outval = (sse_movemask_epi8(s) != 0); }
 
 #define sse_setall_ff(val) val =  sse_cmpeq_epi16(val,val)
+
+#endif
 
 #endif /* SSE_WRAP_H_ */

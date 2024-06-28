@@ -207,8 +207,10 @@ public:
 	SwAligner() :
 		sseU8fw_(DP_CAT),
 		sseU8rc_(DP_CAT),
+#ifdef ENABLE_I16
 		sseI16fw_(DP_CAT),
 		sseI16rc_(DP_CAT),
+#endif
 		state_(STATE_UNINIT),
 		initedRead_(false),
 		initedRef_(false),
@@ -232,8 +234,10 @@ public:
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		sseU8fw_.set_alloc(alloc, propagate_alloc);
 		sseU8rc_.set_alloc(alloc, propagate_alloc);
+#ifdef ENABLE_I16
 		sseI16fw_.set_alloc(alloc, propagate_alloc);
 		sseI16rc_.set_alloc(alloc, propagate_alloc);
+#endif
 		rfwbuf_.set_alloc(alloc, propagate_alloc);
 		btnstack_.set_alloc(alloc, propagate_alloc);
 		btcells_.set_alloc(alloc, propagate_alloc);
@@ -304,7 +308,9 @@ public:
 	 */
 	bool align(TAlScore& best);
 	bool alignEnd2EndSseU8(TAlScore& best);
+#ifdef ENABLE_I16
 	bool alignEnd2EndSseI16(TAlScore& best);
+#endif
 	
 	/**
 	 * Populate the given SwResult with information about the "next best"
@@ -415,6 +421,7 @@ protected:
 		return rdf_ - rdi_;
 	}
 
+#ifdef ENABLE_I16
 	/**
 	 * Align nucleotides from read 'rd' to the reference string 'rf' using
 	 * vector instructions.  Return the score of the best alignment found, or
@@ -424,6 +431,7 @@ protected:
 	 */
 	TAlScore alignNucleotidesEnd2EndSseI16( // signed 16-bit elements
 		int& flag, bool debug);
+#endif
 	
 	/**
 	 * Build query profile look up tables for the read.  The query profile look
@@ -439,7 +447,9 @@ protected:
 	 * reference character in the current DP column (0=A, 1=C, etc), and j is
 	 * the segment of the query we're currently working on.
 	 */
+#ifdef ENABLE_I16
 	void buildQueryProfileEnd2EndSseI16(bool fw);
+#endif
 	
 	bool backtraceNucleotidesEnd2EndSseU8(
 		TAlScore       escore, // in: expected score
@@ -450,6 +460,7 @@ protected:
 		size_t         col,    // start in this rectangle column
 		RandomSource&  rand);  // random gen, to choose among equal paths
 
+#ifdef ENABLE_I16
 	bool backtraceNucleotidesEnd2EndSseI16(
 		TAlScore       escore, // in: expected score
 		SwResult&      res,    // out: store results (edits and scores) here
@@ -458,7 +469,7 @@ protected:
 		size_t         row,    // start in this rectangle row
 		size_t         col,    // start in this rectangle column
 		RandomSource&  rand);  // random gen, to choose among equal paths
-
+#endif
 
 	const BTDnaString  *rd_;     // read sequence
 	const BTString     *qu_;     // read qualities
@@ -477,7 +488,9 @@ protected:
 	TRefOff             rff_;    // offset of last ref char to align to (excl)
 	size_t              rdgap_;  // max # gaps in read
 	size_t              rfgap_;  // max # gaps in reference
+#ifdef ENABLE_I16
 	bool                enable8_;// enable 8-bit sse
+#endif
 	bool                extend_; // true iff this is a seed-extend problem
 	const Scoring      *sc_;     // penalties for edit types
 	TAlScore            minsc_;  // penalty ceiling for valid alignments
@@ -485,12 +498,16 @@ protected:
 
 	SSEData             sseU8fw_;   // buf for fw query, 8-bit score
 	SSEData             sseU8rc_;   // buf for rc query, 8-bit score
+#ifdef ENABLE_I16
 	SSEData             sseI16fw_;  // buf for fw query, 16-bit score
 	SSEData             sseI16rc_;  // buf for rc query, 16-bit score
+#endif
 	bool                sseU8fwBuilt_;   // built fw query profile, 8-bit score
 	bool                sseU8rcBuilt_;   // built rc query profile, 8-bit score
+#ifdef ENABLE_I16
 	bool                sseI16fwBuilt_;  // built fw query profile, 16-bit score
 	bool                sseI16rcBuilt_;  // built rc query profile, 16-bit score
+#endif
 
 #ifdef ENABLE_SSE_METRICS
 	SSEMetrics	    sseMet_;

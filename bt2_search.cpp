@@ -1347,7 +1347,14 @@ static void parseOption(int next_option, const char *arg) {
 	}
 	case ARG_END_TO_END: localAlign = false; break;
 	case ARG_SSE8: enable8 = true; break;
-	case ARG_SSE8_NO: enable8 = false; break;
+	case ARG_SSE8_NO: {
+#ifdef ENABLE_I16
+		enable8 = false;
+#else
+		cerr << "WARNING: no-sse8 not supported" << endl;
+#endif
+		break;
+	}
 	case ARG_UNGAPPED:  // silently ignore
                 break;
 	case ARG_UNGAPPED_NO: // silently ignore
@@ -2439,7 +2446,13 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					if(minsc[mate] > 0) {
 						if(!gQuiet) printEEScoreMsg(*ps[mate], paired, true);
 						minsc[mate] = 0;
+#ifndef ENABLE_I16
+					} else if(minsc[mate] < -254) {
+						if(!gQuiet) printEEScoreMsg(*ps[mate], paired, true);
+						minsc[mate] = -254;
+#endif
 					}
+
 					// Keep track of whether the read was filtered
 					bool filt = false;
 					{

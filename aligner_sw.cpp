@@ -51,9 +51,9 @@ inline void SwAligner::initRead(
 	sc_      = &sc;        // scoring scheme
 	nceil_   = nceil;      // max # Ns allowed in ref portion of aln
 	initedRead_ = true;
-#ifndef NO_SSE
 	sseU8fwBuilt_  = false;  // built fw query profile, 8-bit score
 	sseU8rcBuilt_  = false;  // built rc query profile, 8-bit score
+#ifdef ENABLE_I16
 	sseI16fwBuilt_ = false;  // built fw query profile, 16-bit score
 	sseI16rcBuilt_ = false;  // built rc query profile, 16-bit score
 #endif
@@ -74,6 +74,15 @@ inline void SwAligner::initRef(
 	bool enable8,          // use 8-bit SSE if possible?
 	bool extend)           // is this a seed extension?
 {
+	constexpr TAlScore sse8_min_minsc = -254;
+#ifdef ENABLE_I16
+	enable8_     = enable8 && minsc >= sse8_min_minsc;  // use 8-bit SSE if possible?
+#else
+	assert(enable8 && minsc >= sse8_min_minsc);
+	minsc        = std::max(minsc,sse8_min_minsc);    // protect for edge cases
+#endif
+	minsc_       = minsc;    // minimum score
+
 	size_t readGaps = sc_->maxReadGaps(minsc, rdfw_->length());
 	size_t refGaps  = sc_->maxRefGaps(minsc, rdfw_->length());
 	assert_geq(readGaps, 0);
@@ -91,10 +100,8 @@ inline void SwAligner::initRef(
 	rff_         = rff;      // offset of last reference char to align to
 	reflen_      = reflen;   // length of entire reference sequence
 	rect_        = &rect;    // DP rectangle
-	minsc_       = minsc;    // minimum score
 	cural_       = 0;        // idx of next alignment to give out
 	initedRef_   = true;     // indicate we've initialized the ref portion
-	enable8_     = enable8 && minsc >= -254;  // use 8-bit SSE if possible?
 	extend_      = extend;   // true iff this is a seed extension
 }
 	
@@ -225,7 +232,11 @@ inline bool SwAligner::align(
 	TAlScore& best)    // best alignment score observed in DP matrix
 {
 	assert(sc_->monotone);
+#ifdef ENABLE_I16
 	return (enable8_) ? alignEnd2EndSseU8(best) : alignEnd2EndSseI16(best);
+#else
+	return alignEnd2EndSseU8(best);
+#endif
 }
 
 /**
@@ -271,6 +282,7 @@ bool SwAligner::nextAlignment(
 		size_t col = btncand_[cural_].col;
 		assert_lt(row, dpRows());
 		assert_lt((TRefOff)col, rff_-rfi_);
+#ifdef ENABLE_I16
 		if(!enable8_) {
 			SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
 			if (d.mat_.reset_[row] && d.mat_.reportedThrough(row, col)) {
@@ -284,6 +296,9 @@ bool SwAligner::nextAlignment(
 				cural_++; continue;
 			}
 		} else {
+#else
+		{
+#endif // ENABLE_I16
 			SSEData& d = fw_ ? sseU8fw_ : sseU8rc_;
 			if (d.mat_.reset_[row] && d.mat_.reportedThrough(row, col)) {
 				// Skipping this candidate because a previous candidate already
@@ -299,7 +314,9 @@ bool SwAligner::nextAlignment(
 		assert(sc_->monotone);
 		{
 			bool ret = false;
+#ifdef ENABLE_I16
 			if(enable8_) {
+#endif
 				uint32_t reseed = rnd.nextU32() + 1;
 				rnd.init(reseed);
 				res.reset();
@@ -312,6 +329,7 @@ bool SwAligner::nextAlignment(
 						col,    // start in this rectangle column
 						rnd);   // random gen, to choose among equal paths
 				rnd.init(reseed+1); // debug/release pseudo-randoms in lock step
+#ifdef ENABLE_I16
 			} else {
 				uint32_t reseed = rnd.nextU32() + 1;
 				res.reset();
@@ -325,6 +343,7 @@ bool SwAligner::nextAlignment(
 						rnd);   // random gen, to choose among equal paths
 				rnd.init(reseed); // debug/release pseudo-randoms in lock step
 			}
+#endif
 			if(ret) {
 				btncand_[cural_].fate = BT_CAND_FATE_SUCCEEDED;
 				break;

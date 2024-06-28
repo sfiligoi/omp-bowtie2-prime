@@ -31,7 +31,9 @@
 #include "aligner_bt.cpp"
 #include "sse_util.cpp"
 #include "outq.cpp"
+#ifdef ENABLE_I16
 #include "aligner_swsse_ee_i16.cpp"
+#endif
 #include "aligner_swsse_ee_u8.cpp"
 #include "aligner_swsse.cpp"
 #include "aligner_sw.cpp"
