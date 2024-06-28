@@ -59,31 +59,6 @@ typedef __m256i SSERegI;
 #define sse_cmpeq_epi16(x, y) _mm256_cmpeq_epi16(x, y)
 #define sse_slli_epi16(x, y) _mm256_slli_epi16(x, y)
 
-#define sse_adds_epu8(x, y) _mm256_adds_epu8(x, y)
-#define sse_cmpgt_epi16(x, y) _mm256_cmpgt_epi16(x, y)
-#define sse_cmpgt_epi8(x, y) _mm256_cmpgt_epi8(x, y)
-#define sse_cmplt_epi16(x, y) _mm256_cmpgt_epi16(y,x)
-#define sse_extract_epi16(x, y) _mm256_extract_epi16(x, y)
-#define sse_srli_epi16(x, y) _mm256_srli_epi16(x, y)
-#define sse_srli_epu8(x, y) _mm256_srli_epu8(x, y)
-
-/* AVX2 does not have a native 256-bit shift instruction */
-/* Note only works for y<=16, which is OK for this code */
-#define sse_srli_siall(x, y) \
-	_mm256_alignr_epi8(_mm256_permute2x128_si256(x, x, _MM_SHUFFLE(2, 0, 0, 1)), x, y)
-
-/* we can avoid one instruction, when y==16 */
-#define sse_slli_siall_16(x) \
-	_mm256_permute2x128_si256(x, x, _MM_SHUFFLE(0, 0, 2, 0))
-
-#define sse_srli_siall_16(x) \
-	_mm256_permute2x128_si256(x, x, _MM_SHUFFLE(2, 0, 0, 1))
-
-/* this operates on the 2x 128-bit lanes independenty */
-#define sse_slli_si128(x, y) _mm256_slli_si256(x, y)
-#define sse_srli_si128(x, y) _mm256_srli_si256(x, y)
-
-
 #else /* no SSE_AVX2 */
 
 #define NBYTES_PER_REG 16
@@ -273,41 +248,6 @@ inline SSERegI nosse_set_low_i16(const uint16_t v) {
 
 #define sse_cmplt_epi16(x, y) sse_cmpgt_epi16(y, x)
 
-
-// Note: We are not using saturation for now
-
-inline SSERegI sse_adds_epu8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<16; j++) {
-     int16_t x1 = x.u8.el[j];
-     int16_t y1 = y.u8.el[j];
-     int16_t tmp16 = x1 + y1;
-     uint8_t tmp = std::min(std::max(int16_t(0),tmp16),int16_t(255));
-     out.u8.el[j] = tmp;
-  }
-  return out;
-};
-
-inline SSERegI sse_cmpgt_epi8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<16; j++) out.u8.el[j] = (x.i8.el[j] > y.i8.el[j]) ? 0xFF : 0;
-  return out;
-};
-
-
-inline SSERegI sse_cmplt_epu8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<16; j++) out.u8.el[j] = (x.u8.el[j] < y.u8.el[j]) ? 0xFF : 0;
-  return out;
-};
-
-
-inline SSERegI sse_srli_epu8(const SSERegI x, const unsigned int i) {
-  SSERegI out;
-  for (int j=0; j<16; j++) out.u8.el[j] = x.u8.el[j] >> i;
-  return out;
-};
-
 #else /* no SSE_DISABLE */
 
 #if defined(__aarch64__) || defined(__s390x__) || defined(__powerpc__)
@@ -341,16 +281,6 @@ typedef simde__m128i SSERegI;
 #define sse_cmpeq_epi16(x, y) simde_mm_cmpeq_epi16(x, y)
 #define sse_slli_epi16(x, y) simde_mm_slli_epi16(x, y)
 
-#define sse_adds_epu8(x, y) simde_mm_adds_epu8(x, y)
-#define sse_cmpgt_epi16(x, y) simde_mm_cmpgt_epi16(x, y)
-#define sse_cmpgt_epi8(x, y) simde_mm_cmpgt_epi8(x, y)
-#define sse_cmplt_epi16(x, y) simde_mm_cmplt_epi16(x, y)
-#define sse_cmplt_epu8(x, y) simde_mm_cmplt_epu8(x, y)
-#define sse_extract_epi16(x, y) simde_mm_extract_epi16(x, y)
-#define sse_srli_epi16(x, y) simde_mm_srli_epi16(x, y)
-#define sse_srli_epu8(x, y) simde_mm_srli_epu8(x, y)
-#define sse_srli_siall(x, y) simde_mm_srli_si128(x, y)
-
 #else
 typedef __m128i SSERegI;
 #define sse_load_siall(x) _mm_load_si128(x)
@@ -374,17 +304,6 @@ typedef __m128i SSERegI;
 
 #define sse_cmpeq_epi16(x, y) _mm_cmpeq_epi16(x, y)
 #define sse_slli_epi16(x, y) _mm_slli_epi16(x, y)
-
-
-#define sse_adds_epu8(x, y) _mm_adds_epu8(x, y)
-#define sse_cmpgt_epi16(x, y) _mm_cmpgt_epi16(x, y)
-#define sse_cmpgt_epi8(x, y) _mm_cmpgt_epi8(x, y)
-#define sse_cmplt_epi16(x, y) _mm_cmplt_epi16(x, y)
-#define sse_cmplt_epu8(x, y) _mm_cmplt_epu8(x, y)
-#define sse_extract_epi16(x, y) _mm_extract_epi16(x, y)
-#define sse_srli_epi16(x, y) _mm_srli_epi16(x, y)
-#define sse_srli_epu8(x, y) _mm_srli_epu8(x, y)
-#define sse_srli_siall(x, y) _mm_srli_si128(x, y)
 
 #endif
 
