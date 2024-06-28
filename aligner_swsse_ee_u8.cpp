@@ -82,7 +82,7 @@ void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
 	const BTString* qu = fw ? qufw_ : qurc_;
 	const size_t len = rd->length();
 	const size_t seglen = (len + (EEU8_NWORDS_PER_REG-1)) / EEU8_NWORDS_PER_REG;
-	// How many SSERegI's are needed
+	// How many SSEReg's are needed
 	size_t nsses =
 		64 +                    // slack bytes, for alignment?
 		(seglen * ALPHA_SIZE)   // query profile data
@@ -255,21 +255,21 @@ static bool cellOkEnd2EndU8(
  */
 
 template<typename TIdxSize>
-inline SSERegI EEU8_alignOne(const TIdxSize iter,
+inline SSEReg EEU8_alignOne(const TIdxSize iter,
 			const size_t colstride,
-			const SSERegI *pvScore,
-			const SSERegI *pvHLoad, const SSERegI *pvELoad,
-			SSERegI *pvHStore, SSERegI *pvEStore, SSERegI *pvFStore,
-			const SSERegI rfgapo, const SSERegI rfgape, const SSERegI rdgapo, const SSERegI rdgape) {
+			const SSEMem *pvScore,
+			const SSEMem *pvHLoad, const SSEMem *pvELoad,
+			SSEMem *pvHStore, SSEMem *pvEStore, SSEMem *pvFStore,
+			const SSEReg rfgapo, const SSEReg rfgape, const SSEReg rdgapo, const SSEReg rdgape) {
 		// vhilsw: topmost (least sig) word set to 0xff, all other words=0
-		SSERegI vhilsw   = sse_setzero_siall();
+		SSEReg vhilsw   = sse_setzero_siall();
 		sse_set_low_u8(0xff, vhilsw);	
 	
 		// Set all cells to low value
-		SSERegI vf       = sse_setzero_siall();
+		SSEReg vf       = sse_setzero_siall();
 
 		// Load H vector from the final row of the previous column
-		SSERegI vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
+		SSEReg vh = sse_load_u8(pvHLoad + colstride - ROWSTRIDE);
 		// Shift N bytes down so that topmost (least sig) cell gets 0
 		vh = sse_slli_u8(vh);
 		// Fill topmost (least sig) cell with high value
@@ -277,17 +277,17 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 		
 		// For each character in the reference text:
 		for(TIdxSize j = 0; j < iter; j++) {
-			SSERegI vs0 = sse_load_siall(pvScore);
+			SSEReg vs0 = sse_load_u8(pvScore);
                         pvScore++;
-			SSERegI vs1 = sse_load_siall(pvScore);
+			SSEReg vs1 = sse_load_u8(pvScore);
                         pvScore++;
 			// Load cells from E, calculated previously
-			SSERegI ve = sse_load_siall(pvELoad);
+			SSEReg ve = sse_load_u8(pvELoad);
 			pvELoad += ROWSTRIDE;
 			
 			// Store cells in F, calculated previously
 			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
-			sse_store_siall(pvFStore, vf);
+			sse_store_u8(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
 			
 			// Factor in query profile (matches and mismatches)
@@ -298,22 +298,22 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			vh = sse_max_epu8(vh, vf);
 			
 			// Save the new vH values
-			sse_store_siall(pvHStore, vh);
+			sse_store_u8(pvHStore, vh);
 			pvHStore += ROWSTRIDE;
 			
 			// Update vE value
-			SSERegI vtmp = vh;
+			SSEReg vtmp = vh;
 			vh = sse_subs_epu8(vh, rdgapo);
 			vh = sse_subs_epu8(vh, vs1); // veto some read gap opens
 			ve = sse_subs_epu8(ve, rdgape);
 			ve = sse_max_epu8(ve, vh);
 
 			// Load the next h value
-			vh = sse_load_siall(pvHLoad);
+			vh = sse_load_u8(pvHLoad);
 			pvHLoad += ROWSTRIDE;
 			
 			// Save E values
-			sse_store_siall(pvEStore, ve);
+			sse_store_u8(pvEStore, ve);
 			pvEStore += ROWSTRIDE;
 			
 			// Update vf value
@@ -326,20 +326,20 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 }
 
 template<typename TIdxSize>
-inline void EEU8_lazyF(const SSERegI vf0,
+inline void EEU8_lazyF(const SSEReg vf0,
 			const TIdxSize iter, const size_t colstride,
-			const SSERegI *pvScore,
-			SSERegI *pvHStore, SSERegI *pvEStore, SSERegI *pvFStore,
-			const SSERegI rfgape, const SSERegI rdgapo) {
-		const SSERegI vzero    = sse_setzero_siall();  // needed by sse_anygt_epu8
+			const SSEMem *pvScore,
+			SSEMem *pvHStore, SSEMem *pvEStore, SSEMem *pvFStore,
+			const SSEReg rfgape, const SSEReg rdgapo) {
+		const SSEReg vzero    = sse_setzero_siall();  // needed by sse_anygt_epu8
 
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
-		SSERegI vf = sse_slli_u8(vf0);
+		SSEReg vf = sse_slli_u8(vf0);
 		
 		pvScore += 1;
-	        SSERegI vs1 = sse_load_siall(pvScore);
-		SSERegI vtmp = sse_load_siall(pvFStore);
+	        SSEReg vs1 = sse_load_u8(pvScore);
+		SSEReg vtmp = sse_load_u8(pvFStore);
 		
 		vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
 		vf = sse_max_epu8(vtmp, vf);
@@ -347,28 +347,28 @@ inline void EEU8_lazyF(const SSERegI vf0,
 		sse_anygt_epu8(vf,vtmp,anygt);
 	
 		// Load after computing cmp, so the result is ready by the time it is tested in while
-		SSERegI vh = sse_load_siall(pvHStore);
-		SSERegI ve = sse_load_siall(pvEStore);
+		SSEReg vh = sse_load_u8(pvHStore);
+		SSEReg ve = sse_load_u8(pvEStore);
 		
 		// If any element of vtmp is greater than H - gap-open...
 		TIdxSize j = 0;
 		while(anygt) {
 			// Store this vf
-			sse_store_siall(pvFStore, vf);
+			sse_store_u8(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
 			
 			// Update vh w/r/t new vf
 			vh = sse_max_epu8(vh, vf);
 			
 			// Save vH values
-			sse_store_siall(pvHStore, vh);
+			sse_store_u8(pvHStore, vh);
 			pvHStore += ROWSTRIDE;
 			
 			// Update E in case it can be improved using our new vh
 			vh = sse_subs_epu8(vh, rdgapo);
 			vh = sse_subs_epu8(vh, vs1); // veto some read gap opens
 			ve = sse_max_epu8(ve, vh);
-			sse_store_siall(pvEStore, ve);
+			sse_store_u8(pvEStore, ve);
 			pvEStore += ROWSTRIDE;
 			pvScore += 2;
 			
@@ -381,8 +381,8 @@ inline void EEU8_lazyF(const SSERegI vf0,
 				pvEStore -= colstride;
 				vf = sse_slli_u8(vf);
 			}
-			vs1 = sse_load_siall(pvScore);
-			vtmp = sse_load_siall(pvFStore);   // load next vf ASAP
+			vs1 = sse_load_u8(pvScore);
+			vtmp = sse_load_u8(pvFStore);   // load next vf ASAP
 
 			// Update F with another gap extension
 			vf = sse_subs_epu8(vf, rfgape);
@@ -391,8 +391,8 @@ inline void EEU8_lazyF(const SSERegI vf0,
 			sse_anygt_epu8(vf,vtmp,anygt);
 
 			// Load after computing cmp, so the result is afailable by the time it is tested
-			vh = sse_load_siall(pvHStore);     // load next vh 
-			ve = sse_load_siall(pvEStore);     // load next ve
+			vh = sse_load_u8(pvHStore);     // load next vh 
+			ve = sse_load_u8(pvEStore);     // load next ve
 		}
 }
 
@@ -401,9 +401,9 @@ inline void EEU8_lazyF(const SSERegI vf0,
  * unsigned 8-bit values packed into a single 128-bit register.
  */
 template<typename TIdxSize>
-inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
+inline EEU8_TCScore EEU8_alignNucleotides(const SSEMem profbuf[],
 					const char   rf[], const TIdxSize rfd,
-					SSERegI pmat[],
+					SSEMem pmat[],
 					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
 					const TAlScore minsc, const size_t nrow,
 					DpBtCandidate btncand[], TIdxSize& btnfilled_,
@@ -417,10 +417,10 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	// Much of the implmentation below is adapted from Michael's code.
 
 	// Set all elts to reference gap open penalty
-	SSERegI rfgapo   = sse_setzero_siall();
-	SSERegI rfgape   = sse_setzero_siall();
-	SSERegI rdgapo   = sse_setzero_siall();
-	SSERegI rdgape   = sse_setzero_siall();
+	SSEReg rfgapo   = sse_setzero_siall();
+	SSEReg rfgape   = sse_setzero_siall();
+	SSEReg rdgapo   = sse_setzero_siall();
+	SSEReg rdgape   = sse_setzero_siall();
 
 	assert_gt(refGapOpen, 0);
 	sse_fill_i8(refGapOpen, rfgapo);
@@ -439,36 +439,36 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	assert_leq(readGapExtend, readGapOpen);
 	sse_fill_i8(readGapExtend, rdgape);
 
-	// Points to a long vector of SSERegI where each element is a block of
+	// Points to a long vector of SSEReg where each element is a block of
 	// contiguous cells in the E, F or H matrix.  If the index % 3 == 0, then
 	// the block of cells is from the E matrix.  If index % 3 == 1, they're
 	// from the F matrix.  If index % 3 == 2, then they're from the H matrix.
 	// Blocks of cells are organized in the same interleaved manner as they are
 	// calculated by the Farrar algorithm.
-	// const SSERegI *pvScore; // points into the query profile
+	// const SSEMem *pvScore; // points into the query profile
 
 	assert_eq(ROWSTRIDE, colstride / iter);
 
 	// Initialize the H and E vectors in the first matrix column
 	{
-	  SSERegI *pvHTmp = pmat + SSEMatrix::TMP;
-	  SSERegI *pvETmp = pmat + SSEMatrix::E;
-	  SSERegI vlo      = sse_setzero_siall();
+	  SSEMem *pvHTmp = pmat + SSEMatrix::TMP;
+	  SSEMem *pvETmp = pmat + SSEMatrix::E;
+	  SSEReg vlo      = sse_setzero_siall();
 	
 	  for(size_t i = 0; i < iter; i++) {
-		sse_store_siall(pvETmp, vlo);
-		sse_store_siall(pvHTmp, vlo); // start high in end-to-end mode
+		sse_store_u8(pvETmp, vlo);
+		sse_store_u8(pvHTmp, vlo); // start high in end-to-end mode
 		pvETmp += ROWSTRIDE;
 		pvHTmp += ROWSTRIDE;
 	  }
 	}
 
 	// These are swapped just before the innermost loop
-	SSERegI *pvHLoad  = pmat + SSEMatrix::TMP;
-	SSERegI *pvHStore = pmat + SSEMatrix::H;
-	SSERegI *pvELoad  = pmat + SSEMatrix::E;
-	SSERegI *pvEStore = pmat + colstride + SSEMatrix::E;
-	SSERegI *pvFStore = pmat + SSEMatrix::F;
+	SSEMem *pvHLoad  = pmat + SSEMatrix::TMP;
+	SSEMem *pvHStore = pmat + SSEMatrix::H;
+	SSEMem *pvELoad  = pmat + SSEMatrix::E;
+	SSEMem *pvEStore = pmat + colstride + SSEMatrix::E;
+	SSEMem *pvFStore = pmat + SSEMatrix::F;
 	
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
@@ -496,9 +496,9 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		// be numbers, not masks.
 		size_t off = (size_t)firsts5[ rf[i] ] * iter * 2;
 		// points into the query profile
-		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
+		const SSEMem *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 	
-		SSERegI vf = EEU8_alignOne(iter,
+		SSEReg vf = EEU8_alignOne(iter,
                         	colstride,
                         	pvScore,
                         	pvHLoad, pvELoad,
@@ -785,7 +785,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 	size_t rowelt, rowvec, eltvec;
 	size_t left_rowelt, up_rowelt, upleft_rowelt;
 	size_t left_rowvec, up_rowvec, upleft_rowvec;
-	SSERegI *cur_vec, *left_vec, *up_vec, *upleft_vec;
+	SSEMem *cur_vec, *left_vec, *up_vec, *upleft_vec;
 	NEW_ROW_COL(row, col);
 	while((int)row >= 0) {
 #ifdef ENABLE_SSE_METRICS

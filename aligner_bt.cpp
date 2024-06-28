@@ -627,7 +627,7 @@ void BtBranchTracer::squareFill(
 	const TAlScore sc_rfe = prob_.sc_->refGapExtend();
 	const bool local = !prob_.sc_->monotone;
 	const CpQuad *qup = NULL;
-	const SSERegI *qlf = NULL;
+	const SSEMem *qlf = NULL;
 	size_t per = prob_.cper_->per_;
 	ASSERT_ONLY(size_t nrow = prob_.cper_->nrow());
 	size_t ncol = prob_.cper_->ncol();
@@ -638,7 +638,7 @@ void BtBranchTracer::squareFill(
 		qup = prob_.cper_->qrows_.ptr() + (ncol * (ydiv-1)) + xdiv * per;
 	}
 	if(!left) {
-		// Set up the column pointers to point to the first SSERegI word in the
+		// Set up the column pointers to point to the first SSEReg word in the
 		// relevant column
 		size_t off = (niter << 2) * (xdiv-1);
 		qlf = prob_.cper_->qcols_.ptr() + off;

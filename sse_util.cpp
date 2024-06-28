@@ -25,9 +25,9 @@
  * Given a column of filled-in cells, save the checkpointed cells in cs_.
  */
 void Checkpointer::commitCol(
-	SSERegI *pvH,
-	SSERegI *pvE,
-	SSERegI *pvF,
+	SSEMem *pvH,
+	SSEMem *pvE,
+	SSEMem *pvF,
 	size_t coli)
 {
 }

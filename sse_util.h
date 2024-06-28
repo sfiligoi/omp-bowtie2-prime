@@ -26,7 +26,7 @@
 #include <iostream>
 #include "sse_wrap.h"
 
-class EList_sse : public BTAllocatorHandler<SSERegI> {
+class EList_sse : public BTAllocatorHandler<SSEMem> {
 public:
 
 	/**
@@ -103,7 +103,7 @@ public:
 	 */
 	void zero() {
 		if(cur_ > 0) {
-			memset(list_, 0, cur_ * sizeof(SSERegI));
+			memset(list_, 0, cur_ * sizeof(SSEReg));
 		}
 	}
 
@@ -148,7 +148,7 @@ public:
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSERegI& operator[](size_t i) {
+	inline SSEReg& operator[](size_t i) {
 		assert_lt(i, cur_);
 		return list_[i];
 	}
@@ -156,7 +156,7 @@ public:
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSERegI operator[](size_t i) const {
+	inline SSEReg operator[](size_t i) const {
 		assert_lt(i, cur_);
 		return list_[i];
 	}
@@ -164,26 +164,26 @@ public:
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSERegI& get(size_t i) {
+	inline SSEReg& get(size_t i) {
 		return operator[](i);
 	}
 	
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSERegI get(size_t i) const {
+	inline SSEReg get(size_t i) const {
 		return operator[](i);
 	}
 
 	/**
 	 * Return a pointer to the beginning of the buffer.
 	 */
-	SSERegI *ptr() { return list_; }
+	SSEMem *ptr() { return list_; }
 
 	/**
 	 * Return a const pointer to the beginning of the buffer.
 	 */
-	const SSERegI *ptr() const { return list_; }
+	const SSEMem *ptr() const { return list_; }
 
 	/**
 	 * Return memory category.
@@ -214,18 +214,18 @@ private:
 	 * Allocate a T array of length sz_ and store in list_.  Also,
 	 * tally into the global memory tally.
 	 */
-	SSERegI *alloc(size_t sz) {
-		SSERegI* last_alloc_;
+	SSEMem *alloc(size_t sz) {
+		SSEMem* last_alloc_;
 		last_alloc_ = this->allocate(sz + 4);
                 this->last_alloc_ = last_alloc_;
-		SSERegI* tmp = last_alloc_;
+		SSEMem* tmp = last_alloc_;
 		size_t tmpint = (size_t)tmp;
 		// Align it!
 		const size_t alignmask = NBYTES_PER_REG-1;
 		if((tmpint & alignmask) != 0) {
 			tmpint += alignmask;
 			tmpint &= (~alignmask);
-			tmp = reinterpret_cast<SSERegI*>(tmpint);
+			tmp = reinterpret_cast<SSEMem*>(tmpint);
 		}
 		assert_eq(0, (tmpint & alignmask)); // should be NBYTES_PER_REG-byte aligned
 		assert(tmp != NULL);
@@ -268,8 +268,8 @@ private:
 	 */
 	void expandCopyExact(size_t newsz) {
 		if(newsz <= sz_) return;
-                SSERegI* prev_last_alloc = last_alloc_;
-		SSERegI* tmp = alloc(newsz);
+                SSEMem* prev_last_alloc = last_alloc_;
+		SSEMem* tmp = alloc(newsz);
 		assert(tmp != NULL);
 		size_t cur = cur_;
 		if(list_ != NULL) {
@@ -277,7 +277,7 @@ private:
 				// Note: operator= is used
 				tmp[i] = list_[i];
 			}
-                        SSERegI* current_last_alloc = last_alloc_;
+                        SSEMem* current_last_alloc = last_alloc_;
                         last_alloc_ = prev_last_alloc;
 			free();
                         last_alloc_ = current_last_alloc;
@@ -308,7 +308,7 @@ private:
 		assert(list_ != NULL);
 		assert_gt(newsz, 0);
 		free();
-		SSERegI* tmp = alloc(newsz);
+		SSEMem* tmp = alloc(newsz);
 		assert(tmp != NULL);
 		list_ = tmp;
 		sz_ = newsz;
@@ -316,8 +316,8 @@ private:
 	}
 
 	int      cat_;        // memory category, for accounting purposes
-	SSERegI* last_alloc_; // what new[] originally returns
-	SSERegI *list_;       // list ptr, aligned version of what new[] returns
+	SSEMem* last_alloc_; // what new[] originally returns
+	SSEMem *list_;       // list ptr, aligned version of what new[] returns
 	size_t   sz_;         // capacity
 	size_t   cur_;        // occupancy (AKA size)
 };
@@ -417,11 +417,11 @@ public:
 	 */
 	int64_t debugCell(size_t row, size_t col, int hef) const {
 		assert(debug_);
-		const SSERegI* ptr = qcolsD_.ptr() + hef;
+		const SSEMem* ptr = qcolsD_.ptr() + hef;
 		// Fast forward to appropriate column
 		ptr += ((col * niter_) << 2);
-		size_t mod = row % niter_; // which SSERegI
-		size_t div = row / niter_; // offset into SSERegI
+		size_t mod = row % niter_; // which SSEReg
+		size_t div = row / niter_; // offset into SSEReg
 		// Fast forward to appropriate word
 		ptr += (mod << 2);
 		// Extract score
@@ -495,10 +495,10 @@ public:
 		// It must be in a checkpointed column
 		assert_eq(lomask_, (col & lomask_));
 		// Fast forward to appropriate column
-		const SSERegI* ptr = qcols_.ptr() + hef;
+		const SSEMem* ptr = qcols_.ptr() + hef;
 		ptr += (((col >> perpow2_) * niter_) << 2);
-		size_t mod = row % niter_; // which SSERegI
-		size_t div = row / niter_; // offset into SSERegI
+		size_t mod = row % niter_; // which SSEReg
+		size_t div = row / niter_; // offset into SSEReg
 		// Fast forward to appropriate word
 		ptr += (mod << 2);
 		// Extract score
@@ -525,7 +525,7 @@ public:
 	/**
 	 * Given a column of filled-in cells, save the checkpointed cells in cs_.
 	 */
-	void commitCol(SSERegI *pvH, SSERegI *pvE, SSERegI *pvF, size_t coli);
+	void commitCol(SSEMem *pvH, SSEMem *pvE, SSEMem *pvF, size_t coli);
 	
 	/**
 	 * Reset the state of the Checkpointer.
@@ -582,7 +582,7 @@ public:
 	
 	// We store columns in this way to reduce overhead of populating them
 	bool          is8_;     // true -> fill used 8-bit cells
-	size_t        niter_;   // # SSERegI words per column
+	size_t        niter_;   // # SSEReg words per column
 	EList_sse     qcols_;   // checkpoint E/F/H values for select columns
 	
 	bool          debug_;   // get debug checkpoints? (i.e. fill qcolsD_?)

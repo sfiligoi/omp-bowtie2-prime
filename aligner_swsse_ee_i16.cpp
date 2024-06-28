@@ -82,7 +82,7 @@ void SwAligner::buildQueryProfileEnd2EndSseI16(bool fw) {
 	const BTString* qu = fw ? qufw_ : qurc_;
 	const size_t len = rd->length();
 	const size_t seglen = (len + (EEI16_NWORDS_PER_REG-1)) / EEI16_NWORDS_PER_REG;
-	// How many SSERegI's are needed
+	// How many SSEReg's are needed
 	size_t nsses =
 		64 +                    // slack bytes, for alignment?
 		(seglen * ALPHA_SIZE)   // query profile data
@@ -258,9 +258,9 @@ static bool cellOkEnd2EndI16(
  * signed 16-bit values packed into a single 128-bit register.
  */
 template<typename TIdxSize>
-inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
+inline EEI16_TCScore EEI16_alignNucleotides(const SSEMem profbuf[],
 					const char   rf[], const TIdxSize rfd,
-					SSERegI pmat[],
+					SSEMem pmat[],
 					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
 					const TAlScore minsc, const size_t nrow,
 					DpBtCandidate btncand[], TIdxSize& btnfilled_,
@@ -274,20 +274,20 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 	// Much of the implmentation below is adapted from Michael's code.
 
 	// Set all elts to reference gap open penalty
-	SSERegI rfgapo   = sse_setzero_siall();
-	SSERegI rfgape   = sse_setzero_siall();
-	SSERegI rdgapo   = sse_setzero_siall();
-	SSERegI rdgape   = sse_setzero_siall();
-	SSERegI vlo      = sse_setzero_siall();
-	SSERegI vhilsw   = sse_setzero_siall();
-	SSERegI vlolsw   = sse_setzero_siall();
-	SSERegI ve       = sse_setzero_siall();
-	SSERegI vf       = sse_setzero_siall();
-	SSERegI vh       = sse_setzero_siall();
-	SSERegI vtmp     = sse_setzero_siall();
+	SSEReg rfgapo   = sse_setzero_siall();
+	SSEReg rfgape   = sse_setzero_siall();
+	SSEReg rdgapo   = sse_setzero_siall();
+	SSEReg rdgape   = sse_setzero_siall();
+	SSEReg vlo      = sse_setzero_siall();
+	SSEReg vhilsw   = sse_setzero_siall();
+	SSEReg vlolsw   = sse_setzero_siall();
+	SSEReg ve       = sse_setzero_siall();
+	SSEReg vf       = sse_setzero_siall();
+	SSEReg vh       = sse_setzero_siall();
+	SSEReg vtmp     = sse_setzero_siall();
 
-	SSERegI vs0     = sse_setzero_siall();
-	SSERegI vs1     = sse_setzero_siall();
+	SSEReg vs0     = sse_setzero_siall();
+	SSEReg vs1     = sse_setzero_siall();
 
 	assert_gt(refGapOpen, 0);
 	assert_leq(refGapOpen, MAX_I16);
@@ -319,39 +319,39 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 	// vhilsw: topmost (least sig) word set to 0x7fff, all other words=0
 	sse_set_low_i16(0x7fff, vhilsw);
 	
-	// Points to a long vector of SSERegI where each element is a block of
+	// Points to a long vector of SSEReg where each element is a block of
 	// contiguous cells in the E, F or H matrix.  If the index % 3 == 0, then
 	// the block of cells is from the E matrix.  If index % 3 == 1, they're
 	// from the F matrix.  If index % 3 == 2, then they're from the H matrix.
 	// Blocks of cells are organized in the same interleaved manner as they are
 	// calculated by the Farrar algorithm.
-	// const SSERegI *pvScore; // points into the query profile
+	// const SSEMem *pvScore; // points into the query profile
 
 	assert_eq(ROWSTRIDE, colstride / iter);
 
 	// Initialize the H and E vectors in the first matrix column
 	{
-	  SSERegI *pvHTmp = pmat + SSEMatrix::TMP;
-	  SSERegI *pvETmp = pmat + SSEMatrix::E;
+	  SSEMem *pvHTmp = pmat + SSEMatrix::TMP;
+	  SSEMem *pvETmp = pmat + SSEMatrix::E;
 	
 	  for(size_t i = 0; i < iter; i++) {
-		sse_store_siall(pvETmp, vlo);
+		sse_store_i16(pvETmp, vlo);
 		// Could initialize Hs to high or low.  If high, cells in the lower
 		// triangle will have somewhat more legitiate scores, but still won't
 		// be exhaustively scored.
-		sse_store_siall(pvHTmp, vlo);
+		sse_store_i16(pvHTmp, vlo);
 		pvETmp += ROWSTRIDE;
 		pvHTmp += ROWSTRIDE;
 	  }
 	}
 
 	// These are swapped just before the innermost loop
-	SSERegI *pvHStore = pmat + SSEMatrix::H;
-	SSERegI *pvHLoad  = pmat + SSEMatrix::TMP;
-	SSERegI *pvELoad  = pmat + SSEMatrix::E;
-	SSERegI *pvEStore = pmat + colstride + SSEMatrix::E;
-	SSERegI *pvFStore = pmat + SSEMatrix::F;
-	SSERegI *pvFTmp   = NULL;
+	SSEMem *pvHStore = pmat + SSEMatrix::H;
+	SSEMem *pvHLoad  = pmat + SSEMatrix::TMP;
+	SSEMem *pvELoad  = pmat + SSEMatrix::E;
+	SSEMem *pvEStore = pmat + colstride + SSEMatrix::E;
+	SSEMem *pvFStore = pmat + SSEMatrix::F;
+	SSEMem *pvFTmp   = NULL;
 	
 	// Maximum score in final row
 	EEI16_TCScore lrmax = MIN_I16;
@@ -379,7 +379,7 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 		// be numbers, not masks.
 		size_t off = (size_t)firsts5[ rf[i] ] * iter * 2;
 		// points into the query profile
-		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
+		const SSEMem *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 		
 		// Set all cells to low value
 		sse_setall_ff(vf);
@@ -387,7 +387,7 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 		vf = sse_or_siall(vf, vlolsw);
 		
 		// Load H vector from the final row of the previous column
-		vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
+		vh = sse_load_i16(pvHLoad + colstride - ROWSTRIDE);
 		// Shift 2 bytes down so that topmost (least sig) cell gets 0
 		vh = sse_slli_i16(vh);
 		// Fill topmost (least sig) cell with high value
@@ -395,19 +395,19 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 		
 		// For each character in the reference text:
 		for(TIdxSize j = 0; j < iter; j++) {
-			vs0 = sse_load_siall(pvScore);
+			vs0 = sse_load_i16(pvScore);
                         pvScore++;
-			vs1 = sse_load_siall(pvScore);
+			vs1 = sse_load_i16(pvScore);
                         pvScore++;
 			// Load cells from E, calculated previously
-			ve = sse_load_siall(pvELoad);
+			ve = sse_load_i16(pvELoad);
 			assert_all_lt(ve, vhi);
 			pvELoad += ROWSTRIDE;
 			
 			// Store cells in F, calculated previously
 			vf = sse_adds_epi16(vf, vs1); // veto some ref gap extensions
 			vf = sse_adds_epi16(vf, vs1); // veto some ref gap extensions
-			sse_store_siall(pvFStore, vf);
+			sse_store_i16(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
 			
 			// Factor in query profile (matches and mismatches)
@@ -418,7 +418,7 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 			vh = sse_max_epi16(vh, vf);
 			
 			// Save the new vH values
-			sse_store_siall(pvHStore, vh);
+			sse_store_i16(pvHStore, vh);
 			pvHStore += ROWSTRIDE;
 			
 			// Update vE value
@@ -432,11 +432,11 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 			assert_all_lt(ve, vhi);
 			
 			// Load the next h value
-			vh = sse_load_siall(pvHLoad);
+			vh = sse_load_i16(pvHLoad);
 			pvHLoad += ROWSTRIDE;
 			
 			// Save E values
-			sse_store_siall(pvEStore, ve);
+			sse_store_i16(pvEStore, ve);
 			pvEStore += ROWSTRIDE;
 			
 			// Update vf value
@@ -446,12 +446,12 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 			vf = sse_max_epi16(vf, vtmp);
 		}
 		pvScore -= (iter*2) - 1; // reset veto vector
-	        vs1 = sse_load_siall(pvScore);
+	        vs1 = sse_load_i16(pvScore);
 
 		// pvHStore, pvELoad, pvEStore have all rolled over to the next column
 		pvFTmp = pvFStore;
 		pvFStore -= colstride; // reset to start of column
-		vtmp = sse_load_siall(pvFStore);
+		vtmp = sse_load_i16(pvFStore);
 		
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
@@ -465,24 +465,24 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 		sse_anygt_epi16(vf,vtmp,anygt);
 		// Load after computing cmp, so the result is ready by the time it is tested in while
 		pvHStore -= colstride; // reset to start of column
-		vh = sse_load_siall(pvHStore);
+		vh = sse_load_i16(pvHStore);
 		pvHLoad = pvHStore;    // new pvHLoad = pvHStore
 		
 		pvEStore -= colstride; // reset to start of column
-		ve = sse_load_siall(pvEStore);
+		ve = sse_load_i16(pvEStore);
 		
 		// If any element of vtmp is greater than H - gap-open...
 		TIdxSize j = 0;
 		while(anygt) {
 			// Store this vf
-			sse_store_siall(pvFStore, vf);
+			sse_store_i16(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
 			
 			// Update vh w/r/t new vf
 			vh = sse_max_epi16(vh, vf);
 			
 			// Save vH values
-			sse_store_siall(pvHStore, vh);
+			sse_store_i16(pvHStore, vh);
 			pvHStore += ROWSTRIDE;
 			
 			// Update E in case it can be improved using our new vh
@@ -492,7 +492,7 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 			vh = sse_adds_epi16(vh, vs1); // veto some read gap opens
 			vh = sse_adds_epi16(vh, vs1); // veto some read gap opens
 			ve = sse_max_epi16(ve, vh);
-			sse_store_siall(pvEStore, ve);
+			sse_store_i16(pvEStore, ve);
 			pvEStore += ROWSTRIDE;
 #endif
 			pvScore += 2;
@@ -510,8 +510,8 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 				vf = sse_slli_i16(vf);
 				vf = sse_or_siall(vf, vlolsw);
 			}
-			vs1 = sse_load_siall(pvScore);
-			vtmp = sse_load_siall(pvFStore);   // load next vf ASAP
+			vs1 = sse_load_i16(pvScore);
+			vtmp = sse_load_i16(pvFStore);   // load next vf ASAP
 			
 			// Update F with another gap extension
 			vf = sse_subs_epi16(vf, rfgape);
@@ -521,8 +521,8 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 			sse_anygt_epi16(vf,vtmp,anygt);
 
 			// Load after computing cmp, so the result is afailable by the time it is tested
-			vh = sse_load_siall(pvHStore);     // load next vh ASAP
-			ve = sse_load_siall(pvEStore);     // load next vh ASAP
+			vh = sse_load_i16(pvHStore);     // load next vh ASAP
+			ve = sse_load_i16(pvEStore);     // load next vh ASAP
 		}
 		
 		// Note: we may not want to extract from the final row
@@ -795,7 +795,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	size_t rowelt, rowvec, eltvec;
 	size_t left_rowelt, up_rowelt, upleft_rowelt;
 	size_t left_rowvec, up_rowvec, upleft_rowvec;
-	SSERegI *cur_vec, *left_vec, *up_vec, *upleft_vec;
+	SSEMem *cur_vec, *left_vec, *up_vec, *upleft_vec;
 	NEW_ROW_COL(row, col);
 	while((int)row >= 0) {
 #ifdef ENABLE_SSE_METRICS

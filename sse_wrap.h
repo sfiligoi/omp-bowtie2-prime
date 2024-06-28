@@ -33,9 +33,12 @@
 #define BYTES_LOG2_PER_REG 5
 #define SSE_MASK_ALL ((int) 0xffffffff)
 
-typedef __m256i SSERegI;
+typedef __m256i SSEReg;
+typedef SSEReg  SSEMem;  // memory and register representation are the same
+
 #define sse_load_siall(x) _mm256_load_si256(x)
 #define sse_store_siall(x, y) _mm256_store_si256(x, y)
+
 #define sse_set1_epi8(x) _mm256_set1_epi8(x)
 #define sse_subs_epu8(x, y) _mm256_subs_epu8(x, y)
 #define sse_setzero_siall() _mm256_setzero_si256()
@@ -94,15 +97,16 @@ typedef union {
   SSERegI8  i8;
   SSERegU8  u8;
 } SSERegI;
+typedef SSEReg  SSEMem;  // memory and register representation are the same
 
-inline SSERegI sse_set1_epi8(const int8_t a) {
-  SSERegI out;
+inline SSEReg sse_set1_epi8(const int8_t a) {
+  SSEReg out;
   for (int j=0; j<16; j++) out.i8.el[j] = a;
   return out;
 };
 
-inline SSERegI sse_subs_epu8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
+inline SSEReg sse_subs_epu8(const SSEReg x, const SSEReg y) {
+  SSEReg out;
   for (int j=0; j<16; j++) {
      int16_t x1 = x.u8.el[j];
      int16_t y1 = y.u8.el[j];
@@ -113,48 +117,48 @@ inline SSERegI sse_subs_epu8(const SSERegI x, const SSERegI y) {
   return out;
 };
 
-inline SSERegI sse_load_siall(SSERegI const *x) {
+inline SSEReg sse_load_siall(SSEMem const *x) {
   return x[0];
 };
 
-inline void sse_store_siall(SSERegI *x, const SSERegI y) {
+inline void sse_store_siall(SSEMem *x, const SSEReg y) {
   x[0] = y;
 };
 
-inline SSERegI sse_setzero_siall() {
-  SSERegI out;
+inline SSEReg sse_setzero_siall() {
+  SSEReg out;
   for (int j=0; j<8; j++) out.u16.el[j] = 0;
   return out;
 };
 
-inline SSERegI sse_max_epu8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
+inline SSEReg sse_max_epu8(const SSEReg x, const SSEReg y) {
+  SSEReg out;
   for (int j=0; j<16; j++) out.u8.el[j] = std::max(x.u8.el[j],y.u8.el[j]);
   return out;
 };
 
-inline SSERegI sse_or_siall(const SSERegI x, const SSERegI y) {
-  SSERegI out;
+inline SSEReg sse_or_siall(const SSEReg x, const SSEReg y) {
+  SSEReg out;
   for (int j=0; j<8; j++) out.u16.el[j] = x.u16.el[j] | y.u16.el[j];
   return out;
 };
 
 
 // TODO: We really just need sse_anygt_epu8
-inline SSERegI sse_cmpeq_epi8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
+inline SSEReg sse_cmpeq_epi8(const SSEReg x, const SSEReg y) {
+  SSEReg out;
   for (int j=0; j<16; j++) out.u8.el[j] = (x.u8.el[j] == y.u8.el[j]) ? 0xFF : 0;
   return out;
 };
 
-inline uint16_t sse_movemask_epi8(const SSERegI x) {
+inline uint16_t sse_movemask_epi8(const SSEReg x) {
   uint16_t out = 0;
   for (int j=0; j<16; j++) out |= ((uint16_t)(x.u8.el[j]>>7)) << j;
   return out;
 };
 
-inline SSERegI sse_slli_siall(const SSERegI x, const unsigned int i) {
-  SSERegI out;
+inline SSEReg sse_slli_siall(const SSEReg x, const unsigned int i) {
+  SSEReg out;
   if (i==2) {
      out.u16.el[0] = 0;
      for (int j=1; j<8; j++) out.u16.el[j] = x.u16.el[j-1];
@@ -171,8 +175,8 @@ inline SSERegI sse_slli_siall(const SSERegI x, const unsigned int i) {
 #ifdef ENABLE_I16
 // Note: We are not using saturation, not needed
 
-inline SSERegI sse_adds_epi16(const SSERegI x, const SSERegI y) {
-  SSERegI out;
+inline SSEReg sse_adds_epi16(const SSEReg x, const SSEReg y) {
+  SSEReg out;
   for (int j=0; j<8; j++) {
      int32_t x1 = x.i16.el[j];
      int32_t y1 = y.i16.el[j];
@@ -183,8 +187,8 @@ inline SSERegI sse_adds_epi16(const SSERegI x, const SSERegI y) {
   return out;
 };
 
-inline SSERegI sse_subs_epi16(const SSERegI x, const SSERegI y) {
-  SSERegI out;
+inline SSEReg sse_subs_epi16(const SSEReg x, const SSEReg y) {
+  SSEReg out;
   for (int j=0; j<8; j++) {
      int32_t x1 = x.i16.el[j];
      int32_t y1 = y.i16.el[j];
@@ -195,20 +199,20 @@ inline SSERegI sse_subs_epi16(const SSERegI x, const SSERegI y) {
   return out;
 };
 
-inline SSERegI sse_set1_epi16(const int16_t a) {
-  SSERegI out;
+inline SSEReg sse_set1_epi16(const int16_t a) {
+  SSEReg out;
   for (int j=0; j<8; j++) out.i16.el[j] = a;
   return out;
 };
 
-inline SSERegI sse_max_epi16(const SSERegI x, const SSERegI y) {
-  SSERegI out;
+inline SSEReg sse_max_epi16(const SSEReg x, const SSEReg y) {
+  SSEReg out;
   for (int j=0; j<8; j++) out.i16.el[j] = std::max(x.i16.el[j],y.i16.el[j]);
   return out;
 };
 
-inline SSERegI sse_slli_epi16(const SSERegI x, const unsigned int i) {
-  SSERegI out;
+inline SSEReg sse_slli_epi16(const SSEReg x, const unsigned int i) {
+  SSEReg out;
   for (int j=0; j<8; j++) out.u16.el[j] = x.u16.el[j] << i;
   return out;
 };
@@ -216,8 +220,8 @@ inline SSERegI sse_slli_epi16(const SSERegI x, const unsigned int i) {
 
 
 // TODO: Only used in sse_setall_ff
-inline SSERegI sse_cmpeq_epi16(const SSERegI x, const SSERegI y) {
-  SSERegI out;
+inline SSEReg sse_cmpeq_epi16(const SSEReg x, const SSEReg y) {
+  SSEReg out;
   for (int j=0; j<8; j++) out.u16.el[j] = (x.u16.el[j] == y.u16.el[j]) ? 0xFFFF : 0;
   return out;
 };
@@ -225,24 +229,24 @@ inline SSERegI sse_cmpeq_epi16(const SSERegI x, const SSERegI y) {
 
 
 
-inline SSERegI sse_cmpgt_epi16(const SSERegI x, const SSERegI y) {
-  SSERegI out;
+inline SSEReg sse_cmpgt_epi16(const SSEReg x, const SSEReg y) {
+  SSEReg out;
   for (int j=0; j<8; j++) out.u16.el[j] = (x.i16.el[j] > y.i16.el[j]) ? 0xFFFF : 0;
   return out;
 };
 
-inline SSERegI sse_srli_epi16(const SSERegI x, const unsigned int i) {
-  SSERegI out;
+inline SSEReg sse_srli_epi16(const SSEReg x, const unsigned int i) {
+  SSEReg out;
   for (int j=0; j<8; j++) out.u16.el[j] = x.u16.el[j] >> i;
   return out;
 };
 
-inline int32_t sse_extract_epi16(const SSERegI x, const int32_t i) {
+inline int32_t sse_extract_epi16(const SSEReg x, const int32_t i) {
   return x.u16.el[i];
 };
 
-inline SSERegI nosse_set_low_i16(const uint16_t v) {
-  SSERegI out;
+inline SSEReg nosse_set_low_i16(const uint16_t v) {
+  SSEReg out;
   out.u16.el[0] = v;
   for (int j=1; j<8; j++) out.u16.el[j] = 0;
   return out;
@@ -263,7 +267,9 @@ inline SSERegI nosse_set_low_i16(const uint16_t v) {
 
 
 #if defined(__aarch64__) || defined(__s390x__) || defined(__powerpc__)
-typedef simde__m128i SSERegI;
+typedef simde__m128i SSEReg;
+typedef SSEReg  SSEMem;  // memory and register representation are the same
+
 #define sse_load_siall(x) simde_mm_load_si128(x)
 #define sse_store_siall(x, y) simde_mm_store_si128(x, y)
 #define sse_set1_epi8(x) simde_mm_set1_epi8(x)
@@ -290,7 +296,9 @@ typedef simde__m128i SSERegI;
 #endif
 
 #else
-typedef __m128i SSERegI;
+typedef __m128i SSEReg;
+typedef SSEReg  SSEMem;  // memory and register representation are the same
+
 #define sse_load_siall(x) _mm_load_si128(x)
 #define sse_store_siall(x, y) _mm_store_si128(x, y)
 #define sse_set1_epi8(x) _mm_set1_epi8(x)
@@ -322,11 +330,23 @@ typedef __m128i SSERegI;
 
 #endif /* SSE_AVX2 */
 
+#ifndef SSE_DISABLE
+
+#define sse_load_u8(x) sse_load_siall(x)
+#define sse_store_u8(x, y) sse_store_siall(x, y)
+
+#ifdef ENABLE_I16
+#define sse_load_i16(x) sse_load_siall(x)
+#define sse_store_i16(x, y) sse_store_siall(x, y)
+#endif
+
+#endif
+
 /* Fill all elements in outval with inval */
 #define sse_fill_i8(inval, outval) outval=sse_set1_epi8(inval)
 
 #define sse_anygt_epu8(val1,val2,outval) { \
-	SSERegI s = sse_subs_epu8(val1, val2); \
+	SSEReg s = sse_subs_epu8(val1, val2); \
         s = sse_cmpeq_epi8(s, vzero); \
         outval = (sse_movemask_epi8(s) != SSE_MASK_ALL); }
 
@@ -354,7 +374,7 @@ typedef __m128i SSERegI;
 #define sse_fill_i16(inval, outval) outval=sse_set1_epi16(inval)
 
 #define sse_anygt_epi16(val1,val2,outval) { \
-	SSERegI s = sse_cmpgt_epi16(val1, val2); \
+	SSEReg s = sse_cmpgt_epi16(val1, val2); \
         outval = (sse_movemask_epi8(s) != 0); }
 
 #define sse_setall_ff(val) val =  sse_cmpeq_epi16(val,val)
