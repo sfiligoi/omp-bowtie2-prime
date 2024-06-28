@@ -404,7 +404,7 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 		// Load H vector from the final row of the previous column
 		vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
 		// Shift 2 bytes down so that topmost (least sig) cell gets 0
-		vh = sse_slli_siall(vh, EEI16_NBYTES_PER_WORD);
+		vh = sse_slli_i16(vh);
 		// Fill topmost (least sig) cell with high value
 		vh = sse_or_siall(vh, vhilsw);
 		
@@ -470,7 +470,7 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 		
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
-		vf = sse_slli_siall(vf, EEI16_NBYTES_PER_WORD);
+		vf = sse_slli_i16(vf);
 		vf = sse_or_siall(vf, vlolsw);
 		
 		vf = sse_adds_epi16(vf, vs1); // veto some ref gap extensions
@@ -522,7 +522,7 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 #else
 				pvEStore -= colstride;
 #endif
-				vf = sse_slli_siall(vf, EEI16_NBYTES_PER_WORD);
+				vf = sse_slli_i16(vf);
 				vf = sse_or_siall(vf, vlolsw);
 			}
 			vs1 = sse_load_siall(pvScore);

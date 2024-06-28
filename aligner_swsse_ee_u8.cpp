@@ -254,11 +254,6 @@ static bool cellOkEnd2EndU8(
  * 
  */
 
-#define sse_anygt_epu8(val1,val2,outval) { \
-	SSERegI s = sse_subs_epu8(val1, val2); \
-        s = sse_cmpeq_epi8(s, vzero); \
-        outval = (sse_movemask_epi8(s) != SSE_MASK_ALL); }
-
 template<typename TIdxSize>
 inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			const size_t colstride,
@@ -276,7 +271,7 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 		// Load H vector from the final row of the previous column
 		SSERegI vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
 		// Shift N bytes down so that topmost (least sig) cell gets 0
-		vh = sse_slli_siall(vh, EEU8_NBYTES_PER_WORD);
+		vh = sse_slli_u8(vh);
 		// Fill topmost (least sig) cell with high value
 		vh = sse_or_siall(vh, vhilsw);
 		
@@ -340,7 +335,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
-		SSERegI vf = sse_slli_siall(vf0, EEU8_NBYTES_PER_WORD);
+		SSERegI vf = sse_slli_u8(vf0);
 		
 		pvScore += 1;
 	        SSERegI vs1 = sse_load_siall(pvScore);
@@ -384,7 +379,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 				pvFStore -= colstride;
 				pvHStore -= colstride;
 				pvEStore -= colstride;
-				vf = sse_slli_siall(vf, EEU8_NBYTES_PER_WORD);
+				vf = sse_slli_u8(vf);
 			}
 			vs1 = sse_load_siall(pvScore);
 			vtmp = sse_load_siall(pvFStore);   // load next vf ASAP
@@ -459,7 +454,6 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	  SSERegI *pvHTmp = pmat + SSEMatrix::TMP;
 	  SSERegI *pvETmp = pmat + SSEMatrix::E;
 	  SSERegI vlo      = sse_setzero_siall();
-	  sse_fill_u8_opt(0, vlo);	
 	
 	  for(size_t i = 0; i < iter; i++) {
 		sse_store_siall(pvETmp, vlo);
