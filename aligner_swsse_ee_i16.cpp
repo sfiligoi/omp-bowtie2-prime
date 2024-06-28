@@ -222,56 +222,7 @@ static bool cellOkEnd2EndI16(
 }
 #endif /*ndef NDEBUG*/
 
-#ifdef NDEBUG
-
-#define assert_all_eq0(x)
-#define assert_all_gt(x, y)
-#define assert_all_gt_lo(x)
 #define assert_all_lt(x, y)
-#define assert_all_lt_hi(x)
-
-#else
-
-#define assert_all_eq0(x) { \
-	SSERegI z = sse_setzero_siall(); \
-	SSERegI tmp = sse_setzero_siall(); \
-	z = sse_xor_siall(z, z); \
-	tmp = sse_cmpeq_epi16(x, z); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_gt(x, y) { \
-	SSERegI tmp = sse_cmpgt_epi16(x, y); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_gt_lo(x) { \
-	SSERegI z = sse_setzero_siall(); \
-	SSERegI tmp = sse_setzero_siall(); \
-	z = sse_xor_siall(z, z); \
-	tmp = sse_cmpgt_epi16(x, z); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_lt(x, y) { \
-	SSERegI tmp = sse_cmplt_epi16(x, y); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_leq(x, y) { \
-	SSERegI tmp = sse_cmpgt_epi16(x, y); \
-	assert_eq(0x0000, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_lt_hi(x) { \
-	SSERegI z = sse_setzero_siall(); \
-	SSERegI tmp = sse_setzero_siall(); \
-	z = sse_cmpeq_epi16(z, z); \
-	z = sse_srli_epi16(z, 1); \
-	tmp = sse_cmplt_epi16(x, z); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-#endif
 
 /**
  * Given a filled-in DP table, populate the btncand_ list with candidate cells
@@ -301,10 +252,6 @@ static bool cellOkEnd2EndI16(
  *
  * 
  */
-
-#define sse_anygt_epi16(val1,val2,outval) { \
-	SSERegI s = sse_cmpgt_epi16(val1, val2); \
-        outval = (sse_movemask_epi8(s) != 0); }
 
 /**
  * Solve the current alignment problem using SSE instructions that operate on 8
@@ -435,14 +382,14 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 		
 		// Set all cells to low value
-		vf = sse_cmpeq_epi16(vf, vf);
+		sse_setall_ff(vf);
 		vf = sse_slli_epi16(vf, EEI16_NBITS_PER_WORD-1);
 		vf = sse_or_siall(vf, vlolsw);
 		
 		// Load H vector from the final row of the previous column
 		vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
 		// Shift 2 bytes down so that topmost (least sig) cell gets 0
-		vh = sse_slli_siall(vh, EEI16_NBYTES_PER_WORD);
+		vh = sse_slli_i16(vh);
 		// Fill topmost (least sig) cell with high value
 		vh = sse_or_siall(vh, vhilsw);
 		
@@ -508,7 +455,7 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 		
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
-		vf = sse_slli_siall(vf, EEI16_NBYTES_PER_WORD);
+		vf = sse_slli_i16(vf);
 		vf = sse_or_siall(vf, vlolsw);
 		
 		vf = sse_adds_epi16(vf, vs1); // veto some ref gap extensions
@@ -560,7 +507,7 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 #else
 				pvEStore -= colstride;
 #endif
-				vf = sse_slli_siall(vf, EEI16_NBYTES_PER_WORD);
+				vf = sse_slli_i16(vf);
 				vf = sse_or_siall(vf, vlolsw);
 			}
 			vs1 = sse_load_siall(pvScore);

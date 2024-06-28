@@ -225,55 +225,6 @@ static bool cellOkEnd2EndU8(
 }
 #endif /*ndef NDEBUG*/
 
-#ifdef NDEBUG
-
-#define assert_all_eq0(x)
-#define assert_all_gt(x, y)
-#define assert_all_gt_lo(x)
-#define assert_all_lt(x, y)
-#define assert_all_lt_hi(x)
-
-#else
-
-#define assert_all_eq0(x) { \
-	SSERegI z = sse_setzero_siall(); \
-	SSERegI tmp = sse_setzero_siall(); \
-	z = sse_xor_siall(z, z); \
-	tmp = sse_cmpeq_epi16(x, z); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_gt(x, y) { \
-	SSERegI tmp = sse_cmpgt_epu8(x, y); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_gt_lo(x) { \
-	SSERegI z = sse_setzero_siall(); \
-	SSERegI tmp = sse_setzero_siall(); \
-	z = sse_xor_siall(z, z); \
-	tmp = sse_cmpgt_epu8(x, z); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_lt(x, y) { \
-	SSERegI z = sse_setzero_siall(); \
-	z = sse_xor_siall(z, z); \
-	SSERegI tmp = sse_subs_epu8(y, x); \
-	tmp = sse_cmpeq_epi16(tmp, z); \
-	assert_eq(0x0000, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_lt_hi(x) { \
-	SSERegI z = sse_setzero_siall(); \
-	SSERegI tmp = sse_setzero_siall(); \
-	z = sse_cmpeq_epu8(z, z); \
-	z = sse_srli_epu8(z, 1); \
-	tmp = sse_cmplt_epu8(x, z); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-#endif
-
 /**
  * Given a filled-in DP table, populate the btncand_ list with candidate cells
  * that might be at the ends of valid alignments.  No need to do this unless
@@ -303,11 +254,6 @@ static bool cellOkEnd2EndU8(
  * 
  */
 
-#define sse_anygt_epu8(val1,val2,outval) { \
-	SSERegI s = sse_subs_epu8(val1, val2); \
-        s = sse_cmpeq_epi8(s, vzero); \
-        outval = (sse_movemask_epi8(s) != SSE_MASK_ALL); }
-
 template<typename TIdxSize>
 inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			const size_t colstride,
@@ -325,7 +271,7 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 		// Load H vector from the final row of the previous column
 		SSERegI vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
 		// Shift N bytes down so that topmost (least sig) cell gets 0
-		vh = sse_slli_siall(vh, EEU8_NBYTES_PER_WORD);
+		vh = sse_slli_u8(vh);
 		// Fill topmost (least sig) cell with high value
 		vh = sse_or_siall(vh, vhilsw);
 		
@@ -389,7 +335,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
-		SSERegI vf = sse_slli_siall(vf0, EEU8_NBYTES_PER_WORD);
+		SSERegI vf = sse_slli_u8(vf0);
 		
 		pvScore += 1;
 	        SSERegI vs1 = sse_load_siall(pvScore);
@@ -433,7 +379,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 				pvFStore -= colstride;
 				pvHStore -= colstride;
 				pvEStore -= colstride;
-				vf = sse_slli_siall(vf, EEU8_NBYTES_PER_WORD);
+				vf = sse_slli_u8(vf);
 			}
 			vs1 = sse_load_siall(pvScore);
 			vtmp = sse_load_siall(pvFStore);   // load next vf ASAP
@@ -508,7 +454,6 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	  SSERegI *pvHTmp = pmat + SSEMatrix::TMP;
 	  SSERegI *pvETmp = pmat + SSEMatrix::E;
 	  SSERegI vlo      = sse_setzero_siall();
-	  sse_fill_u8_opt(0, vlo);	
 	
 	  for(size_t i = 0; i < iter; i++) {
 		sse_store_siall(pvETmp, vlo);

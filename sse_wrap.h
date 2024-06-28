@@ -34,82 +34,31 @@
 #define SSE_MASK_ALL ((int) 0xffffffff)
 
 typedef __m256i SSERegI;
-#define sse_adds_epi16(x, y) _mm256_adds_epi16(x, y)
-#define sse_adds_epu8(x, y) _mm256_adds_epu8(x, y)
-#define sse_cmpeq_epi16(x, y) _mm256_cmpeq_epi16(x, y)
-#define sse_cmpeq_epi8(x, y) _mm256_cmpeq_epi8(x, y)
-#define sse_cmpgt_epi16(x, y) _mm256_cmpgt_epi16(x, y)
-#define sse_cmpgt_epi8(x, y) _mm256_cmpgt_epi8(x, y)
-#define sse_cmplt_epi16(x, y) _mm256_cmpgt_epi16(y,x)
-#define sse_extract_epi16(x, y) _mm256_extract_epi16(x, y)
-#define sse_insert_epi16(x, y, z) _mm256_insert_epi16(x, y, z)
 #define sse_load_siall(x) _mm256_load_si256(x)
-#define sse_max_epi16(x, y) _mm256_max_epi16(x, y)
-#define sse_max_epu8(x, y) _mm256_max_epu8(x, y)
-#define sse_movemask_epi8(x) _mm256_movemask_epi8(x)
-#define sse_or_siall(x, y) _mm256_or_si256(x, y)
-#define sse_setzero_siall() _mm256_setzero_si256()
-#define sse_slli_epi16(x, y) _mm256_slli_epi16(x, y)
-#define sse_srli_epi16(x, y) _mm256_srli_epi16(x, y)
-#define sse_srli_epu8(x, y) _mm256_srli_epu8(x, y)
 #define sse_store_siall(x, y) _mm256_store_si256(x, y)
-#define sse_subs_epi16(x, y) _mm256_subs_epi16(x, y)
-#define sse_subs_epu8(x, y) _mm256_subs_epu8(x, y)
-#define sse_xor_siall(x, y) _mm256_xor_si256(x, y)
-#define sse_set1_epi16(x) _mm256_set1_epi16(x)
 #define sse_set1_epi8(x) _mm256_set1_epi8(x)
+#define sse_subs_epu8(x, y) _mm256_subs_epu8(x, y)
+#define sse_setzero_siall() _mm256_setzero_si256()
+#define sse_max_epu8(x, y) _mm256_max_epu8(x, y)
+#define sse_or_siall(x, y) _mm256_or_si256(x, y)
 
+#define sse_insert_epi16(x, y, z) _mm256_insert_epi16(x, y, z)
+#define sse_cmpeq_epi8(x, y) _mm256_cmpeq_epi8(x, y)
+#define sse_movemask_epi8(x) _mm256_movemask_epi8(x)
 /* AVX2 does not have a native 256-bit shift instruction */
 /* Note only works for y<=16, which is OK for this code */
 #define sse_slli_siall(x, y) \
 	_mm256_alignr_epi8(x, _mm256_permute2x128_si256(x, x, _MM_SHUFFLE(0, 0, 2, 0)), 16-y)
 
-#define sse_srli_siall(x, y) \
-	_mm256_alignr_epi8(_mm256_permute2x128_si256(x, x, _MM_SHUFFLE(2, 0, 0, 1)), x, y)
 
-/* we can avoid one instruction, when y==16 */
-#define sse_slli_siall_16(x) \
-	_mm256_permute2x128_si256(x, x, _MM_SHUFFLE(0, 0, 2, 0))
+#define sse_adds_epi16(x, y) _mm256_adds_epi16(x, y)
+#define sse_subs_epi16(x, y) _mm256_subs_epi16(x, y)
+#define sse_set1_epi16(x) _mm256_set1_epi16(x)
+#define sse_max_epi16(x, y) _mm256_max_epi16(x, y)
+#define sse_slli_epi16(x, y) _mm256_slli_epi16(x, y)
 
-#define sse_srli_siall_16(x) \
-	_mm256_permute2x128_si256(x, x, _MM_SHUFFLE(2, 0, 0, 1))
-
-/* this operates on the 2x 128-bit lanes independenty */
-#define sse_slli_si128(x, y) _mm256_slli_si256(x, y)
-#define sse_srli_si128(x, y) _mm256_srli_si256(x, y)
-
-/* compute the max val of a vector */
-#define sse_max_score_i16(inval, outval) { \
-		SSERegI vlmax = inval; \
-		SSERegI vltmp = sse_srli_siall(vlmax, 16); \
-		vlmax = sse_max_epi16(vlmax, vltmp); \
-		/* we use only 128-bit hers, use the fast version */ \
-		vltmp = sse_srli_si128(vlmax, 8); \
-		vlmax = sse_max_epi16(vlmax, vltmp); \
-		vltmp = sse_srli_si128(vlmax, 4); \
-		vlmax = sse_max_epi16(vlmax, vltmp); \
-		vltmp = sse_srli_si128(vlmax, 2); \
-		vlmax = sse_max_epi16(vlmax, vltmp); \
-		outval = sse_extract_epi16(vlmax, 0); \
-}
-
-#define sse_max_score_u8(inval, outval) { \
-		SSERegI vlmax = inval; \
-		SSERegI vltmp = sse_srli_siall(vlmax, 16); \
-		vlmax = sse_max_epu8(vlmax, vltmp); \
-		/* we use only 128-bit hers, use the fast version */ \
-		vltmp = sse_srli_si128(vlmax, 8); \
-		vlmax = sse_max_epu8(vlmax, vltmp); \
-		vltmp = sse_srli_si128(vlmax, 4); \
-		vlmax = sse_max_epu8(vlmax, vltmp); \
-		vltmp = sse_srli_si128(vlmax, 2); \
-		vlmax = sse_max_epu8(vlmax, vltmp); \
-		vltmp = sse_srli_si128(vlmax, 1); \
-		vlmax = sse_max_epu8(vlmax, vltmp); \
-		outval = sse_extract_epi16(vlmax, 0); \
-		outval = outval & 0x00ff; \
-}
-
+#define sse_cmpeq_epi16(x, y) _mm256_cmpeq_epi16(x, y)
+#define sse_cmpgt_epi16(x, y) _mm256_cmpgt_epi16(x, y)
 
 #else /* no SSE_AVX2 */
 
@@ -145,6 +94,79 @@ typedef union {
   SSERegU8  u8;
 } SSERegI;
 
+inline SSERegI sse_set1_epi8(const int8_t a) {
+  SSERegI out;
+  for (int j=0; j<16; j++) out.i8.el[j] = a;
+  return out;
+};
+
+inline SSERegI sse_subs_epu8(const SSERegI x, const SSERegI y) {
+  SSERegI out;
+  for (int j=0; j<16; j++) {
+     int16_t x1 = x.u8.el[j];
+     int16_t y1 = y.u8.el[j];
+     int16_t tmp16 = x1 - y1;
+     uint8_t tmp = std::min(std::max(int16_t(0),tmp16),int16_t(255));
+     out.u8.el[j] = tmp;
+  }
+  return out;
+};
+
+inline SSERegI sse_load_siall(SSERegI const *x) {
+  return x[0];
+};
+
+inline void sse_store_siall(SSERegI *x, const SSERegI y) {
+  x[0] = y;
+};
+
+inline SSERegI sse_setzero_siall() {
+  SSERegI out;
+  for (int j=0; j<8; j++) out.u16.el[j] = 0;
+  return out;
+};
+
+inline SSERegI sse_max_epu8(const SSERegI x, const SSERegI y) {
+  SSERegI out;
+  for (int j=0; j<16; j++) out.u8.el[j] = std::max(x.u8.el[j],y.u8.el[j]);
+  return out;
+};
+
+inline SSERegI sse_or_siall(const SSERegI x, const SSERegI y) {
+  SSERegI out;
+  for (int j=0; j<8; j++) out.u16.el[j] = x.u16.el[j] | y.u16.el[j];
+  return out;
+};
+
+
+// TODO: We really just need sse_anygt_epu8
+inline SSERegI sse_cmpeq_epi8(const SSERegI x, const SSERegI y) {
+  SSERegI out;
+  for (int j=0; j<16; j++) out.u8.el[j] = (x.u8.el[j] == y.u8.el[j]) ? 0xFF : 0;
+  return out;
+};
+
+inline uint16_t sse_movemask_epi8(const SSERegI x) {
+  uint16_t out = 0;
+  for (int j=0; j<16; j++) out |= ((uint16_t)(x.u8.el[j]>>7)) << j;
+  return out;
+};
+
+inline SSERegI sse_slli_siall(const SSERegI x, const unsigned int i) {
+  SSERegI out;
+  if (i==2) {
+     out.u16.el[0] = 0;
+     for (int j=1; j<8; j++) out.u16.el[j] = x.u16.el[j-1];
+  } else if (i==1) {
+     out.u8.el[0] = 0;
+     for (int j=1; j<16; j++) out.u8.el[j] = x.u8.el[j-1];
+  } else {
+     throw 1; // unsupported
+  }
+  return out;
+};
+
+
 // Note: We are not using saturation, not needed
 
 inline SSERegI sse_adds_epi16(const SSERegI x, const SSERegI y) {
@@ -171,15 +193,9 @@ inline SSERegI sse_subs_epi16(const SSERegI x, const SSERegI y) {
   return out;
 };
 
-inline SSERegI sse_cmpeq_epi16(const SSERegI x, const SSERegI y) {
+inline SSERegI sse_set1_epi16(const int16_t a) {
   SSERegI out;
-  for (int j=0; j<8; j++) out.u16.el[j] = (x.u16.el[j] == y.u16.el[j]) ? 0xFFFF : 0;
-  return out;
-};
-
-inline SSERegI sse_cmpgt_epi16(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<8; j++) out.u16.el[j] = (x.i16.el[j] > y.i16.el[j]) ? 0xFFFF : 0;
+  for (int j=0; j<8; j++) out.i16.el[j] = a;
   return out;
 };
 
@@ -189,59 +205,33 @@ inline SSERegI sse_max_epi16(const SSERegI x, const SSERegI y) {
   return out;
 };
 
-inline SSERegI sse_xor_siall(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<8; j++) out.u16.el[j] = x.u16.el[j] ^ y.u16.el[j];
-  return out;
-};
-
-inline SSERegI sse_or_siall(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<8; j++) out.u16.el[j] = x.u16.el[j] | y.u16.el[j];
-  return out;
-};
-
 inline SSERegI sse_slli_epi16(const SSERegI x, const unsigned int i) {
   SSERegI out;
   for (int j=0; j<8; j++) out.u16.el[j] = x.u16.el[j] << i;
   return out;
 };
 
+
+
+// TODO: Only used in sse_setall_ff
+inline SSERegI sse_cmpeq_epi16(const SSERegI x, const SSERegI y) {
+  SSERegI out;
+  for (int j=0; j<8; j++) out.u16.el[j] = (x.u16.el[j] == y.u16.el[j]) ? 0xFFFF : 0;
+  return out;
+};
+
+
+
+
+inline SSERegI sse_cmpgt_epi16(const SSERegI x, const SSERegI y) {
+  SSERegI out;
+  for (int j=0; j<8; j++) out.u16.el[j] = (x.i16.el[j] > y.i16.el[j]) ? 0xFFFF : 0;
+  return out;
+};
+
 inline SSERegI sse_srli_epi16(const SSERegI x, const unsigned int i) {
   SSERegI out;
   for (int j=0; j<8; j++) out.u16.el[j] = x.u16.el[j] >> i;
-  return out;
-};
-
-inline SSERegI sse_slli_siall(const SSERegI x, const unsigned int i) {
-  SSERegI out;
-  if (i==2) {
-     out.u16.el[0] = 0;
-     for (int j=1; j<8; j++) out.u16.el[j] = x.u16.el[j-1];
-  } else if (i==1) {
-     out.u8.el[0] = 0;
-     for (int j=1; j<16; j++) out.u8.el[j] = x.u8.el[j-1];
-  } else {
-     throw 1; // unsupported
-  }
-  return out;
-};
-
-inline uint16_t sse_movemask_epi8(const SSERegI x) {
-  uint16_t out = 0;
-  for (int j=0; j<16; j++) out |= ((uint16_t)(x.u8.el[j]>>7)) << j;
-  return out;
-};
-
-inline SSERegI sse_set1_epi16(const int16_t a) {
-  SSERegI out;
-  for (int j=0; j<8; j++) out.i16.el[j] = a;
-  return out;
-};
-
-inline SSERegI sse_set1_epi8(const int8_t a) {
-  SSERegI out;
-  for (int j=0; j<16; j++) out.i8.el[j] = a;
   return out;
 };
 
@@ -257,113 +247,7 @@ inline SSERegI nosse_set_low_i16(const uint16_t v) {
 };
 #define sse_set_low_i16(inval, outval) { outval = nosse_set_low_i16(inval);}
 
-inline SSERegI sse_setzero_siall() {
-  SSERegI out;
-  for (int j=0; j<8; j++) out.u16.el[j] = 0;
-  return out;
-};
-
-inline SSERegI sse_load_siall(SSERegI const *x) {
-  return x[0];
-};
-
-inline void sse_store_siall(SSERegI *x, const SSERegI y) {
-  x[0] = y;
-};
-
 #define sse_cmplt_epi16(x, y) sse_cmpgt_epi16(y, x)
-
-/* compute the max val of a vector */
-inline int16_t nosse_max_score_i16(const SSERegI x) {
-  const int16_t out0 = std::max(x.i16.el[0],x.i16.el[1]);
-  const int16_t out1 = std::max(x.i16.el[2],x.i16.el[3]);
-  const int16_t out2 = std::max(x.i16.el[4],x.i16.el[5]);
-  const int16_t out3 = std::max(x.i16.el[6],x.i16.el[7]);
-  const int16_t out01 = std::max(out0,out1);
-  const int16_t out23 = std::max(out2,out3);
-  return std::max(out01,out23);
-}
-
-#define sse_max_score_i16(inval, outval) {outval = nosse_max_score_i16(inval);}
-
-// Note: We are not using saturation for now
-
-inline SSERegI sse_adds_epu8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<16; j++) {
-     int16_t x1 = x.u8.el[j];
-     int16_t y1 = y.u8.el[j];
-     int16_t tmp16 = x1 + y1;
-     uint8_t tmp = std::min(std::max(int16_t(0),tmp16),int16_t(255));
-     out.u8.el[j] = tmp;
-  }
-  return out;
-};
-
-inline SSERegI sse_subs_epu8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<16; j++) {
-     int16_t x1 = x.u8.el[j];
-     int16_t y1 = y.u8.el[j];
-     int16_t tmp16 = x1 - y1;
-     uint8_t tmp = std::min(std::max(int16_t(0),tmp16),int16_t(255));
-     out.u8.el[j] = tmp;
-  }
-  return out;
-};
-
-inline SSERegI sse_cmpeq_epi8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<16; j++) out.u8.el[j] = (x.u8.el[j] == y.u8.el[j]) ? 0xFF : 0;
-  return out;
-};
-
-inline SSERegI sse_cmpgt_epi8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<16; j++) out.u8.el[j] = (x.i8.el[j] > y.i8.el[j]) ? 0xFF : 0;
-  return out;
-};
-
-
-inline SSERegI sse_cmplt_epu8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<16; j++) out.u8.el[j] = (x.u8.el[j] < y.u8.el[j]) ? 0xFF : 0;
-  return out;
-};
-
-
-inline SSERegI sse_max_epu8(const SSERegI x, const SSERegI y) {
-  SSERegI out;
-  for (int j=0; j<16; j++) out.u8.el[j] = std::max(x.u8.el[j],y.u8.el[j]);
-  return out;
-};
-
-inline SSERegI sse_srli_epu8(const SSERegI x, const unsigned int i) {
-  SSERegI out;
-  for (int j=0; j<16; j++) out.u8.el[j] = x.u8.el[j] >> i;
-  return out;
-};
-
-/* compute the max val of a vector */
-inline uint8_t nosse_max_score_u8(const SSERegI x) {
-  const uint8_t out0 = std::max(x.u8.el[0],x.u8.el[1]);
-  const uint8_t out1 = std::max(x.u8.el[2],x.u8.el[3]);
-  const uint8_t out2 = std::max(x.u8.el[4],x.u8.el[5]);
-  const uint8_t out3 = std::max(x.u8.el[6],x.u8.el[7]);
-  const uint8_t out4 = std::max(x.u8.el[8],x.u8.el[9]);
-  const uint8_t out5 = std::max(x.u8.el[10],x.u8.el[11]);
-  const uint8_t out6 = std::max(x.u8.el[12],x.u8.el[13]);
-  const uint8_t out7 = std::max(x.u8.el[14],x.u8.el[15]);
-  const uint8_t out01 = std::max(out0,out1);
-  const uint8_t out23 = std::max(out2,out3);
-  const uint8_t out45 = std::max(out4,out5);
-  const uint8_t out67 = std::max(out6,out7);
-  const uint8_t out0123 = std::max(out01,out23);
-  const uint8_t out4567 = std::max(out45,out67);
-  return std::max(out0123,out4567);
-}
-
-#define sse_max_score_u8(inval, outval) {outval = nosse_max_score_u8(inval);}
 
 #else /* no SSE_DISABLE */
 
@@ -376,118 +260,69 @@ inline uint8_t nosse_max_score_u8(const SSERegI x) {
 
 #if defined(__aarch64__) || defined(__s390x__) || defined(__powerpc__)
 typedef simde__m128i SSERegI;
-#define sse_adds_epi16(x, y) simde_mm_adds_epi16(x, y)
-#define sse_adds_epu8(x, y) simde_mm_adds_epu8(x, y)
-#define sse_cmpeq_epi16(x, y) simde_mm_cmpeq_epi16(x, y)
-#define sse_cmpeq_epi8(x, y) simde_mm_cmpeq_epi8(x, y)
-#define sse_cmpgt_epi16(x, y) simde_mm_cmpgt_epi16(x, y)
-#define sse_cmpgt_epi8(x, y) simde_mm_cmpgt_epi8(x, y)
-#define sse_cmplt_epi16(x, y) simde_mm_cmplt_epi16(x, y)
-#define sse_cmplt_epu8(x, y) simde_mm_cmplt_epu8(x, y)
-#define sse_extract_epi16(x, y) simde_mm_extract_epi16(x, y)
-#define sse_insert_epi16(x, y, z) simde_mm_insert_epi16(x, y, z)
 #define sse_load_siall(x) simde_mm_load_si128(x)
-#define sse_max_epi16(x, y) simde_mm_max_epi16(x, y)
-#define sse_max_epu8(x, y) simde_mm_max_epu8(x, y)
-#define sse_movemask_epi8(x) simde_mm_movemask_epi8(x)
-#define sse_or_siall(x, y) simde_mm_or_si128(x, y)
-#define sse_setzero_siall() simde_mm_setzero_si128()
-#define sse_slli_epi16(x, y) simde_mm_slli_epi16(x, y)
-#define sse_slli_siall(x, y) simde_mm_slli_si128(x, y)
-#define sse_srli_epi16(x, y) simde_mm_srli_epi16(x, y)
-#define sse_srli_epu8(x, y) simde_mm_srli_epu8(x, y)
-#define sse_srli_siall(x, y) simde_mm_srli_si128(x, y)
 #define sse_store_siall(x, y) simde_mm_store_si128(x, y)
-#define sse_subs_epi16(x, y) simde_mm_subs_epi16(x, y)
-#define sse_subs_epu8(x, y) simde_mm_subs_epu8(x, y)
-#define sse_xor_siall(x, y) simde_mm_xor_si128(x, y)
-#define sse_set1_epi16(x) simde_mm_set1_epi16(x)
 #define sse_set1_epi8(x) simde_mm_set1_epi8(x)
+#define sse_subs_epu8(x, y) simde_mm_subs_epu8(x, y)
+#define sse_setzero_siall() simde_mm_setzero_si128()
+#define sse_max_epu8(x, y) simde_mm_max_epu8(x, y)
+#define sse_or_siall(x, y) simde_mm_or_si128(x, y)
+
+#define sse_insert_epi16(x, y, z) simde_mm_insert_epi16(x, y, z)
+#define sse_cmpeq_epi8(x, y) simde_mm_cmpeq_epi8(x, y)
+#define sse_movemask_epi8(x) simde_mm_movemask_epi8(x)
+#define sse_slli_siall(x, y) simde_mm_slli_si128(x, y)
+
+
+#define sse_adds_epi16(x, y) simde_mm_adds_epi16(x, y)
+#define sse_subs_epi16(x, y) simde_mm_subs_epi16(x, y)
+#define sse_set1_epi16(x) simde_mm_set1_epi16(x)
+#define sse_max_epi16(x, y) simde_mm_max_epi16(x, y)
+#define sse_slli_epi16(x, y) simde_mm_slli_epi16(x, y)
+
+#define sse_cmpeq_epi16(x, y) simde_mm_cmpeq_epi16(x, y)
+#define sse_cmpgt_epi16(x, y) simde_mm_cmpgt_epi16(x, y)
 
 #else
 typedef __m128i SSERegI;
-#define sse_adds_epi16(x, y) _mm_adds_epi16(x, y)
-#define sse_adds_epu8(x, y) _mm_adds_epu8(x, y)
-#define sse_cmpeq_epi16(x, y) _mm_cmpeq_epi16(x, y)
-#define sse_cmpeq_epi8(x, y) _mm_cmpeq_epi8(x, y)
-#define sse_cmpgt_epi16(x, y) _mm_cmpgt_epi16(x, y)
-#define sse_cmpgt_epi8(x, y) _mm_cmpgt_epi8(x, y)
-#define sse_cmplt_epi16(x, y) _mm_cmplt_epi16(x, y)
-#define sse_cmplt_epu8(x, y) _mm_cmplt_epu8(x, y)
-#define sse_extract_epi16(x, y) _mm_extract_epi16(x, y)
-#define sse_insert_epi16(x, y, z) _mm_insert_epi16(x, y, z)
 #define sse_load_siall(x) _mm_load_si128(x)
-#define sse_max_epi16(x, y) _mm_max_epi16(x, y)
-#define sse_max_epu8(x, y) _mm_max_epu8(x, y)
-#define sse_movemask_epi8(x) _mm_movemask_epi8(x)
-#define sse_or_siall(x, y) _mm_or_si128(x, y)
-#define sse_setzero_siall() _mm_setzero_si128()
-#define sse_slli_epi16(x, y) _mm_slli_epi16(x, y)
-#define sse_slli_siall(x, y) _mm_slli_si128(x, y)
-#define sse_srli_epi16(x, y) _mm_srli_epi16(x, y)
-#define sse_srli_epu8(x, y) _mm_srli_epu8(x, y)
-#define sse_srli_siall(x, y) _mm_srli_si128(x, y)
 #define sse_store_siall(x, y) _mm_store_si128(x, y)
-#define sse_subs_epi16(x, y) _mm_subs_epi16(x, y)
-#define sse_subs_epu8(x, y) _mm_subs_epu8(x, y)
-#define sse_xor_siall(x, y) _mm_xor_si128(x, y)
-#define sse_set1_epi16(x) _mm_set1_epi16(x)
 #define sse_set1_epi8(x) _mm_set1_epi8(x)
+#define sse_subs_epu8(x, y) _mm_subs_epu8(x, y)
+#define sse_setzero_siall() _mm_setzero_si128()
+#define sse_max_epu8(x, y) _mm_max_epu8(x, y)
+#define sse_or_siall(x, y) _mm_or_si128(x, y)
+
+#define sse_insert_epi16(x, y, z) _mm_insert_epi16(x, y, z)
+#define sse_cmpeq_epi8(x, y) _mm_cmpeq_epi8(x, y)
+#define sse_movemask_epi8(x) _mm_movemask_epi8(x)
+#define sse_slli_siall(x, y) _mm_slli_si128(x, y)
+
+
+#define sse_adds_epi16(x, y) _mm_adds_epi16(x, y)
+#define sse_subs_epi16(x, y) _mm_subs_epi16(x, y)
+#define sse_set1_epi16(x) _mm_set1_epi16(x)
+#define sse_max_epi16(x, y) _mm_max_epi16(x, y)
+#define sse_slli_epi16(x, y) _mm_slli_epi16(x, y)
+
+#define sse_cmpeq_epi16(x, y) _mm_cmpeq_epi16(x, y)
+#define sse_cmpgt_epi16(x, y) _mm_cmpgt_epi16(x, y)
 
 #endif
-
-/* compute the max val of a vector */
-#define sse_max_score_i16(inval, outval) { \
-		SSERegI vlmax = inval; \
-		SSERegI vltmp = sse_srli_siall(vlmax, 8); \
-		vlmax = sse_max_epi16(vlmax, vltmp); \
-		vltmp = sse_srli_siall(vlmax, 4); \
-		vlmax = sse_max_epi16(vlmax, vltmp); \
-		vltmp = sse_srli_siall(vlmax, 2); \
-		vlmax = sse_max_epi16(vlmax, vltmp); \
-		outval = sse_extract_epi16(vlmax, 0); \
-}
-
-#define sse_max_score_u8(inval, outval) { \
-		SSERegI vlmax = inval; \
-		SSERegI vltmp = sse_srli_siall(vlmax, 8); \
-		vlmax = sse_max_epu8(vlmax, vltmp); \
-		vltmp = sse_srli_siall(vlmax, 4); \
-		vlmax = sse_max_epu8(vlmax, vltmp); \
-		vltmp = sse_srli_siall(vlmax, 2); \
-		vlmax = sse_max_epu8(vlmax, vltmp); \
-		vltmp = sse_srli_siall(vlmax, 1); \
-		vlmax = sse_max_epu8(vlmax, vltmp); \
-		outval = sse_extract_epi16(vlmax, 0); \
-		outval = outval & 0x00ff; \
-}
 
 #endif /* SSE_DISABLE */
 
 #endif /* SSE_AVX2 */
 
 /* Fill all elements in outval with inval */
-/* opt version will check for special ivals that can use shortcuts */
-#define sse_fill_i16(inval, outval) outval=sse_set1_epi16(inval)
 #define sse_fill_i8(inval, outval) outval=sse_set1_epi8(inval)
 
-#define sse_fill_i16_opt(inval, outval) { \
-	if (inval==0xffff) outval = sse_cmpeq_epi16(outval, outval); \
-	else if (inval==0) outval = sse_xor_siall(outval, outval); \
-	else sse_fill_i16(inval, outval); \
-}
+#define sse_anygt_epu8(val1,val2,outval) { \
+	SSERegI s = sse_subs_epu8(val1, val2); \
+        s = sse_cmpeq_epi8(s, vzero); \
+        outval = (sse_movemask_epi8(s) != SSE_MASK_ALL); }
 
-#define sse_fill_u8(inval, outval) {\
-	int invalloc = inval; \
-	int dup = (invalloc << 8) | (invalloc & 0x00ff); \
-	sse_fill_i16(dup, outval); \
-}
-
-#define sse_fill_u8_opt(inval, outval) {\
-	if (inval==0xff) outval = sse_cmpeq_epi16(outval, outval); \
-	else if (inval==0) outval = sse_xor_siall(outval, outval); \
-	else sse_fill_u8(inval, outval); \
-}
+#define sse_slli_u8(x) sse_slli_siall(x,1)
 
 #ifndef SSE_DISABLE
 
@@ -500,5 +335,19 @@ typedef __m128i SSERegI;
 #endif /* SSE_DISABLE */
 
 #define sse_set_low_u8(inval, outval) sse_set_low_i16(inval, outval)
+
+
+
+#define sse_slli_i16(x) sse_slli_siall(x, 2)
+
+/* Fill all elements in outval with inval */
+/* opt version will check for special ivals that can use shortcuts */
+#define sse_fill_i16(inval, outval) outval=sse_set1_epi16(inval)
+
+#define sse_anygt_epi16(val1,val2,outval) { \
+	SSERegI s = sse_cmpgt_epi16(val1, val2); \
+        outval = (sse_movemask_epi8(s) != 0); }
+
+#define sse_setall_ff(val) val =  sse_cmpeq_epi16(val,val)
 
 #endif /* SSE_WRAP_H_ */

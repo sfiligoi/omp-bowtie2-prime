@@ -4057,14 +4057,6 @@ public:
 		list_(&list)
 	{ }
 
-	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		list_.set_alloc(alloc, propagate_alloc);
-	}
-
-	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		list_.set_alloc(arg);
-	}
-
 	/**
 	 * Initialize from a piece of another PListSlice.
 	 */
@@ -4234,14 +4226,6 @@ public:
 		len_(len),
 		list_(&list)
 	{ }
-
-	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		list_.set_alloc(alloc, propagate_alloc);
-	}
-
-	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		list_.set_alloc(arg);
-	}
 
 	/**
 	 * Initialize from a piece of another PListSlice.
