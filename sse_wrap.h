@@ -55,9 +55,9 @@ typedef __m256i SSERegI;
 #define sse_subs_epi16(x, y) _mm256_subs_epi16(x, y)
 #define sse_set1_epi16(x) _mm256_set1_epi16(x)
 #define sse_max_epi16(x, y) _mm256_max_epi16(x, y)
+#define sse_slli_epi16(x, y) _mm256_slli_epi16(x, y)
 
 #define sse_cmpeq_epi16(x, y) _mm256_cmpeq_epi16(x, y)
-#define sse_slli_epi16(x, y) _mm256_slli_epi16(x, y)
 #define sse_cmpgt_epi16(x, y) _mm256_cmpgt_epi16(x, y)
 
 #else /* no SSE_AVX2 */
@@ -205,13 +205,13 @@ inline SSERegI sse_max_epi16(const SSERegI x, const SSERegI y) {
   return out;
 };
 
-
-
 inline SSERegI sse_slli_epi16(const SSERegI x, const unsigned int i) {
   SSERegI out;
   for (int j=0; j<8; j++) out.u16.el[j] = x.u16.el[j] << i;
   return out;
 };
+
+
 
 // TODO: Only used in sse_setall_ff
 inline SSERegI sse_cmpeq_epi16(const SSERegI x, const SSERegI y) {
@@ -278,9 +278,9 @@ typedef simde__m128i SSERegI;
 #define sse_subs_epi16(x, y) simde_mm_subs_epi16(x, y)
 #define sse_set1_epi16(x) simde_mm_set1_epi16(x)
 #define sse_max_epi16(x, y) simde_mm_max_epi16(x, y)
+#define sse_slli_epi16(x, y) simde_mm_slli_epi16(x, y)
 
 #define sse_cmpeq_epi16(x, y) simde_mm_cmpeq_epi16(x, y)
-#define sse_slli_epi16(x, y) simde_mm_slli_epi16(x, y)
 #define sse_cmpgt_epi16(x, y) simde_mm_cmpgt_epi16(x, y)
 
 #else
@@ -303,9 +303,9 @@ typedef __m128i SSERegI;
 #define sse_subs_epi16(x, y) _mm_subs_epi16(x, y)
 #define sse_set1_epi16(x) _mm_set1_epi16(x)
 #define sse_max_epi16(x, y) _mm_max_epi16(x, y)
+#define sse_slli_epi16(x, y) _mm_slli_epi16(x, y)
 
 #define sse_cmpeq_epi16(x, y) _mm_cmpeq_epi16(x, y)
-#define sse_slli_epi16(x, y) _mm_slli_epi16(x, y)
 #define sse_cmpgt_epi16(x, y) _mm_cmpgt_epi16(x, y)
 
 #endif
@@ -338,7 +338,7 @@ typedef __m128i SSERegI;
 
 
 
-#define sse_slli_i16(x) sse_slli_epi16(vf,1)
+#define sse_slli_i16(x) sse_slli_siall(x, 2)
 
 /* Fill all elements in outval with inval */
 /* opt version will check for special ivals that can use shortcuts */
