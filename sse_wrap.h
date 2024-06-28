@@ -58,6 +58,7 @@ typedef __m256i SSERegI;
 
 #define sse_cmpeq_epi16(x, y) _mm256_cmpeq_epi16(x, y)
 #define sse_slli_epi16(x, y) _mm256_slli_epi16(x, y)
+#define sse_cmpgt_epi16(x, y) _mm256_cmpgt_epi16(x, y)
 
 #else /* no SSE_AVX2 */
 
@@ -280,6 +281,7 @@ typedef simde__m128i SSERegI;
 
 #define sse_cmpeq_epi16(x, y) simde_mm_cmpeq_epi16(x, y)
 #define sse_slli_epi16(x, y) simde_mm_slli_epi16(x, y)
+#define sse_cmpgt_epi16(x, y) simde_mm_cmpgt_epi16(x, y)
 
 #else
 typedef __m128i SSERegI;
@@ -304,6 +306,7 @@ typedef __m128i SSERegI;
 
 #define sse_cmpeq_epi16(x, y) _mm_cmpeq_epi16(x, y)
 #define sse_slli_epi16(x, y) _mm_slli_epi16(x, y)
+#define sse_cmpgt_epi16(x, y) _mm_cmpgt_epi16(x, y)
 
 #endif
 
