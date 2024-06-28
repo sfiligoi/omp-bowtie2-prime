@@ -629,8 +629,10 @@ bool SwAligner::alignEnd2EndSseI16(
 #endif
 
 	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
+#ifdef ENABLE_SSE_METRICS
 	SSEMetrics& met = sseMet_;
 	if(!debug) met.dp++;
+#endif
 	buildQueryProfileEnd2EndSseI16(fw_);
 	assert(!d.profbuf_.empty());
 
@@ -665,7 +667,9 @@ bool SwAligner::alignEnd2EndSseI16(
 	// should never get in here, but just in case
 	if (rfi_>=rff_) {
 		btncand_.clear();
+#ifdef ENABLE_SSE_METRICS
 		if(!debug) met.dpfail++;
+#endif
 		best = MIN_I64;
 		return false;
 	}
@@ -687,6 +691,7 @@ bool SwAligner::alignEnd2EndSseI16(
 	state_ = STATE_ALIGNED;
 	cural_ = 0;
 
+#ifdef ENABLE_SSE_METRICS
 	// Update metrics
 	if(!debug) {
 		size_t ninner = (rff_ - rfi_) * iter;
@@ -695,12 +700,15 @@ bool SwAligner::alignEnd2EndSseI16(
 		met.inner += ninner;                    // DP inner loop iters
 		met.fixup += 0; // deprecated nfixup;                    // DP fixup loop iters
 	}
+#endif
 	
 	// Did we find a solution?
 	const TAlScore score = (TAlScore)(lrmax - 0xff);
 	if(score < minsc_) {
 		// no
+#ifdef ENABLE_SSE_METRICS
 		if(!debug) met.dpfail++;
+#endif
 		best = score;
 		return false;
 	}
@@ -708,16 +716,22 @@ bool SwAligner::alignEnd2EndSseI16(
 	// Could we have saturated?
 	if(lrmax == MIN_I16) {
 		// yes
+#ifdef ENABLE_SSE_METRICS
 		if(!debug) met.dpsat++;
+#endif
 		best = MIN_I64;
 		return false;
 	}
 	
 	// Return largest score
+#ifdef ENABLE_SSE_METRICS
 	if(!debug) met.dpsucc++;
+#endif
 
 	if (btnfilled>0) {
+#ifdef ENABLE_SSE_METRICS
 		met.gathsol += btnfilled;
+#endif
 		d.mat_.initMasks();
 		btncand_.sort();
 	}
@@ -811,8 +825,10 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	assert_lt(row, dpRows());
 	assert_lt(col, (size_t)(rff_ - rfi_));
 	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
+#ifdef ENABLE_SSE_METRICS
 	SSEMetrics& met = sseMet_;
 	met.bt++;
+#endif
 	assert(!d.profbuf_.empty());
 	assert_lt(row, rd_->length());
 	btnstack_.clear(); // empty the backtrack stack
@@ -835,7 +851,9 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	SSERegI *cur_vec, *left_vec, *up_vec, *upleft_vec;
 	NEW_ROW_COL(row, col);
 	while((int)row >= 0) {
+#ifdef ENABLE_SSE_METRICS
 		met.btcell++;
+#endif
 		nbts++;
 		int readc = (*rd_)[rdi_ + row];
 		int refm  = (int)rf_[rfi_ + col];
@@ -1094,7 +1112,9 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 			} else {
 				// No branch points to revisit; just give up
 				res.reset();
+#ifdef ENABLE_SSE_METRICS
 				met.btfail++; // DP backtraces failed
+#endif
 				return false;
 			}
 		}
@@ -1300,7 +1320,9 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 		// alignment that lies partially outside the dynamic programming
 		// rectangle.
 		res.reset();
+#ifdef ENABLE_SSE_METRICS
 		met.corerej++;
+#endif
 		return false;
 	}
 	int readC = (*rd_)[rdi_+row];      // get last char in read
@@ -1323,7 +1345,9 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	if(score.ns_ > nceil_) {
 		// Alignment has too many Ns in it!
 		res.reset();
+#ifdef ENABLE_SSE_METRICS
 		met.nrej++;
+#endif
 		return false;
 	}
 	res.reverse();
@@ -1382,6 +1406,8 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 		assert(0);
 	}
 #endif
+#ifdef ENABLE_SSE_METRICS
 	met.btsucc++; // DP backtraces succeeded
+#endif
 	return true;
 }

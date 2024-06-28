@@ -374,6 +374,7 @@ public:
 	 */
 	size_t numAlignmentsReported() const { return cural_; }
 
+#ifdef ENABLE_SSE_METRICS
 	/**
 	 * Merge tallies in the counters related to filling the DP table.
 	 */
@@ -396,7 +397,7 @@ public:
 		sseMet_.reset();
 		nbtfiltst_ = nbtfiltsc_ = nbtfiltdo_ = 0;
 	}
-	
+#endif	
 	/**
 	 * Return the size of the DP problem.
 	 */
@@ -491,7 +492,12 @@ protected:
 	bool                sseI16fwBuilt_;  // built fw query profile, 16-bit score
 	bool                sseI16rcBuilt_;  // built rc query profile, 16-bit score
 
+#ifdef ENABLE_SSE_METRICS
 	SSEMetrics	    sseMet_;
+	uint64_t nbtfiltst_; // # candidates filtered b/c starting cell was seen
+	uint64_t nbtfiltsc_; // # candidates filtered b/c score uninteresting
+	uint64_t nbtfiltdo_; // # candidates filtered b/c dominated by other cell
+#endif
 
 	int                 state_;        // state
 	bool                initedRead_;   // true iff initialized with initRead
@@ -508,9 +514,6 @@ protected:
 	size_t              lastsolcol_;   // last DP col with valid cell
 	size_t              cural_;        // index of next alignment to be given
 	
-	uint64_t nbtfiltst_; // # candidates filtered b/c starting cell was seen
-	uint64_t nbtfiltsc_; // # candidates filtered b/c score uninteresting
-	uint64_t nbtfiltdo_; // # candidates filtered b/c dominated by other cell
 	
 	ASSERT_ONLY(SStringExpandable<uint32_t> tmp_destU32_);
 	ASSERT_ONLY(BTDnaString tmp_editstr_, tmp_refstr_);

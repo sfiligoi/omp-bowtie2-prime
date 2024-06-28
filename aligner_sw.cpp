@@ -261,7 +261,10 @@ bool SwAligner::nextAlignment(
 		// next candidate
 		if(btncand_[cural_].score < minsc) {
 			btncand_[cural_].fate = BT_CAND_FATE_FILT_SCORE;
-			nbtfiltsc_++; cural_++; continue;
+#ifdef ENABLE_SSE_METRICS
+			nbtfiltsc_++;
+#endif
+			cural_++; continue;
 		}
 		nbts = 0;
 		size_t row = btncand_[cural_].row;
@@ -275,7 +278,10 @@ bool SwAligner::nextAlignment(
 				// moved through this cell
 				btncand_[cural_].fate = BT_CAND_FATE_FILT_START;
 				//cerr << "  skipped becuase starting cell was covered" << endl;
-				nbtfiltst_++; cural_++; continue;
+#ifdef ENABLE_SSE_METRICS
+				nbtfiltst_++;
+#endif
+				cural_++; continue;
 			}
 		} else {
 			SSEData& d = fw_ ? sseU8fw_ : sseU8rc_;
@@ -284,7 +290,10 @@ bool SwAligner::nextAlignment(
 				// moved through this cell
 				btncand_[cural_].fate = BT_CAND_FATE_FILT_START;
 				//cerr << "  skipped becuase starting cell was covered" << endl;
-				nbtfiltst_++; cural_++; continue;
+#ifdef ENABLE_SSE_METRICS
+				nbtfiltst_++;
+#endif
+				cural_++; continue;
 			}
 		}
 		assert(sc_->monotone);
