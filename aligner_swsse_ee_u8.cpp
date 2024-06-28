@@ -225,55 +225,6 @@ static bool cellOkEnd2EndU8(
 }
 #endif /*ndef NDEBUG*/
 
-#ifdef NDEBUG
-
-#define assert_all_eq0(x)
-#define assert_all_gt(x, y)
-#define assert_all_gt_lo(x)
-#define assert_all_lt(x, y)
-#define assert_all_lt_hi(x)
-
-#else
-
-#define assert_all_eq0(x) { \
-	SSERegI z = sse_setzero_siall(); \
-	SSERegI tmp = sse_setzero_siall(); \
-	z = sse_xor_siall(z, z); \
-	tmp = sse_cmpeq_epi16(x, z); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_gt(x, y) { \
-	SSERegI tmp = sse_cmpgt_epu8(x, y); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_gt_lo(x) { \
-	SSERegI z = sse_setzero_siall(); \
-	SSERegI tmp = sse_setzero_siall(); \
-	z = sse_xor_siall(z, z); \
-	tmp = sse_cmpgt_epu8(x, z); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_lt(x, y) { \
-	SSERegI z = sse_setzero_siall(); \
-	z = sse_xor_siall(z, z); \
-	SSERegI tmp = sse_subs_epu8(y, x); \
-	tmp = sse_cmpeq_epi16(tmp, z); \
-	assert_eq(0x0000, sse_movemask_epi8(tmp)); \
-}
-
-#define assert_all_lt_hi(x) { \
-	SSERegI z = sse_setzero_siall(); \
-	SSERegI tmp = sse_setzero_siall(); \
-	z = sse_cmpeq_epu8(z, z); \
-	z = sse_srli_epu8(z, 1); \
-	tmp = sse_cmplt_epu8(x, z); \
-	assert_eq(SSE_MASK_ALL, sse_movemask_epi8(tmp)); \
-}
-#endif
-
 /**
  * Given a filled-in DP table, populate the btncand_ list with candidate cells
  * that might be at the ends of valid alignments.  No need to do this unless
