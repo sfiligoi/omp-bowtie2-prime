@@ -66,13 +66,26 @@ typedef SSEReg  SSEMem;  // memory and register representation are the same
 
 #else /* no SSE_AVX2 */
 
-#ifdef SSE_SW4
+#if defined(SSE_SW16) || defined(SSE_SW8) || defined(SSE_SW4) || defined(SSE_SW2)
 
 #define SSE_DISABLE 1
 
+#if defined(SSE_SW16)
+#define NBYTES_PER_REG 16
+#define BYTES_LOG2_PER_REG 4
+
+#elif defined(SSE_SW8)
+#define NBYTES_PER_REG 8
+#define BYTES_LOG2_PER_REG 3
+
+#elif defined(SSE_SW4)
 #define NBYTES_PER_REG 4
 #define BYTES_LOG2_PER_REG 2
-#define SSE_MASK_ALL 0xff
+
+#elif defined(SSE_SW2)
+#define NBYTES_PER_REG 2
+#define BYTES_LOG2_PER_REG 1
+#endif
 
 #include <algorithm>
 #include <stdint.h>
@@ -137,8 +150,27 @@ inline SSEReg sse_or_siall(const SSEReg x, const SSEReg y) {
   return out;
 };
 
+#if defined(SSE_SW16)
+#define sse_anygt_epu8(val1,val2,outval) { \
+        outval = (val1.el[0]>val2.el[0]) | (val1.el[1]>val2.el[1]) |(val1.el[2]>val2.el[2]) |(val1.el[3]>val2.el[3]) || \
+                 (val1.el[4]>val2.el[4]) | (val1.el[5]>val2.el[5]) |(val1.el[6]>val2.el[6]) |(val1.el[7]>val2.el[7]) || \
+                 (val1.el[8]>val2.el[8]) | (val1.el[9]>val2.el[9]) |(val1.el[10]>val2.el[10]) |(val1.el[11]>val2.el[11]) || \
+                 (val1.el[12]>val2.el[12]) | (val1.el[13]>val2.el[13]) |(val1.el[14]>val2.el[14]) |(val1.el[15]>val2.el[15]); }
+
+#elif defined(SSE_SW8)
+#define sse_anygt_epu8(val1,val2,outval) { \
+        outval = (val1.el[0]>val2.el[0]) | (val1.el[1]>val2.el[1]) |(val1.el[2]>val2.el[2]) |(val1.el[3]>val2.el[3]) || \
+                 (val1.el[4]>val2.el[4]) | (val1.el[5]>val2.el[5]) |(val1.el[6]>val2.el[6]) |(val1.el[7]>val2.el[7]); }
+
+#elif defined(SSE_SW4)
 #define sse_anygt_epu8(val1,val2,outval) { \
         outval = (val1.el[0]>val2.el[0]) | (val1.el[1]>val2.el[1]) |(val1.el[2]>val2.el[2]) |(val1.el[3]>val2.el[3]); }
+
+#elif defined(SSE_SW2)
+#define sse_anygt_epu8(val1,val2,outval) { \
+        outval = (val1.el[0]>val2.el[0]) | (val1.el[1]>val2.el[1]); }
+
+#endif
 
 inline SSEReg sse_slli_u8(const SSEReg x) {
   SSEReg out;
