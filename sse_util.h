@@ -148,7 +148,7 @@ public:
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSEReg& operator[](size_t i) {
+	inline SSEMem& operator[](size_t i) {
 		assert_lt(i, cur_);
 		return list_[i];
 	}
@@ -156,7 +156,7 @@ public:
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSEReg operator[](size_t i) const {
+	inline SSEMem operator[](size_t i) const {
 		assert_lt(i, cur_);
 		return list_[i];
 	}
@@ -164,14 +164,14 @@ public:
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSEReg& get(size_t i) {
+	inline SSEMem& get(size_t i) {
 		return operator[](i);
 	}
 	
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSEReg get(size_t i) const {
+	inline SSEMem get(size_t i) const {
 		return operator[](i);
 	}
 

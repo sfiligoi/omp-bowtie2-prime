@@ -66,114 +66,94 @@ typedef SSEReg  SSEMem;  // memory and register representation are the same
 
 #else /* no SSE_AVX2 */
 
-#define NBYTES_PER_REG 16
-#define BYTES_LOG2_PER_REG 4
-#define SSE_MASK_ALL 0xffff
+#ifdef SSE_SW4
 
-#ifdef SSE_DISABLE
+#define SSE_DISABLE 1
+
+#define NBYTES_PER_REG 4
+#define BYTES_LOG2_PER_REG 2
+#define SSE_MASK_ALL 0xff
 
 #include <algorithm>
 #include <stdint.h>
 
 typedef struct {
-  int16_t el[8];
-} SSERegI16;
+  int16_t el[NBYTES_PER_REG];
+
+  // need to bound to emulate u8
+  static inline uint8_t enforce_u8(int16_t one_el) {
+    return std::min(std::max(int16_t(0),one_el),int16_t(255));
+  }
+} SSEReg;  // We will use higher precision work area, so we do not have to worry about overflow during compute
 
 typedef struct {
-  uint16_t el[8];
-} SSERegU16;
+  uint8_t el[NBYTES_PER_REG];
 
-typedef struct {
-  int8_t el[16];
-} SSERegI8;
+  // need to bound to emulate u8
+  inline void load(const SSEReg val) {
+    for (int j=0; j<NBYTES_PER_REG; j++) el[j] = SSEReg::enforce_u8(val.el[j]);
+  }
+} SSEMem;  // Memory representation is indeed uint8_t
 
-typedef struct {
-  uint8_t el[16];
-} SSERegU8;
-
-typedef union {
-  SSERegI16 i16;
-  SSERegU16 u16;
-  SSERegI8  i8;
-  SSERegU8  u8;
-} SSERegI;
-typedef SSEReg  SSEMem;  // memory and register representation are the same
-
-inline SSEReg sse_set1_epi8(const int8_t a) {
+inline SSEReg sse_set1_epi8(const int16_t a) {
   SSEReg out;
-  for (int j=0; j<16; j++) out.i8.el[j] = a;
+  for (int j=0; j<NBYTES_PER_REG; j++) out.el[j] = a;
   return out;
 };
 
+// not checking for overflow at this point
 inline SSEReg sse_subs_epu8(const SSEReg x, const SSEReg y) {
   SSEReg out;
-  for (int j=0; j<16; j++) {
-     int16_t x1 = x.u8.el[j];
-     int16_t y1 = y.u8.el[j];
-     int16_t tmp16 = x1 - y1;
-     uint8_t tmp = std::min(std::max(int16_t(0),tmp16),int16_t(255));
-     out.u8.el[j] = tmp;
-  }
+  for (int j=0; j<NBYTES_PER_REG; j++) out.el[j] = x.el[j] - y.el[j];
   return out;
 };
 
-inline SSEReg sse_load_siall(SSEMem const *x) {
-  return x[0];
+inline SSEReg sse_load_u8(SSEMem const *x) {
+  SSEReg out;
+  for (int j=0; j<NBYTES_PER_REG; j++) out.el[j] = x->el[j];
+  return out;
 };
 
-inline void sse_store_siall(SSEMem *x, const SSEReg y) {
-  x[0] = y;
+inline void sse_store_u8(SSEMem *x, const SSEReg y) {
+  x->load(y);
 };
 
 inline SSEReg sse_setzero_siall() {
   SSEReg out;
-  for (int j=0; j<8; j++) out.u16.el[j] = 0;
+  for (int j=0; j<NBYTES_PER_REG; j++) out.el[j] = 0;
   return out;
 };
 
 inline SSEReg sse_max_epu8(const SSEReg x, const SSEReg y) {
   SSEReg out;
-  for (int j=0; j<16; j++) out.u8.el[j] = std::max(x.u8.el[j],y.u8.el[j]);
+  for (int j=0; j<NBYTES_PER_REG; j++) out.el[j] = std::max(x.el[j],y.el[j]);
   return out;
 };
 
+// Note: We are assuming x and y are already properly bound
 inline SSEReg sse_or_siall(const SSEReg x, const SSEReg y) {
   SSEReg out;
-  for (int j=0; j<8; j++) out.u16.el[j] = x.u16.el[j] | y.u16.el[j];
+  for (int j=0; j<NBYTES_PER_REG; j++) out.el[j] = x.el[j] | y.el[j];
   return out;
 };
 
+#define sse_anygt_epu8(val1,val2,outval) { \
+        outval = (val1.el[0]>val2.el[0]) | (val1.el[1]>val2.el[1]) |(val1.el[2]>val2.el[2]) |(val1.el[3]>val2.el[3]); }
 
-// TODO: We really just need sse_anygt_epu8
-inline SSEReg sse_cmpeq_epi8(const SSEReg x, const SSEReg y) {
+inline SSEReg sse_slli_u8(const SSEReg x) {
   SSEReg out;
-  for (int j=0; j<16; j++) out.u8.el[j] = (x.u8.el[j] == y.u8.el[j]) ? 0xFF : 0;
+  out.el[0] = 0;
+  for (int j=1; j<NBYTES_PER_REG; j++) out.el[j] = x.el[j-1];
   return out;
 };
 
-inline uint16_t sse_movemask_epi8(const SSEReg x) {
-  uint16_t out = 0;
-  for (int j=0; j<16; j++) out |= ((uint16_t)(x.u8.el[j]>>7)) << j;
-  return out;
-};
-
-inline SSEReg sse_slli_siall(const SSEReg x, const unsigned int i) {
-  SSEReg out;
-  if (i==2) {
-     out.u16.el[0] = 0;
-     for (int j=1; j<8; j++) out.u16.el[j] = x.u16.el[j-1];
-  } else if (i==1) {
-     out.u8.el[0] = 0;
-     for (int j=1; j<16; j++) out.u8.el[j] = x.u8.el[j-1];
-  } else {
-     throw 1; // unsupported
-  }
-  return out;
-};
-
+#define sse_set_low_u8(v, outval) outval.el[0] = v
 
 #ifdef ENABLE_I16
-// Note: We are not using saturation, not needed
+
+//
+// TODO: Right now ENABLE_I16 is not supported with SW simulation
+//
 
 inline SSEReg sse_adds_epi16(const SSEReg x, const SSEReg y) {
   SSEReg out;
@@ -257,7 +237,11 @@ inline SSEReg nosse_set_low_i16(const uint16_t v) {
 
 #endif /* ENABLE_I16 */ 
 
-#else /* no SSE_DISABLE */
+#else /* no SSE_SW4 */
+
+#define NBYTES_PER_REG 16
+#define BYTES_LOG2_PER_REG 4
+#define SSE_MASK_ALL 0xffff
 
 #if defined(__aarch64__) || defined(__s390x__) || defined(__powerpc__)
 #include "simde/x86/sse2.h"
@@ -326,7 +310,7 @@ typedef SSEReg  SSEMem;  // memory and register representation are the same
 
 #endif
 
-#endif /* SSE_DISABLE */
+#endif /* not x86 */
 
 #endif /* SSE_AVX2 */
 
@@ -345,14 +329,14 @@ typedef SSEReg  SSEMem;  // memory and register representation are the same
 /* Fill all elements in outval with inval */
 #define sse_fill_i8(inval, outval) outval=sse_set1_epi8(inval)
 
+#ifndef SSE_DISABLE
+
+#define sse_slli_u8(x) sse_slli_siall(x,1)
+
 #define sse_anygt_epu8(val1,val2,outval) { \
 	SSEReg s = sse_subs_epu8(val1, val2); \
         s = sse_cmpeq_epi8(s, vzero); \
         outval = (sse_movemask_epi8(s) != SSE_MASK_ALL); }
-
-#define sse_slli_u8(x) sse_slli_siall(x,1)
-
-#ifndef SSE_DISABLE
 
 /* Set the low element with invl, all others to 0 */
 #define sse_set_low_i16(inval, outval) { \
@@ -360,9 +344,9 @@ typedef SSEReg  SSEMem;  // memory and register representation are the same
 	outval = sse_insert_epi16(outval, inval, 0); \
 }
 
-#endif /* SSE_DISABLE */
-
 #define sse_set_low_u8(inval, outval) sse_set_low_i16(inval, outval)
+
+#endif /* SSE_DISABLE */
 
 
 #ifdef ENABLE_I16
