@@ -91,33 +91,20 @@ typedef SSEReg  SSEMem;  // memory and register representation are the same
 #include <stdint.h>
 
 typedef struct {
-  int16_t el[NBYTES_PER_REG];
-
-  // need to bound to emulate u8
-  static inline uint8_t enforce_u8(int16_t one_el) {
-    return std::min(std::max(int16_t(0),one_el),int16_t(255));
-  }
-} SSEReg;  // We will use higher precision work area, so we do not have to worry about overflow during compute
-
-typedef struct {
   uint8_t el[NBYTES_PER_REG];
+} SSEReg;
+typedef SSEReg  SSEMem;  // memory and register representation are the same
 
-  // need to bound to emulate u8
-  inline void load(const SSEReg val) {
-    for (int j=0; j<NBYTES_PER_REG; j++) el[j] = SSEReg::enforce_u8(val.el[j]);
-  }
-} SSEMem;  // Memory representation is indeed uint8_t
 
-inline SSEReg sse_set1_epi8(const int16_t a) {
+inline SSEReg sse_set1_epi8(const uint8_t a) {
   SSEReg out;
   for (int j=0; j<NBYTES_PER_REG; j++) out.el[j] = a;
   return out;
 };
 
-// not checking for overflow at this point
 inline SSEReg sse_subs_epu8(const SSEReg x, const SSEReg y) {
   SSEReg out;
-  for (int j=0; j<NBYTES_PER_REG; j++) out.el[j] = x.el[j] - y.el[j];
+  for (int j=0; j<NBYTES_PER_REG; j++) out.el[j] = x.el[j] - std::min(x.el[j],y.el[j]);
   return out;
 };
 
@@ -128,7 +115,7 @@ inline SSEReg sse_load_u8(SSEMem const *x) {
 };
 
 inline void sse_store_u8(SSEMem *x, const SSEReg y) {
-  x->load(y);
+  for (int j=0; j<NBYTES_PER_REG; j++) x->el[j] = y.el[j];
 };
 
 inline SSEReg sse_setzero_siall() {
