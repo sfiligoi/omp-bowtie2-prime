@@ -325,6 +325,7 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 		return vf;
 }
 
+#if NBYTES_PER_REG>1
 template<typename TIdxSize>
 inline void EEU8_lazyF(const SSERegI vf0,
 			const TIdxSize iter, const size_t colstride,
@@ -395,6 +396,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 			ve = sse_load_siall(pvEStore);     // load next ve
 		}
 }
+#endif
 
 /**
  * Solve the current alignment problem using SSE instructions that operate on 16
@@ -505,11 +507,14 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
                         	pvHStore, pvEStore, pvFStore,
                         	rfgapo, rfgape, rdgapo, rdgape);
 
-		EEU8_lazyF(vf,
+		if constexpr(NBYTES_PER_REG>1) {
+			EEU8_lazyF(vf,
 				iter, colstride,
 				pvScore,
 				pvHStore, pvEStore, pvFStore,
 				rfgape, rdgapo);
+		}
+		// else, no need for lazyF
 		pvHLoad = pvHStore;    // new pvHLoad = pvHStore
 		
 		// Note: we may not want to extract from the final row

@@ -128,7 +128,6 @@ inline SSERegI sse_max_epu8(const SSERegI x, const SSERegI y) {
   return out;
 };
 
-// Note: We are assuming x and y are already properly bound
 inline SSERegI sse_or_siall(const SSERegI x, const SSERegI y) {
   SSERegI out;
   for (int j=0; j<NBYTES_PER_REG; j++) out.el[j] = x.el[j] | y.el[j];
@@ -257,7 +256,46 @@ inline SSERegI nosse_set_low_i16(const uint16_t v) {
 
 #endif /* ENABLE_I16 */ 
 
-#else /* no SSE_SW4 */
+#elif defined(SSE_SCALAR)
+
+#define SSE_DISABLE 1
+
+#define NBYTES_PER_REG 1
+#define BYTES_LOG2_PER_REG 0
+
+#include <algorithm>
+#include <stdint.h>
+
+typedef uint8_t SSERegI;
+
+
+inline SSERegI sse_set1_epi8(const uint8_t a) { return a; }
+
+inline SSERegI sse_subs_epu8(const SSERegI x, const SSERegI y) { return x - std::min(x,y); }
+
+inline SSERegI sse_load_siall(SSERegI const *x) { return *x; }
+
+inline void sse_store_siall(SSERegI *x, const SSERegI y) { *x = y; }
+
+inline SSERegI sse_setzero_siall() { return 0; }
+
+inline SSERegI sse_max_epu8(const SSERegI x, const SSERegI y) { return std::max(x,y); }
+
+inline SSERegI sse_or_siall(const SSERegI x, const SSERegI y) { return x | y; }
+
+#define sse_set_low_u8(v, outval) outval = v
+
+#define sse_slli_u8(x) 0
+
+#ifdef ENABLE_I16
+
+//
+// TODO: Right now ENABLE_I16 is not supported with SW simulation
+//
+
+#endif /* ENABLE_I16 */ 
+
+#else /* no SSE_SCALAR */
 
 #define NBYTES_PER_REG 16
 #define BYTES_LOG2_PER_REG 4
