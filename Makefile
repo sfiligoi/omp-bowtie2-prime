@@ -37,6 +37,7 @@ BOWTIE_SHARED_MEM :=
 #CXXFLAGS += -std=c++17 
 #CXXFLAGS += -std=c++17 -stdpar=multicore -DASM_PREFETCH
 CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -DASM_PREFETCH
+#CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -DSSE_SW8
 #CXXFLAGS += -std=c++17 -acc -gpu=cc86,unified -stdpar=gpu -Minfo=accel -DUSE_ACC_STDPAR
 #CXXFLAGS += -std=c++17 -acc -gpu=cc86,unified,managed -stdpar=gpu -Minfo=accel
 
