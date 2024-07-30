@@ -28,8 +28,7 @@
 #include "unique.cpp"
 #include "simple_func.cpp"
 #include "random_util.cpp"
-#include "aligner_bt.cpp"
-#include "sse_util.cpp"
+//#include "sse_util.cpp"
 #include "outq.cpp"
 #ifdef ENABLE_I16
 #include "aligner_swsse_ee_i16.cpp"

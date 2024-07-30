@@ -82,7 +82,6 @@
 #include "mask.h"
 #include "dp_framer.h"
 #include "aligner_swsse.h"
-#include "aligner_bt.h"
 
 #define QUAL2(d, f) sc_->mm((int)(*rd_)[rdi_ + d], \
 							(int)  rf_ [rfi_ + f], \
