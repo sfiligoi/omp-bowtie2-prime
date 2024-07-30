@@ -554,10 +554,8 @@ bool SwAligner::alignEnd2EndSseI16(
 	assert(initedRef() && initedRead());
 	assert_eq(STATE_INITED, state_);
 
-	assert_leq(rdf_, rd_->length());
-	assert_leq(rdf_, qu_->length());
+	assert_leq(rdlen_, qu_->length());
 	assert_lt(rfi_, rff_);
-	assert_lt(rdi_, rdf_);
 	assert_eq(rd_->length(), qu_->length());
 	assert_geq(sc_->gapbar, 1);
 	assert(repOk());
@@ -794,7 +792,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 		met.btcell++;
 #endif
 		nbts++;
-		int readc = (*rd_)[rdi_ + row];
+		int readc = (*rd_)[row];
 		int refm  = (int)rf_[rfi_ + col];
 		int readq = (*qu_)[row];
 		assert_leq(col, origCol);
@@ -1137,7 +1135,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				assert(ned.empty() || ned.back().pos >= row);
 				ned.push_back(e);
 				assert_geq(row, (size_t)sc_->gapbar);
-				assert_geq((int)(rdf_-rdi_-row-1), sc_->gapbar-1);
+				assert_geq((int)(rdlen_-row-1), sc_->gapbar-1);
 				row--;
 				ct = SSEMatrix::H;
 				int pen = sc_->refGapOpen();
@@ -1162,7 +1160,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				assert(ned.empty() || ned.back().pos >= row);
 				ned.push_back(e);
 				assert_geq(row, (size_t)sc_->gapbar);
-				assert_geq((int)(rdf_-rdi_-row-1), sc_->gapbar-1);
+				assert_geq((int)(rdlen_-row-1), sc_->gapbar-1);
 				row--;
 				ct = SSEMatrix::F;
 				int pen = sc_->refGapExtend();
@@ -1186,7 +1184,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				assert(ned.empty() || ned.back().pos >= row);
 				ned.push_back(e);
 				assert_geq(row, (size_t)sc_->gapbar);
-				assert_geq((int)(rdf_-rdi_-row-1), sc_->gapbar-1);
+				assert_geq((int)(rdlen_-row-1), sc_->gapbar-1);
 				col--;
 				ct = SSEMatrix::H;
 				int pen = sc_->readGapOpen();
@@ -1210,7 +1208,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				assert(ned.empty() || ned.back().pos >= row);
 				ned.push_back(e);
 				assert_geq(row, (size_t)sc_->gapbar);
-				assert_geq((int)(rdf_-rdi_-row-1), sc_->gapbar-1);
+				assert_geq((int)(rdlen_-row-1), sc_->gapbar-1);
 				col--;
 				ct = SSEMatrix::E;
 				int pen = sc_->readGapExtend();
@@ -1264,7 +1262,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 #endif
 		return false;
 	}
-	int readC = (*rd_)[rdi_+row];      // get last char in read
+	int readC = (*rd_)[row];      // get last char in read
 	int refNmask = (int)rf_[rfi_+col]; // get last ref char ref involved in aln
 	assert_gt(refNmask, 0);
 	int m = matchesEx(readC, refNmask);
@@ -1297,14 +1295,14 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	assert_lt(col + (size_t)rfi_, (size_t)rff_);
 	score.gaps_ = gaps;
 	score.edits_ = (int)ned.size();
-	score.basesAligned_ = (int)(rdf_ - rdi_ - trimBeg - trimEnd - score.edits_);
+	score.basesAligned_ = (int)(rdlen_ - trimBeg - trimEnd - score.edits_);
 	res.alres.setScore(score);
 	res.alres.setShape(
 		refidx_,                  // ref id
 		off + rfi_ + rect_->refl, // 0-based ref offset
 		reflen_,                  // reference length
 		fw_,                      // aligned to Watson?
-		rdf_ - rdi_,              // read length
+		rdlen_,                   // read length
 		true,                     // pretrim soft?
 		0,                        // pretrim 5' end
 		0,                        // pretrim 3' end

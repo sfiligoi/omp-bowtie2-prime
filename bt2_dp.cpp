@@ -717,7 +717,7 @@ int main(int argc, const char **argv) {
 					qualrc = qual;
 					qualrc.reverse();
 					//cerr << "Initing read with " << probs.size() << " problems" << endl;
-					sw.initRead(seq, seqrc, qual, qualrc, 0, seq.length(), sc);
+					sw.initRead(seq, seqrc, qual, qualrc, seq.length(), sc);
 					// Calculate minimum score
 					bool extend = true;
 					for(size_t j = 0; j < probs.size(); j++) {

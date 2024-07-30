@@ -83,11 +83,11 @@
 #include "dp_framer.h"
 #include "aligner_swsse.h"
 
-#define QUAL2(d, f) sc_->mm((int)(*rd_)[rdi_ + d], \
+#define QUAL2(d, f) sc_->mm((int)(*rd_)[d], \
 							(int)  rf_ [rfi_ + f], \
-							(int)(*qu_)[rdi_ + d] - 33)
-#define QUAL(d)     sc_->mm((int)(*rd_)[rdi_ + d], \
-							(int)(*qu_)[rdi_ + d] - 33)
+							(int)(*qu_)[d] - 33)
+#define QUAL(d)     sc_->mm((int)(*rd_)[d], \
+							(int)(*qu_)[d] - 33)
 #define N_SNP_PEN(c) (((int)rf_[rfi_ + c] > 15) ? sc_->n(30) : sc_->penSnp)
 
 /**
@@ -265,8 +265,7 @@ public:
 		const BTDnaString& rdrc, // read sequence for rc read
 		const BTString& qufw,    // read qualities for fw read
 		const BTString& qurc,    // read qualities for rc read
-		size_t rdi,              // offset of first read char to align
-		size_t rdf,              // offset of last read char to align
+		size_t rdlen,            // offset of last read char to align
 		const Scoring& sc);      // scoring scheme
 	
 	/**
@@ -425,7 +424,7 @@ protected:
 	 */
 	inline size_t dpRows() const {
 		assert(initedRead_);
-		return rdf_ - rdi_;
+		return rdlen_;
 	}
 
 #ifdef ENABLE_I16
@@ -501,8 +500,7 @@ protected:
 	const BTDnaString  *rdrc_;   // read sequence for rc read
 	const BTString     *qufw_;   // read qualities for fw read
 	const BTString     *qurc_;   // read qualities for rc read
-	TReadOff            rdi_;    // offset of first read char to align
-	TReadOff            rdf_;    // offset of last read char to align
+	TReadOff            rdlen_;   // offset of last read char to align
 	bool                fw_;     // true iff read sequence is original fw read
 	TRefId              refidx_; // id of reference aligned against
 	TRefOff             reflen_; // length of entire reference sequence

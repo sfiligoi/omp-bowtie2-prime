@@ -582,7 +582,6 @@ int SwDriver::extendSeeds(
 		rd.patRc,  // rc version of query
 		rd.qual,   // fw version of qualities
 		rd.qualRev,// rc version of qualities
-		0,         // off of first char in 'rd' to consider
 		rdlen,     // off of last char (excl) in 'rd' to consider
 		sc);       // scoring scheme
 
@@ -1600,7 +1599,6 @@ int SwDriver::extendSeedsPaired(
 									ord.patRc,  // qualities
 									ord.qual,   // read to align
 									ord.qualRev,// qualities
-									0,          // off of first char to consider
 									ordlen,     // off of last char (ex) to consider
 									sc);        // scoring scheme
 							}

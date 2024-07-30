@@ -36,8 +36,7 @@ inline void SwAligner::initRead(
 	const BTDnaString& rdrc, // revcomp read sequence
 	const BTString& qufw,    // forward read qualities
 	const BTString& qurc,    // reverse read qualities
-	size_t rdi,              // offset of first read char to align
-	size_t rdf,              // offset of last read char to align
+	size_t rdlen,              // offset of last read char to align
 	const Scoring& sc)       // scoring scheme
 {
 	assert_gt(rdf, rdi);
@@ -46,8 +45,7 @@ inline void SwAligner::initRead(
 	rdrc_    = &rdrc;      // read sequence
 	qufw_    = &qufw;      // read qualities
 	qurc_    = &qurc;      // read qualities
-	rdi_     = rdi;        // offset of first read char to align
-	rdf_     = rdf;        // offset of last read char to align
+	rdlen_   = rdlen;        // offset of last read char to align
 	sc_      = &sc;        // scoring scheme
 	nceil_   = nceil;      // max # Ns allowed in ref portion of aln
 	initedRead_ = true;
@@ -265,7 +263,7 @@ bool SwAligner::nextAlignment(
 	const size_t candsz = btncand_.size();
 	size_t SQ = dpRows() >> 4;
 	if(SQ == 0) SQ = 1;
-	size_t rdlen = rdf_ - rdi_;
+	size_t rdlen = rdlen_;
 	// assert(!checkpointed)
 	while(cural_ < candsz) {
 		// Doing 'continue' anywhere in here simply causes us to move on to the
