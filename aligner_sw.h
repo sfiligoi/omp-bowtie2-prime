@@ -188,6 +188,14 @@
  * alignments to be spread so far that they can't possibly share diagonal cells
  * in common
  */
+static constexpr size_t EEU8_NWORDS_PER_REG  = NBYTES_PER_REG;
+//static const size_t EEU8_NBITS_PER_WORD  = 8;
+static constexpr size_t EEU8_NBYTES_PER_WORD = 1;
+
+static constexpr size_t EEI16_NWORDS_PER_REG  = NBYTES_PER_REG/2;
+static constexpr size_t EEI16_NBITS_PER_WORD  = 16;
+static constexpr size_t EEI16_NBYTES_PER_WORD = 2;
+
 class SwAligner {
 
 	typedef std::pair<size_t, size_t> SizeTPair;
@@ -469,6 +477,23 @@ protected:
 		size_t         col,    // start in this rectangle column
 		RandomSource&  rand);  // random gen, to choose among equal paths
 #endif
+
+
+	constexpr uint32_t get_sse_seglen(uint32_t rdlen, bool i16) {
+		const uint32_t NWORDS_PER_REG = i16 ? EEI16_NWORDS_PER_REG : EEU8_NWORDS_PER_REG;
+		const uint32_t seglen = (rdlen + (NWORDS_PER_REG-1)) / NWORDS_PER_REG;
+		return seglen;
+	}
+
+	constexpr uint32_t get_nsses(uint32_t rdlen, bool i16) {
+		const uint32_t seglen = get_sse_seglen(rdlen,i16);
+		// How many SSERegI's are needed
+		uint32_t nsses =
+			64 +                    // slack bytes, for alignment?
+			(seglen * ALPHA_SIZE)   // query profile data
+			* 2;                    // & gap barrier data
+		return nsses;
+	}
 
 	const BTDnaString  *rd_;     // read sequence
 	const BTString     *qu_;     // read qualities

@@ -55,10 +55,6 @@
 #include <limits>
 #include "aligner_sw.h"
 
-static constexpr size_t EEU8_NWORDS_PER_REG  = NBYTES_PER_REG;
-//static const size_t EEU8_NBITS_PER_WORD  = 8;
-static constexpr size_t EEU8_NBYTES_PER_WORD = 1;
-
 // In end-to-end mode, we start high (255) and go low (0).  Factoring in
 // a query profile involves unsigned saturating subtraction, so all the
 // query profile elements should be expressed as a positive penalty rather
@@ -81,13 +77,9 @@ void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
 	const BTDnaString* rd = fw ? rdfw_ : rdrc_;
 	const BTString* qu = fw ? qufw_ : qurc_;
 	const size_t len = rd->length();
-	const size_t seglen = (len + (EEU8_NWORDS_PER_REG-1)) / EEU8_NWORDS_PER_REG;
+	const size_t seglen = get_sse_seglen(len, false);
 	// How many SSERegI's are needed
-	size_t nsses =
-		64 +                    // slack bytes, for alignment?
-		(seglen * ALPHA_SIZE)   // query profile data
-		* 2;                    // & gap barrier data
-	assert_gt(nsses, 0);
+	const size_t nsses = get_nsses(len, false);
 	SSEData& d = fw ? sseU8fw_ : sseU8rc_;
 	d.profbuf_.resizeNoCopy(nsses);
 	assert(!d.profbuf_.empty());

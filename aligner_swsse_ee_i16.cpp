@@ -55,10 +55,6 @@
 #include <limits>
 #include "aligner_sw.h"
 
-static constexpr size_t EEI16_NWORDS_PER_REG  = NBYTES_PER_REG/2;
-static constexpr size_t EEI16_NBITS_PER_WORD  = 16;
-static constexpr size_t EEI16_NBYTES_PER_WORD = 2;
-
 // In 16-bit end-to-end mode, we have the option of using signed saturated
 // arithmetic.  Because we have signed arithmetic, there's no need to add/subtract
 // bias when building an applying the query profile.  The lowest value we can
@@ -81,13 +77,9 @@ void SwAligner::buildQueryProfileEnd2EndSseI16(bool fw) {
 	const BTDnaString* rd = fw ? rdfw_ : rdrc_;
 	const BTString* qu = fw ? qufw_ : qurc_;
 	const size_t len = rd->length();
-	const size_t seglen = (len + (EEI16_NWORDS_PER_REG-1)) / EEI16_NWORDS_PER_REG;
+	const size_t seglen = get_sse_seglen(len, true);
 	// How many SSERegI's are needed
-	size_t nsses =
-		64 +                    // slack bytes, for alignment?
-		(seglen * ALPHA_SIZE)   // query profile data
-		* 2;                    // & gap barrier data
-	assert_gt(nsses, 0);
+	const size_t nsses = get_nsses(len, true);
 	SSEData& d = fw ? sseI16fw_ : sseI16rc_;
 	d.profbuf_.resizeNoCopy(nsses);
 	assert(!d.profbuf_.empty());
