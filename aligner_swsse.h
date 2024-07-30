@@ -418,7 +418,6 @@ struct SSEData {
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		profbuf_.set_alloc(alloc, propagate_alloc);
-		vecbuf_.set_alloc(alloc, propagate_alloc);
 		mat_.set_alloc(alloc, propagate_alloc);
 	}
 
@@ -427,7 +426,6 @@ struct SSEData {
 	}
 
 	EList_sse      profbuf_;     // buffer for query profile & temp vecs
-	EList_sse      vecbuf_;      // buffer for 2 column vectors (not using mat_)
 	size_t         qprofStride_; // stride for query profile
 	size_t         gbarStride_;  // gap barrier for query profile
 	SSEMatrix      mat_;         // SSE matrix for holding all E, F, H vectors
