@@ -28,13 +28,11 @@
 #include "unique.cpp"
 #include "simple_func.cpp"
 #include "random_util.cpp"
-//#include "sse_util.cpp"
 #include "outq.cpp"
 #ifdef ENABLE_I16
 #include "aligner_swsse_ee_i16.cpp"
 #endif
 #include "aligner_swsse_ee_u8.cpp"
-#include "aligner_swsse.cpp"
 #include "aligner_sw.cpp"
 #include "aligner_sw_driver.cpp"
 #include "aligner_seed.cpp"

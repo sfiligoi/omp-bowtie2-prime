@@ -28,6 +28,18 @@
 #include "sse_util.h"
 #include <strings.h>
 
+static constexpr size_t EEU8_NWORDS_PER_REG  = NBYTES_PER_REG;
+//static const size_t EEU8_NBITS_PER_WORD  = 8;
+static constexpr size_t EEU8_NBYTES_PER_WORD = 1;
+
+static constexpr size_t EEI16_NWORDS_PER_REG  = NBYTES_PER_REG/2;
+static constexpr size_t EEI16_NBITS_PER_WORD  = 16;
+static constexpr size_t EEI16_NBYTES_PER_WORD = 2;
+
+// Hardcode for now. May want to pass in Makefile
+#define SSE_MAX_ROWS 160
+#define SSE_MAX_COLS 200
+
 
 struct SSEMetrics {
 	
@@ -94,16 +106,29 @@ struct SSEMetrics {
  * the backtrace procedure to store information about (a) which cells have been
  * traversed, (b) whether the cell is "terminal" (in local mode), etc.
  */
+struct SSEMatrixConsts {
+
+	// Each matrix element is a quartet of vectors.  These constants are used
+	// to identify members of the quartet.
+	constexpr static uint16_t E   = 0;
+	constexpr static uint16_t F   = 1;
+	constexpr static uint16_t H   = 2;
+	constexpr static uint16_t TMP = 3;
+	constexpr static uint16_t nvecPerCell_ = 4; // # vectors per matrix cell (4)
+};
+
+template<bool i16, uint16_t max_rows = SSE_MAX_ROWS, uint16_t max_cols = SSE_MAX_COLS>
 struct SSEMatrix {
 
 	// Each matrix element is a quartet of vectors.  These constants are used
 	// to identify members of the quartet.
-	constexpr static size_t E   = 0;
-	constexpr static size_t F   = 1;
-	constexpr static size_t H   = 2;
-	constexpr static size_t TMP = 3;
+	constexpr static uint16_t E   = SSEMatrixConsts::E;
+	constexpr static uint16_t F   = SSEMatrixConsts::F;
+	constexpr static uint16_t H   = SSEMatrixConsts::H;
+	constexpr static uint16_t TMP = SSEMatrixConsts::TMP;
+	constexpr static uint16_t nvecPerCell_ = SSEMatrixConsts::nvecPerCell_;
 
-	SSEMatrix(int cat = 0) : nvecPerCell_(4), matbuf_(cat) { }
+	SSEMatrix(int cat = 0) : matbuf_(cat) { }
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		matbuf_.set_alloc(alloc, propagate_alloc);
@@ -202,8 +227,26 @@ struct SSEMatrix {
 	 */
 	void init(
 		size_t nrow,
-		size_t ncol,
-		size_t wperv);
+		size_t ncol)
+	{
+	 nrow_ = nrow;
+	 ncol_ = ncol;
+	 assert_leq(nrow,max_rows);
+	 assert_leq(ncol,max_cols);
+	 nvecPerCol_ = get_vecPerCol(nrow);
+	 {
+		// compute vecshift_=log2(wperv)
+		size_t wp = wperv_;
+		assert(wp == (NBYTES_PER_REG/2) || wp == NBYTES_PER_REG);
+	        uint8_t vecshift = 0;
+        	while( wp>>=1 ) vecshift++;
+		nvecrow_ = (nrow + (wperv_-1)) >> vecshift;
+	 }
+	 nveccol_ = ncol;
+	 colstride_ = nvecPerCol_ * nvecPerCell_;
+	 rowstride_ = nvecPerCell_;
+	 inited_ = true;
+	}
 	
 	/**
 	 * Return the number of SSERegI's you need to skip over to get from one
@@ -221,7 +264,20 @@ struct SSEMatrix {
 	 * Given a row, col and matrix (i.e. E, F or H), return the corresponding
 	 * element.
 	 */
-	int eltSlow(size_t row, size_t col, size_t mat) const;
+	int eltSlow(size_t row, size_t col, size_t mat) const {
+		assert_lt(row, nrow_);
+		assert_lt(col, ncol_);
+		assert_leq(mat, 3);
+		// Move to beginning of column/row
+		size_t rowelt = row / nvecrow_;
+		size_t rowvec = row % nvecrow_;
+		size_t eltvec = (col * colstride_) + (rowvec * rowstride_) + mat;
+		if constexpr(!i16) {
+			return (int)((uint8_t*)(matbuf_.ptr() + eltvec))[rowelt];
+		} else {
+			return (int)((int16_t*)(matbuf_.ptr() + eltvec))[rowelt];
+		}
+	}
 	
 	/**
 	 * Given a row, col and matrix (i.e. E, F or H), return the corresponding
@@ -291,7 +347,10 @@ struct SSEMatrix {
 	 */
 	bool isHMaskSet(
 		size_t row,          // current row
-		size_t col) const;   // current column
+		size_t col) const    // current column
+	{
+		return (masks_[row][col] & (1 << 1)) != 0;
+	}
 
 	/**
 	 * Set the given cell's H mask.  This is the mask of remaining legal ways to
@@ -301,14 +360,22 @@ struct SSEMatrix {
 	void hMaskSet(
 		size_t row,          // current row
 		size_t col,          // current column
-		int mask);
+		int mask)
+	{
+		assert_lt(mask, 32);
+		masks_[row][col] &= ~(31 << 1);
+		masks_[row][col] |= (1 << 1 | mask << 2);
+	}
 
 	/**
 	 * Return true iff the E mask has been set with a previous call to eMaskSet.
 	 */
 	bool isEMaskSet(
 		size_t row,          // current row
-		size_t col) const;   // current column
+		size_t col) const    // current column
+	{
+		return (masks_[row][col] & (1 << 7)) != 0;
+	}
 
 	/**
 	 * Set the given cell's E mask.  This is the mask of remaining legal ways to
@@ -318,14 +385,22 @@ struct SSEMatrix {
 	void eMaskSet(
 		size_t row,          // current row
 		size_t col,          // current column
-		int mask);
+		int mask)
+	{
+		assert_lt(mask, 4);
+		masks_[row][col] &= ~(7 << 7);
+		masks_[row][col] |=  (1 << 7 | mask << 8);
+	}
 	
 	/**
 	 * Return true iff the F mask has been set with a previous call to fMaskSet.
 	 */
 	bool isFMaskSet(
 		size_t row,          // current row
-		size_t col) const;   // current column
+		size_t col) const    // current column
+	{
+		return (masks_[row][col] & (1 << 10)) != 0;
+	}
 
 	/**
 	 * Set the given cell's F mask.  This is the mask of remaining legal ways to
@@ -335,7 +410,12 @@ struct SSEMatrix {
 	void fMaskSet(
 		size_t row,          // current row
 		size_t col,          // current column
-		int mask);
+		int mask)
+	{
+		assert_lt(mask, 4);
+		masks_[row][col] &= ~(7 << 10);
+		masks_[row][col] |=  (1 << 10 | mask << 11);
+	}
 
 	/**
 	 * Analyze a cell in the SSE-filled dynamic programming matrix.  Determine &
@@ -367,7 +447,13 @@ struct SSEMatrix {
 	/**
 	 * Initialize the matrix of masks and backtracking flags.
 	 */
-	void initMasks();
+	void initMasks() {
+		assert_gt(nrow_, 0);
+		assert_gt(ncol_, 0);
+		masks_.resize(nrow_);
+		reset_.resizeNoCopy(nrow_);
+		reset_.fill(false);
+	}
 
 	/**
 	 * Return the number of rows in the dynamic programming matrix.
@@ -393,123 +479,79 @@ struct SSEMatrix {
 		reset_[i] = true;
 	}
 
+	static constexpr uint16_t get_wperv() {
+		const uint16_t NWORDS_PER_REG = i16 ? EEI16_NWORDS_PER_REG : EEU8_NWORDS_PER_REG;
+		return NWORDS_PER_REG;
+	}
+
+	static constexpr uint16_t get_vecPerCol(uint16_t nrows) {
+		constexpr uint16_t  wperv = get_wperv();
+		return (nrows + (wperv-1)) / wperv;
+	}
+
+	static constexpr uint32_t get_matbuf_size() {
+		const uint32_t maxVecPerCol = get_vecPerCol(max_rows);
+		// The +1 is so that we don't have to special-case the final column;
+		// instead, we just write off the end of the useful part of the table
+		// with pvEStore.
+		return (max_cols+1) * (nvecPerCell_ * maxVecPerCol); // group last 2 to enforce uint32_t
+	}
+
+	typedef EList_sse<get_matbuf_size()>		EList_mb;
+
 	bool             inited_;      // initialized?
 	size_t           nrow_;        // # rows
 	size_t           ncol_;        // # columns
 	size_t           nvecrow_;     // # vector rows (<= nrow_)
 	size_t           nveccol_;     // # vector columns (<= ncol_)
-	size_t           wperv_;       // # words per vector
-	size_t           vecshift_;    // # bits to shift to divide by words per vec
+	static constexpr uint16_t  wperv_ = get_wperv();       // # words per vector
 	size_t           nvecPerCol_;  // # vectors per column
-	size_t           nvecPerCell_; // # vectors per matrix cell (4)
 	size_t           colstride_;   // # vectors b/t adjacent cells in same row
 	size_t           rowstride_;   // # vectors b/t adjacent cells in same col
-	EList_sse        matbuf_;      // buffer for holding vectors
+	EList_mb         matbuf_;      // buffer for holding vectors
 	ELList<uint16_t> masks_;       // buffer for masks/backtracking flags
 	EList<bool>      reset_;       // true iff row in masks_ has been reset
 };
+
+#define ALPHA_SIZE 5
 
 /**
  * All the data associated with the query profile and other data needed for SSE
  * alignment of a query.
  */
+template<bool i16, uint16_t max_rows = SSE_MAX_ROWS, uint16_t max_cols = SSE_MAX_COLS>
 struct SSEData {
-	SSEData(int cat = 0) : profbuf_(cat), mat_(cat) { }
+	SSEData(int cat = 0) { }
 
-	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		profbuf_.set_alloc(alloc, propagate_alloc);
-		mat_.set_alloc(alloc, propagate_alloc);
+	static constexpr uint32_t get_sse_seglen(uint32_t rdlen) {
+		const uint32_t NWORDS_PER_REG = i16 ? EEI16_NWORDS_PER_REG : EEU8_NWORDS_PER_REG;
+		const uint32_t seglen = (rdlen + (NWORDS_PER_REG-1)) / NWORDS_PER_REG;
+		return seglen;
 	}
 
-	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		set_alloc(arg.first,arg.second);
+	static constexpr uint32_t get_nsses(uint32_t rdlen) {
+		const uint32_t seglen = get_sse_seglen(rdlen);
+		// How many SSERegI's are needed
+		uint32_t nsses =
+			64 +                    // slack bytes, for alignment?
+			(seglen * ALPHA_SIZE)   // query profile data
+			* 2;                    // & gap barrier data
+		return nsses;
 	}
 
-	EList_sse      profbuf_;     // buffer for query profile & temp vecs
+	typedef EList_sse<get_nsses(max_rows)>		EList_pb;
+	typedef SSEMatrix<i16,max_rows,max_cols>	SDMatrix;
+
+	EList_pb       profbuf_;     // buffer for query profile & temp vecs
 	size_t         qprofStride_; // stride for query profile
 	size_t         gbarStride_;  // gap barrier for query profile
-	SSEMatrix      mat_;         // SSE matrix for holding all E, F, H vectors
+	SDMatrix       mat_;         // SSE matrix for holding all E, F, H vectors
 	size_t         maxPen_;      // biggest penalty of all
 	size_t         maxBonus_;    // biggest bonus of all
 	size_t         lastIter_;    // which N-bit striped word has final row?
 	size_t         lastWord_;    // which word within N-word has final row?
 	int            bias_;        // all scores shifted up by this for unsigned
 };
-
-/**
- * Return true iff the H mask has been set with a previous call to hMaskSet.
- */
-inline bool SSEMatrix::isHMaskSet(
-	size_t row,          // current row
-	size_t col) const    // current column
-{
-	return (masks_[row][col] & (1 << 1)) != 0;
-}
-
-/**
- * Set the given cell's H mask.  This is the mask of remaining legal ways to
- * backtrack from the H cell at this coordinate.  It's 5 bits long and has
- * offset=2 into the 16-bit field.
- */
-inline void SSEMatrix::hMaskSet(
-	size_t row,          // current row
-	size_t col,          // current column
-	int mask)
-{
-	assert_lt(mask, 32);
-	masks_[row][col] &= ~(31 << 1);
-	masks_[row][col] |= (1 << 1 | mask << 2);
-}
-
-/**
- * Return true iff the E mask has been set with a previous call to eMaskSet.
- */
-inline bool SSEMatrix::isEMaskSet(
-	size_t row,          // current row
-	size_t col) const    // current column
-{
-	return (masks_[row][col] & (1 << 7)) != 0;
-}
-
-/**
- * Set the given cell's E mask.  This is the mask of remaining legal ways to
- * backtrack from the E cell at this coordinate.  It's 2 bits long and has
- * offset=8 into the 16-bit field.
- */
-inline void SSEMatrix::eMaskSet(
-	size_t row,          // current row
-	size_t col,          // current column
-	int mask)
-{
-	assert_lt(mask, 4);
-	masks_[row][col] &= ~(7 << 7);
-	masks_[row][col] |=  (1 << 7 | mask << 8);
-}
-
-/**
- * Return true iff the F mask has been set with a previous call to fMaskSet.
- */
-inline bool SSEMatrix::isFMaskSet(
-	size_t row,          // current row
-	size_t col) const    // current column
-{
-	return (masks_[row][col] & (1 << 10)) != 0;
-}
-
-/**
- * Set the given cell's F mask.  This is the mask of remaining legal ways to
- * backtrack from the F cell at this coordinate.  It's 2 bits long and has
- * offset=11 into the 16-bit field.
- */
-inline void SSEMatrix::fMaskSet(
-	size_t row,          // current row
-	size_t col,          // current column
-	int mask)
-{
-	assert_lt(mask, 4);
-	masks_[row][col] &= ~(7 << 10);
-	masks_[row][col] |=  (1 << 10 | mask << 11);
-}
 
 #define ROWSTRIDE_2COL 4
 #define ROWSTRIDE 4

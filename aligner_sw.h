@@ -188,14 +188,6 @@
  * alignments to be spread so far that they can't possibly share diagonal cells
  * in common
  */
-static constexpr size_t EEU8_NWORDS_PER_REG  = NBYTES_PER_REG;
-//static const size_t EEU8_NBITS_PER_WORD  = 8;
-static constexpr size_t EEU8_NBYTES_PER_WORD = 1;
-
-static constexpr size_t EEI16_NWORDS_PER_REG  = NBYTES_PER_REG/2;
-static constexpr size_t EEI16_NBITS_PER_WORD  = 16;
-static constexpr size_t EEI16_NBYTES_PER_WORD = 2;
-
 class SwAligner {
 
 	typedef std::pair<size_t, size_t> SizeTPair;
@@ -207,8 +199,6 @@ class SwAligner {
 		STATE_ALIGNED, // align() has been called
 	};
 	
-	const static size_t ALPHA_SIZE = 5;
-
 public:
 
 	SwAligner() :
@@ -239,12 +229,6 @@ public:
 	SwAligner& operator=(const SwAligner& other) = delete;
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		sseU8fw_.set_alloc(alloc, propagate_alloc);
-		sseU8rc_.set_alloc(alloc, propagate_alloc);
-#ifdef ENABLE_I16
-		sseI16fw_.set_alloc(alloc, propagate_alloc);
-		sseI16rc_.set_alloc(alloc, propagate_alloc);
-#endif
 		rfwbuf_.set_alloc(alloc, propagate_alloc);
 		btnstack_.set_alloc(alloc, propagate_alloc);
 		btcells_.set_alloc(alloc, propagate_alloc);
@@ -477,22 +461,6 @@ protected:
 #endif
 
 
-	constexpr uint32_t get_sse_seglen(uint32_t rdlen, bool i16) {
-		const uint32_t NWORDS_PER_REG = i16 ? EEI16_NWORDS_PER_REG : EEU8_NWORDS_PER_REG;
-		const uint32_t seglen = (rdlen + (NWORDS_PER_REG-1)) / NWORDS_PER_REG;
-		return seglen;
-	}
-
-	constexpr uint32_t get_nsses(uint32_t rdlen, bool i16) {
-		const uint32_t seglen = get_sse_seglen(rdlen,i16);
-		// How many SSERegI's are needed
-		uint32_t nsses =
-			64 +                    // slack bytes, for alignment?
-			(seglen * ALPHA_SIZE)   // query profile data
-			* 2;                    // & gap barrier data
-		return nsses;
-	}
-
 	const BTDnaString  *rd_;     // read sequence
 	const BTString     *qu_;     // read qualities
 	const BTDnaString  *rdfw_;   // read sequence for fw read
@@ -516,11 +484,11 @@ protected:
 	TAlScore            minsc_;  // penalty ceiling for valid alignments
 	int                 nceil_;  // max # Ns allowed in ref portion of aln
 
-	SSEData             sseU8fw_;   // buf for fw query, 8-bit score
-	SSEData             sseU8rc_;   // buf for rc query, 8-bit score
+	SSEData<false>      sseU8fw_;   // buf for fw query, 8-bit score
+	SSEData<false>      sseU8rc_;   // buf for rc query, 8-bit score
 #ifdef ENABLE_I16
-	SSEData             sseI16fw_;  // buf for fw query, 16-bit score
-	SSEData             sseI16rc_;  // buf for rc query, 16-bit score
+	SSEData<true>       sseI16fw_;  // buf for fw query, 16-bit score
+	SSEData<true>       sseI16rc_;  // buf for rc query, 16-bit score
 #endif
 	bool                sseU8fwBuilt_;   // built fw query profile, 8-bit score
 	bool                sseU8rcBuilt_;   // built rc query profile, 8-bit score

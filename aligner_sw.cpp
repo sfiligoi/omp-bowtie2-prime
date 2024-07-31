@@ -278,7 +278,7 @@ bool SwAligner::nextAlignment(
 		assert_lt((TRefOff)col, rflen_);
 #ifdef ENABLE_I16
 		if(!enable8_) {
-			SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
+			auto& d = fw_ ? sseI16fw_ : sseI16rc_;
 			if (d.mat_.reset_[row] && d.mat_.reportedThrough(row, col)) {
 				// Skipping this candidate because a previous candidate already
 				// moved through this cell
@@ -293,7 +293,7 @@ bool SwAligner::nextAlignment(
 #else
 		{
 #endif // ENABLE_I16
-			SSEData& d = fw_ ? sseU8fw_ : sseU8rc_;
+			auto& d = fw_ ? sseU8fw_ : sseU8rc_;
 			if (d.mat_.reset_[row] && d.mat_.reportedThrough(row, col)) {
 				// Skipping this candidate because a previous candidate already
 				// moved through this cell

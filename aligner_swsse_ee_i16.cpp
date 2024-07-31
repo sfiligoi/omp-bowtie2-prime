@@ -77,11 +77,11 @@ void SwAligner::buildQueryProfileEnd2EndSseI16(bool fw) {
 	const BTDnaString* rd = fw ? rdfw_ : rdrc_;
 	const BTString* qu = fw ? qufw_ : qurc_;
 	const size_t len = rd->length();
-	const size_t seglen = get_sse_seglen(len, true);
 	// How many SSERegI's are needed
-	const size_t nsses = get_nsses(len, true);
-	SSEData& d = fw ? sseI16fw_ : sseI16rc_;
-	d.profbuf_.resizeNoCopy(nsses);
+	auto& d = fw ? sseI16fw_ : sseI16rc_;
+	const size_t seglen = d.get_sse_seglen(len);
+	//const size_t nsses = get_nsses(len, true);
+	//d.profbuf_.resizeNoCopy(nsses);
 	assert(!d.profbuf_.empty());
 	d.maxPen_      = d.maxBonus_ = 0;
 	d.lastIter_    = d.lastWord_ = 0;
@@ -136,7 +136,7 @@ void SwAligner::buildQueryProfileEnd2EndSseI16(bool fw) {
 	}
 }
 
-#ifndef NDEBUG
+#if 0
 /**
  * Return true iff the cell has sane E/F/H values w/r/t its predecessors.
  */
@@ -323,8 +323,8 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 
 	// Initialize the H and E vectors in the first matrix column
 	{
-	  SSERegI *pvHTmp = pmat + SSEMatrix::TMP;
-	  SSERegI *pvETmp = pmat + SSEMatrix::E;
+	  SSERegI *pvHTmp = pmat + SSEMatrixConsts::TMP;
+	  SSERegI *pvETmp = pmat + SSEMatrixConsts::E;
 	
 	  for(size_t i = 0; i < iter; i++) {
 		sse_store_siall(pvETmp, vlo);
@@ -338,11 +338,11 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 	}
 
 	// These are swapped just before the innermost loop
-	SSERegI *pvHStore = pmat + SSEMatrix::H;
-	SSERegI *pvHLoad  = pmat + SSEMatrix::TMP;
-	SSERegI *pvELoad  = pmat + SSEMatrix::E;
-	SSERegI *pvEStore = pmat + colstride + SSEMatrix::E;
-	SSERegI *pvFStore = pmat + SSEMatrix::F;
+	SSERegI *pvHStore = pmat + SSEMatrixConsts::H;
+	SSERegI *pvHLoad  = pmat + SSEMatrixConsts::TMP;
+	SSERegI *pvELoad  = pmat + SSEMatrixConsts::E;
+	SSERegI *pvEStore = pmat + colstride + SSEMatrixConsts::E;
+	SSERegI *pvFStore = pmat + SSEMatrixConsts::F;
 	SSERegI *pvFTmp   = NULL;
 	
 	// Maximum score in final row
@@ -364,8 +364,8 @@ inline EEI16_TCScore EEI16_alignNucleotides(const SSERegI profbuf[],
 	// be the simplest and least disruptive way to deal with the st_ constraint.
 
 	for(TIdxSize i = 0; i < rfd; i++) {
-		assert(pvFStore == (pmat + i*colstride + SSEMatrix::F));
-		assert(pvHStore == (pmat + i*colstride + SSEMatrix::H));
+		assert(pvFStore == (pmat + i*colstride + SSEMatrixConsts::F));
+		assert(pvHStore == (pmat + i*colstride + SSEMatrixConsts::H));
 		
 		// Fetch the appropriate query profile.  Note that elements of rf must
 		// be numbers, not masks.
@@ -564,7 +564,7 @@ bool SwAligner::alignEnd2EndSseI16(
 	}
 #endif
 
-	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
+	auto& d = fw_ ? sseI16fw_ : sseI16rc_;
 #ifdef ENABLE_SSE_METRICS
 	SSEMetrics& met = sseMet_;
 	if(!debug) met.dp++;
@@ -610,7 +610,8 @@ bool SwAligner::alignEnd2EndSseI16(
 		return false;
 	}
 
-	d.mat_.init(dpRows(), rflen_, EEI16_NWORDS_PER_REG);
+	assert_eq(int(d.mat_.wperf_), int(EEI16_NWORDS_PER_REG));
+	d.mat_.init(dpRows(), rflen_);
 
 	assert_leq(iter,      (size_t)MAX_U16);
 	assert_leq(rflen_,    (size_t)MAX_U16);
@@ -760,7 +761,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 {
 	assert_lt(row, dpRows());
 	assert_lt(col, (size_t)(rflen_));
-	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
+	auto& d = fw_ ? sseI16fw_ : sseI16rc_;
 #ifdef ENABLE_SSE_METRICS
 	SSEMetrics& met = sseMet_;
 	met.bt++;
@@ -779,7 +780,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	assert_gt(dpRows(), row);
 	size_t trimEnd = dpRows() - row - 1; 
 	size_t trimBeg = 0;
-	size_t ct = SSEMatrix::H; // cell type
+	size_t ct = SSEMatrixConsts::H; // cell type
 	// Row and col in terms of where they fall in the SSE vector matrix
 	size_t rowelt, rowvec, eltvec;
 	size_t left_rowelt, up_rowelt, upleft_rowelt;
@@ -797,7 +798,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 		assert_leq(col, origCol);
 		// Get score in this cell
 		bool empty = false, reportedThru, canMoveThru, branch = false;
-		int cur = SSEMatrix::H;
+		int cur = SSEMatrixConsts::H;
 		if(!d.mat_.reset_[row]) {
 			d.mat_.resetRow(row);
 		}
@@ -819,9 +820,9 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				const TAlScore floorsc = MIN_I64;
 				const int offsetsc = -0x7fff;
 				// Move to beginning of column/row
-				if(ct == SSEMatrix::E) { // AKA rdgap
+				if(ct == SSEMatrixConsts::E) { // AKA rdgap
 					assert_gt(col, 0);
-					TAlScore sc_cur = ((EEI16_TCScore*)(cur_vec + SSEMatrix::E))[rowelt] + offsetsc;
+					TAlScore sc_cur = ((EEI16_TCScore*)(cur_vec + SSEMatrixConsts::E))[rowelt] + offsetsc;
 					assert(gapsAllowed);
 					// Currently in the E matrix; incoming transition must come from the
 					// left.  It's either a gap open from the H matrix or a gap extend from
@@ -829,12 +830,12 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 					// TODO: save and restore origMask as well as mask
 					int origMask = 0, mask = 0;
 					// Get H score of cell to the left
-					TAlScore sc_h_left = ((EEI16_TCScore*)(left_vec + SSEMatrix::H))[left_rowelt] + offsetsc;
+					TAlScore sc_h_left = ((EEI16_TCScore*)(left_vec + SSEMatrixConsts::H))[left_rowelt] + offsetsc;
 					if(sc_h_left > floorsc && sc_h_left - sc_->readGapOpen() == sc_cur) {
 						mask |= (1 << 0);
 					}
 					// Get E score of cell to the left
-					TAlScore sc_e_left = ((EEI16_TCScore*)(left_vec + SSEMatrix::E))[left_rowelt] + offsetsc;
+					TAlScore sc_e_left = ((EEI16_TCScore*)(left_vec + SSEMatrixConsts::E))[left_rowelt] + offsetsc;
 					if(sc_e_left > floorsc && sc_e_left - sc_->readGapExtend() == sc_cur) {
 						mask |= (1 << 1);
 					}
@@ -877,12 +878,12 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 						canMoveThru = (origMask == 0);
 					}
 					assert(!empty || !canMoveThru);
-				} else if(ct == SSEMatrix::F) { // AKA rfgap
+				} else if(ct == SSEMatrixConsts::F) { // AKA rfgap
 					assert_gt(row, 0);
 					assert(gapsAllowed);
-					TAlScore sc_h_up = ((EEI16_TCScore*)(up_vec  + SSEMatrix::H))[up_rowelt] + offsetsc;
-					TAlScore sc_f_up = ((EEI16_TCScore*)(up_vec  + SSEMatrix::F))[up_rowelt] + offsetsc;
-					TAlScore sc_cur  = ((EEI16_TCScore*)(cur_vec + SSEMatrix::F))[rowelt] + offsetsc;
+					TAlScore sc_h_up = ((EEI16_TCScore*)(up_vec  + SSEMatrixConsts::H))[up_rowelt] + offsetsc;
+					TAlScore sc_f_up = ((EEI16_TCScore*)(up_vec  + SSEMatrixConsts::F))[up_rowelt] + offsetsc;
+					TAlScore sc_cur  = ((EEI16_TCScore*)(cur_vec + SSEMatrixConsts::F))[rowelt] + offsetsc;
 					// Currently in the F matrix; incoming transition must come from above.
 					// It's either a gap open from the H matrix or a gap extend from the F
 					// matrix.
@@ -936,13 +937,13 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 					}
 					assert(!empty || !canMoveThru);
 				} else {
-					assert_eq(SSEMatrix::H, ct);
-					TAlScore sc_cur      = ((EEI16_TCScore*)(cur_vec + SSEMatrix::H))[rowelt]    + offsetsc;
-					TAlScore sc_f_up     = ((EEI16_TCScore*)(up_vec  + SSEMatrix::F))[up_rowelt] + offsetsc;
-					TAlScore sc_h_up     = ((EEI16_TCScore*)(up_vec  + SSEMatrix::H))[up_rowelt] + offsetsc;
-					TAlScore sc_h_left   = col > 0 ? (((EEI16_TCScore*)(left_vec   + SSEMatrix::H))[left_rowelt]   + offsetsc) : floorsc;
-					TAlScore sc_e_left   = col > 0 ? (((EEI16_TCScore*)(left_vec   + SSEMatrix::E))[left_rowelt]   + offsetsc) : floorsc;
-					TAlScore sc_h_upleft = col > 0 ? (((EEI16_TCScore*)(upleft_vec + SSEMatrix::H))[upleft_rowelt] + offsetsc) : floorsc;
+					assert_eq(SSEMatrixConsts::H, ct);
+					TAlScore sc_cur      = ((EEI16_TCScore*)(cur_vec + SSEMatrixConsts::H))[rowelt]    + offsetsc;
+					TAlScore sc_f_up     = ((EEI16_TCScore*)(up_vec  + SSEMatrixConsts::F))[up_rowelt] + offsetsc;
+					TAlScore sc_h_up     = ((EEI16_TCScore*)(up_vec  + SSEMatrixConsts::H))[up_rowelt] + offsetsc;
+					TAlScore sc_h_left   = col > 0 ? (((EEI16_TCScore*)(left_vec   + SSEMatrixConsts::H))[left_rowelt]   + offsetsc) : floorsc;
+					TAlScore sc_e_left   = col > 0 ? (((EEI16_TCScore*)(left_vec   + SSEMatrixConsts::E))[left_rowelt]   + offsetsc) : floorsc;
+					TAlScore sc_h_upleft = col > 0 ? (((EEI16_TCScore*)(upleft_vec + SSEMatrixConsts::H))[upleft_rowelt] + offsetsc) : floorsc;
 					TAlScore sc_diag     = sc_->score(readc, refm, readq - 33);
 					// TODO: save and restore origMask as well as mask
 					int origMask = 0, mask = 0;
@@ -1019,7 +1020,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 						canMoveThru = (origMask == 0);
 					}
 				}
-				assert(!empty || !canMoveThru || ct == SSEMatrix::H);
+				assert(!empty || !canMoveThru || ct == SSEMatrixConsts::H);
 			}
 		}
 		d.mat_.setReportedThrough(row, col);
@@ -1057,7 +1058,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 		assert(!reportedThru);
 		assert(!sc_->monotone || score.score() >= minsc_);
 		if(empty || row == 0) {
-			assert_eq(SSEMatrix::H, ct);
+			assert_eq(SSEMatrixConsts::H, ct);
 			btcells_.expand();
 			btcells_.back().first = row;
 			btcells_.back().second = col;
@@ -1094,7 +1095,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				int refNmask = (int)rf_[col];
 				assert_gt(refNmask, 0);
 				int m = matchesEx(readC, refNmask);
-				ct = SSEMatrix::H;
+				ct = SSEMatrixConsts::H;
 				if(m != 1) {
 					Edit e(
 						(int)row,
@@ -1136,7 +1137,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				assert_geq(row, (size_t)sc_->gapbar);
 				assert_geq((int)(rdlen_-row-1), sc_->gapbar-1);
 				row--;
-				ct = SSEMatrix::H;
+				ct = SSEMatrixConsts::H;
 				int pen = sc_->refGapOpen();
 				score.score_ -= pen;
 				assert(!sc_->monotone || score.score() >= minsc_);
@@ -1161,7 +1162,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				assert_geq(row, (size_t)sc_->gapbar);
 				assert_geq((int)(rdlen_-row-1), sc_->gapbar-1);
 				row--;
-				ct = SSEMatrix::F;
+				ct = SSEMatrixConsts::F;
 				int pen = sc_->refGapExtend();
 				score.score_ -= pen;
 				assert(!sc_->monotone || score.score() >= minsc_);
@@ -1185,7 +1186,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				assert_geq(row, (size_t)sc_->gapbar);
 				assert_geq((int)(rdlen_-row-1), sc_->gapbar-1);
 				col--;
-				ct = SSEMatrix::H;
+				ct = SSEMatrixConsts::H;
 				int pen = sc_->readGapOpen();
 				score.score_ -= pen;
 				assert(!sc_->monotone || score.score() >= minsc_);
@@ -1209,7 +1210,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				assert_geq(row, (size_t)sc_->gapbar);
 				assert_geq((int)(rdlen_-row-1), sc_->gapbar-1);
 				col--;
-				ct = SSEMatrix::E;
+				ct = SSEMatrixConsts::E;
 				int pen = sc_->readGapExtend();
 				score.score_ -= pen;
 				assert(!sc_->monotone || score.score() >= minsc_);
@@ -1225,7 +1226,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	assert_eq(0, trimBeg);
 	assert_eq(0, trimEnd);
 	assert_geq(col, 0);
-	assert_eq(SSEMatrix::H, ct);
+	assert_eq(SSEMatrixConsts::H, ct);
 	// The number of cells in the backtracs should equal the number of read
 	// bases after trimming plus the number of gaps
 	assert_eq(btcells_.size(), dpRows() - trimBeg - trimEnd + readGaps);

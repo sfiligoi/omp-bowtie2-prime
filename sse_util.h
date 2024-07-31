@@ -26,22 +26,23 @@
 #include <iostream>
 #include "sse_wrap.h"
 
-class EList_sse : public BTAllocatorHandler<SSERegI> {
+// Mimick EList, but with static buffer of max size
+template<uint32_t sz_>
+class EList_sse {
 public:
 
 	/**
 	 * Allocate initial default of S elements.
 	 */
 	explicit EList_sse  (int cat = 0) :
-		cat_(cat), last_alloc_(NULL), list_(NULL), sz_(0), cur_(0)
+		cur_(0)
 	{
-		assert_geq(cat, 0);
 	}
 
 	/**
 	 * Destructor.
 	 */
-	~EList_sse  () { free(); }
+	~EList_sse  () {}
 
 	/**
 	 * Return number of elements.
@@ -51,15 +52,14 @@ public:
 	/**
 	 * Return number of elements allocated.
 	 */
-	inline size_t capacity() const { return sz_; }
+	static constexpr size_t capacity() { return sz_; }
 	
 	/**
 	 * Ensure that there is sufficient capacity to expand to include
 	 * 'thresh' more elements without having to expand.
 	 */
 	inline void ensure(size_t thresh) {
-		if(list_ == NULL) lazyInit();
-		expandCopy(cur_ + thresh);
+		assert_lt(cur_ + thresh, sz_);
 	}
 
 	/**
@@ -68,8 +68,7 @@ public:
 	 * equal 'newsz'.
 	 */
 	inline void reserveExact(size_t newsz) {
-		if(list_ == NULL) lazyInitExact(newsz);
-		expandCopyExact(newsz);
+		assert_le(newsz, sz_);
 	}
 
 	/**
@@ -78,23 +77,11 @@ public:
 	inline bool empty() const { return cur_ == 0; }
 	
 	/**
-	 * Return true iff list hasn't been initialized yet.
-	 */
-	inline bool null() const { return list_ == NULL; }
-
-	/**
 	 * If size is less than requested size, resize up to at least sz
 	 * and set cur_ to requested sz.
 	 */
 	void resize(size_t sz) {
-		if(sz > 0 && list_ == NULL) lazyInit();
-		if(sz <= cur_) {
-			cur_ = sz;
-			return;
-		}
-		if(sz_ < sz) {
-			expandCopy(sz);
-		}
+		assert_le(sz, sz_);
 		cur_ = sz;
 	}
 	
@@ -111,38 +98,19 @@ public:
 	 * If size is less than requested size, resize up to at least sz
 	 * and set cur_ to requested sz.  Do not copy the elements over.
 	 */
-	void resizeNoCopy(size_t sz) {
-		if(sz > 0 && list_ == NULL) lazyInit();
-		if(sz <= cur_) {
-			cur_ = sz;
-			return;
-		}
-		if(sz_ < sz) {
-			expandNoCopy(sz);
-		}
-		cur_ = sz;
-	}
+	void resizeNoCopy(size_t sz) { resize(sz); }
 
 	/**
 	 * If size is less than requested size, resize up to exactly sz and set
 	 * cur_ to requested sz.
 	 */
-	void resizeExact(size_t sz) {
-		if(sz > 0 && list_ == NULL) lazyInitExact(sz);
-		if(sz <= cur_) {
-			cur_ = sz;
-			return;
-		}
-		if(sz_ < sz) expandCopyExact(sz);
-		cur_ = sz;
-	}
+	void resizeExact(size_t sz) { resize(sz); }
 
 	/**
 	 * Make the stack empty.
 	 */
 	void clear() {
 		cur_ = 0; // re-use stack memory
-		// Don't clear heap; re-use it
 	}
 
 	/**
@@ -192,134 +160,8 @@ public:
 
 private:
 
-	/**
-	 * Initialize memory for EList.
-	 */
-	void lazyInit() {
-		assert(list_ == NULL);
-		list_ = alloc(sz_);
-	}
-
-	/**
-	 * Initialize exactly the prescribed number of elements for EList.
-	 */
-	void lazyInitExact(size_t sz) {
-		assert_gt(sz, 0);
-		assert(list_ == NULL);
-		sz_ = sz;
-		list_ = alloc(sz);
-	}
-
-	/**
-	 * Allocate a T array of length sz_ and store in list_.  Also,
-	 * tally into the global memory tally.
-	 */
-	SSERegI *alloc(size_t sz) {
-		SSERegI* last_alloc_;
-		last_alloc_ = this->allocate(sz + 4);
-                this->last_alloc_ = last_alloc_;
-		SSERegI* tmp = last_alloc_;
-		size_t tmpint = (size_t)tmp;
-		// Align it!
-		const size_t alignmask = NBYTES_PER_REG-1;
-		if((tmpint & alignmask) != 0) {
-			tmpint += alignmask;
-			tmpint &= (~alignmask);
-			tmp = reinterpret_cast<SSERegI*>(tmpint);
-		}
-		assert_eq(0, (tmpint & alignmask)); // should be NBYTES_PER_REG-byte aligned
-		assert(tmp != NULL);
-#ifdef USE_MEM_TALLY
-		gMemTally.add(cat_, sz);
-#endif
-		return tmp;
-	}
-
-	/**
-	 * Allocate a T array of length sz_ and store in list_.  Also,
-	 * tally into the global memory tally.
-	 */
-	void free() {
-		if(list_ != NULL) {
-			deallocate(last_alloc_, sz_ + 4);
-#ifdef USE_MEM_TALLY
-			gMemTally.del(cat_, sz_);
-#endif
-			list_ = NULL;
-			sz_ = cur_ = 0;
-		}
-	}
-
-	/**
-	 * Expand the list_ buffer until it has at least 'thresh' elements.  Size
-	 * increases quadratically with number of expansions.  Copy old contents
-	 * into new buffer using operator=.
-	 */
-	void expandCopy(size_t thresh) {
-		if(thresh <= sz_) return;
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) newsz *= 2;
-		expandCopyExact(newsz);
-	}
-
-	/**
-	 * Expand the list_ buffer until it has exactly 'newsz' elements.  Copy
-	 * old contents into new buffer using operator=.
-	 */
-	void expandCopyExact(size_t newsz) {
-		if(newsz <= sz_) return;
-                SSERegI* prev_last_alloc = last_alloc_;
-		SSERegI* tmp = alloc(newsz);
-		assert(tmp != NULL);
-		size_t cur = cur_;
-		if(list_ != NULL) {
- 			for(size_t i = 0; i < cur_; i++) {
-				// Note: operator= is used
-				tmp[i] = list_[i];
-			}
-                        SSERegI* current_last_alloc = last_alloc_;
-                        last_alloc_ = prev_last_alloc;
-			free();
-                        last_alloc_ = current_last_alloc;
-		}
-		list_ = tmp;
-		sz_ = newsz;
-		cur_ = cur;
-	}
-
-	/**
-	 * Expand the list_ buffer until it has at least 'thresh' elements.
-	 * Size increases quadratically with number of expansions.  Don't copy old
-	 * contents into the new buffer.
-	 */
-	void expandNoCopy(size_t thresh) {
-		assert(list_ != NULL);
-		if(thresh <= sz_) return;
-		size_t newsz = (sz_ * 2)+1;
-		while(newsz < thresh) newsz *= 2;
-		expandNoCopyExact(newsz);
-	}
-
-	/**
-	 * Expand the list_ buffer until it has exactly 'newsz' elements.  Don't
-	 * copy old contents into the new buffer.
-	 */
-	void expandNoCopyExact(size_t newsz) {
-		assert(list_ != NULL);
-		assert_gt(newsz, 0);
-		free();
-		SSERegI* tmp = alloc(newsz);
-		assert(tmp != NULL);
-		list_ = tmp;
-		sz_ = newsz;
-		assert_gt(sz_, 0);
-	}
-
-	int      cat_;        // memory category, for accounting purposes
-	SSERegI* last_alloc_; // what new[] originally returns
-	SSERegI *list_;       // list ptr, aligned version of what new[] returns
-	size_t   sz_;         // capacity
-	size_t   cur_;        // occupancy (AKA size)
+	SSERegI  list_[sz_];  // list ptr, aligned version of what new[] returns
+	uint32_t cur_;        // occupancy (AKA size)
 };
 
 struct  CpQuad {
