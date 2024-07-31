@@ -65,8 +65,7 @@ inline void SwAligner::initRef(
 	TRefId refidx,         // id of reference aligned against
 	const DPRect& rect,    // DP rectangle
 	char *rf,              // reference sequence
-	size_t rfi,            // offset of first reference char to align to
-	size_t rff,            // offset of last reference char to align to
+	size_t rflen,          // offset of last reference char to align to
 	TRefOff reflen,        // length of reference sequence
 	TAlScore minsc,        // minimum score
 	bool enable8,          // use 8-bit SSE if possible?
@@ -85,7 +84,6 @@ inline void SwAligner::initRef(
 	size_t refGaps  = sc_->maxRefGaps(minsc, rdfw_->length());
 	assert_geq(readGaps, 0);
 	assert_geq(refGaps, 0);
-	assert_gt(rff, rfi);
 	rdgap_       = readGaps;  // max # gaps in read
 	rfgap_       = refGaps;   // max # gaps in reference
 	state_       = STATE_INITED;
@@ -94,8 +92,7 @@ inline void SwAligner::initRef(
 	qu_          = fw ? qufw_ : qurc_; // quality sequence
 	refidx_      = refidx;   // id of reference aligned against
 	rf_          = rf;       // reference sequence
-	rfi_         = rfi;      // offset of first reference char to align to
-	rff_         = rff;      // offset of last reference char to align to
+	rflen_       = rflen;    // offset of last reference char to align to
 	reflen_      = reflen;   // length of entire reference sequence
 	rect_        = &rect;    // DP rectangle
 	cural_       = 0;        // idx of next alignment to give out
@@ -214,7 +211,6 @@ void SwAligner::initRef(
 		refidx,      // id of reference aligned against
 		rect,        // DP rectangle
 		rf_,         // reference sequence, wrapped up in BTString object
-		0,           // use the whole thing
 		(size_t)(rff - rfi), // ditto
 		reflen,      // reference length
 		minsc,       // minimum score
@@ -279,7 +275,7 @@ bool SwAligner::nextAlignment(
 		size_t row = btncand_[cural_].row;
 		size_t col = btncand_[cural_].col;
 		assert_lt(row, dpRows());
-		assert_lt((TRefOff)col, rff_-rfi_);
+		assert_lt((TRefOff)col, rflen_);
 #ifdef ENABLE_I16
 		if(!enable8_) {
 			SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;

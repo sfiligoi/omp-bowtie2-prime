@@ -555,12 +555,11 @@ bool SwAligner::alignEnd2EndSseI16(
 	assert_eq(STATE_INITED, state_);
 
 	assert_leq(rdlen_, qu_->length());
-	assert_lt(rfi_, rff_);
 	assert_eq(rd_->length(), qu_->length());
 	assert_geq(sc_->gapbar, 1);
 	assert(repOk());
 #ifndef NDEBUG
-	for(size_t i = (size_t)rfi_; i < (size_t)rff_; i++) {
+	for(size_t i = 0; i < (size_t)rflen_; i++) {
 		assert_range(0, 16, (int)rf_[i]);
 	}
 #endif
@@ -598,11 +597,11 @@ bool SwAligner::alignEnd2EndSseI16(
 
 	assert_gt(sc_->gapbar, 0);
 
-	colstop_ = rff_ - 1;
+	colstop_ = rflen_ - 1;
 	lastsolcol_ = 0;
 
 	// should never get in here, but just in case
-	if (rfi_>=rff_) {
+	if (rflen_==0) {
 		btncand_.clear();
 #ifdef ENABLE_SSE_METRICS
 		if(!debug) met.dpfail++;
@@ -611,14 +610,14 @@ bool SwAligner::alignEnd2EndSseI16(
 		return false;
 	}
 
-	d.mat_.init(dpRows(), rff_-rfi_, EEI16_NWORDS_PER_REG);
+	d.mat_.init(dpRows(), rflen_, EEI16_NWORDS_PER_REG);
 
 	assert_leq(iter,      (size_t)MAX_U16);
-	assert_leq(rff_-rfi_, (size_t)MAX_U16);
+	assert_leq(rflen_,    (size_t)MAX_U16);
 	uint16_t btnfilled = 0;
-	btncand_.resizeNoCopy(rff_-rfi_); // cannot be bigger that this
+	btncand_.resizeNoCopy(rflen_); // cannot be bigger that this
 
-	const EEI16_TCScore lrmax = EEI16_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_+rfi_, rff_-rfi_,
+	const EEI16_TCScore lrmax = EEI16_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
 					d.mat_.ptr(),
                                         iter, d.mat_.colstride(), lastWordIdx,
 					minsc_, dpRows(),
@@ -631,8 +630,8 @@ bool SwAligner::alignEnd2EndSseI16(
 #ifdef ENABLE_SSE_METRICS
 	// Update metrics
 	if(!debug) {
-		size_t ninner = (rff_ - rfi_) * iter;
-		met.col   += (rff_ - rfi_);             // DP columns
+		size_t ninner = (rflen_) * iter;
+		met.col   += (rflen_);             // DP columns
 		met.cell  += (ninner * EEI16_NWORDS_PER_REG); // DP cells
 		met.inner += ninner;                    // DP inner loop iters
 		met.fixup += 0; // deprecated nfixup;                    // DP fixup loop iters
@@ -760,7 +759,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	RandomSource&  rnd)    // random gen, to choose among equal paths
 {
 	assert_lt(row, dpRows());
-	assert_lt(col, (size_t)(rff_ - rfi_));
+	assert_lt(col, (size_t)(rflen_));
 	SSEData& d = fw_ ? sseI16fw_ : sseI16rc_;
 #ifdef ENABLE_SSE_METRICS
 	SSEMetrics& met = sseMet_;
@@ -793,7 +792,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 #endif
 		nbts++;
 		int readc = (*rd_)[row];
-		int refm  = (int)rf_[rfi_ + col];
+		int refm  = (int)rf_[col];
 		int readq = (*qu_)[row];
 		assert_leq(col, origCol);
 		// Get score in this cell
@@ -1092,7 +1091,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 			case SW_BT_OALL_DIAG: {
 				assert_gt(row, 0); assert_gt(col, 0);
 				int readC = (*rd_)[row];
-				int refNmask = (int)rf_[rfi_+col];
+				int refNmask = (int)rf_[col];
 				assert_gt(refNmask, 0);
 				int m = matchesEx(readC, refNmask);
 				ct = SSEMatrix::H;
@@ -1177,7 +1176,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				assert_gt(col, 0);
 				Edit e(
 					(int)row+1,
-					mask2dna[(int)rf_[rfi_+col]],
+					mask2dna[(int)rf_[col]],
 					'-',
 					EDIT_TYPE_READ_GAP);
 				assert(e.repOk());
@@ -1201,7 +1200,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 				assert_gt(col, 1);
 				Edit e(
 					(int)row+1,
-					mask2dna[(int)rf_[rfi_+col]],
+					mask2dna[(int)rf_[col]],
 					'-',
 					EDIT_TYPE_READ_GAP);
 				assert(e.repOk());
@@ -1263,7 +1262,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 		return false;
 	}
 	int readC = (*rd_)[row];      // get last char in read
-	int refNmask = (int)rf_[rfi_+col]; // get last ref char ref involved in aln
+	int refNmask = (int)rf_[col]; // get last ref char ref involved in aln
 	assert_gt(refNmask, 0);
 	int m = matchesEx(readC, refNmask);
 	if(m != 1) {
@@ -1292,14 +1291,14 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	assert_eq(score.score(), escore);
 	assert_leq(gaps, rdgap_ + rfgap_);
 	off = col;
-	assert_lt(col + (size_t)rfi_, (size_t)rff_);
+	assert_lt(col, (size_t)rflen_);
 	score.gaps_ = gaps;
 	score.edits_ = (int)ned.size();
 	score.basesAligned_ = (int)(rdlen_ - trimBeg - trimEnd - score.edits_);
 	res.alres.setScore(score);
 	res.alres.setShape(
 		refidx_,                  // ref id
-		off + rfi_ + rect_->refl, // 0-based ref offset
+		off + rect_->refl, // 0-based ref offset
 		reflen_,                  // reference length
 		fw_,                      // aligned to Watson?
 		rdlen_,                   // read length
@@ -1311,7 +1310,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 		fw_ ? trimEnd : trimBeg); // alignment trim 3' end
 	size_t refns = 0;
 	for(size_t i = col; i <= origCol; i++) {
-		if((int)rf_[rfi_+i] > 15) {
+		if((int)rf_[i] > 15) {
 			refns++;
 		}
 	}
@@ -1326,7 +1325,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseI16(
 	assert_eq(gaps, gapsCheck);
 	BTDnaString refstr;
 	for(size_t i = col; i <= origCol; i++) {
-		refstr.append(firsts5[(int)rf_[rfi_+i]]);
+		refstr.append(firsts5[(int)rf_[i]]);
 	}
 	BTDnaString editstr;
 	Edit::toRef((*rd_), ned, editstr, true, trimBeg, trimEnd);

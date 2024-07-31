@@ -84,11 +84,11 @@
 #include "aligner_swsse.h"
 
 #define QUAL2(d, f) sc_->mm((int)(*rd_)[d], \
-							(int)  rf_ [rfi_ + f], \
+							(int)  rf_ [f], \
 							(int)(*qu_)[d] - 33)
 #define QUAL(d)     sc_->mm((int)(*rd_)[d], \
 							(int)(*qu_)[d] - 33)
-#define N_SNP_PEN(c) (((int)rf_[rfi_ + c] > 15) ? sc_->n(30) : sc_->penSnp)
+#define N_SNP_PEN(c) (((int)rf_[c] > 15) ? sc_->n(30) : sc_->penSnp)
 
 /**
  * SwAligner
@@ -276,7 +276,6 @@ public:
 		TRefId refidx,         // id of reference aligned against
 		const DPRect& rect,    // DP rectangle
 		char *rf,              // reference sequence
-		size_t rfi,            // offset of first reference char to align to
 		size_t rff,            // offset of last reference char to align to
 		TRefOff reflen,        // length of reference sequence
 		TAlScore minsc,        // minimum score
@@ -414,7 +413,7 @@ public:
 	 * Return the size of the DP problem.
 	 */
 	size_t size() const {
-		return dpRows() * (rff_ - rfi_);
+		return dpRows() * (rflen_);
 	}
 
 protected:
@@ -506,8 +505,7 @@ protected:
 	TRefOff             reflen_; // length of entire reference sequence
 	const DPRect*       rect_;   // DP rectangle
 	char               *rf_;     // reference sequence
-	TRefOff             rfi_;    // offset of first ref char to align to
-	TRefOff             rff_;    // offset of last ref char to align to (excl)
+	TRefOff             rflen_;    // offset of last ref char to align to (excl)
 	size_t              rdgap_;  // max # gaps in read
 	size_t              rfgap_;  // max # gaps in reference
 #ifdef ENABLE_I16
