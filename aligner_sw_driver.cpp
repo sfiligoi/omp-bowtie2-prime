@@ -577,13 +577,19 @@ int SwDriver::extendSeeds(
 	}
 
 	// Initialize the aligner with a new read
-	swa.initRead(
+	if (!swa.initRead(
 		rd.patFw,  // fw version of query
 		rd.patRc,  // rc version of query
 		rd.qual,   // fw version of qualities
 		rd.qualRev,// rc version of qualities
 		rdlen,     // off of last char (excl) in 'rd' to consider
-		sc);       // scoring scheme
+		sc)) {     // scoring scheme
+		// Something went terribly wrong (likely read too long)
+		// Just bail out
+		prm.nExDpFails++;
+		prm.nDpFail++;
+		return EXTEND_EXCEEDED_HARD_LIMIT;
+	}
 
 	DynProgFramer dpframe(!reportOverhangs);
 
@@ -752,7 +758,7 @@ int SwDriver::extendSeeds(
 				// pastedRefoff -= leftShift;
 				size_t nsInLeftShift = 0;
 				{
-					swa.initRef(
+					if (!swa.initRef(
 						fw,        // whether to align forward or revcomp read
 						tidx,      // reference aligned against
 						rect,      // DP rectangle
@@ -762,7 +768,13 @@ int SwDriver::extendSeeds(
 						enable8,   // use 8-bit SSE if possible?
 						true,      // this is a seed extension - not finding a mate
 						nwindow,
-						nsInLeftShift);
+						nsInLeftShift)) {
+						// Something went terribly wrong (likely ncols too long)
+						// Just bail out
+						prm.nExDpFails++;
+						prm.nDpFail++;
+						return EXTEND_EXCEEDED_HARD_LIMIT;
+					}
 					// Because of how we framed the problem, we can say that we've
 					// exhaustively scored the seed diagonal as well as maxgaps
 					// diagonals on either side

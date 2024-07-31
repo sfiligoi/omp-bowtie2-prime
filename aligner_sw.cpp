@@ -30,8 +30,9 @@
 
 /**
  * Initialize with a new read.
+ * Return True iff everything went fine
  */
-inline void SwAligner::initRead(
+inline bool SwAligner::initRead(
 	const BTDnaString& rdfw, // forward read sequence
 	const BTDnaString& rdrc, // revcomp read sequence
 	const BTString& qufw,    // forward read qualities
@@ -48,19 +49,21 @@ inline void SwAligner::initRead(
 	rdlen_   = rdlen;        // offset of last read char to align
 	sc_      = &sc;        // scoring scheme
 	nceil_   = nceil;      // max # Ns allowed in ref portion of aln
-	initedRead_ = true;
 	sseU8fwBuilt_  = false;  // built fw query profile, 8-bit score
 	sseU8rcBuilt_  = false;  // built rc query profile, 8-bit score
 #ifdef ENABLE_I16
 	sseI16fwBuilt_ = false;  // built fw query profile, 16-bit score
 	sseI16rcBuilt_ = false;  // built rc query profile, 16-bit score
 #endif
+	// Only a success if the fixed buffer is large enough
+	initedRead_ = rdlen<=sseU8fw_.get_max_rows();
+	return initedRead_;
 }
 
 /**
  * Initialize with a new alignment problem.
  */
-inline void SwAligner::initRef(
+inline bool SwAligner::initRef(
 	bool fw,               // whether to forward or revcomp read is aligning
 	TRefId refidx,         // id of reference aligned against
 	const DPRect& rect,    // DP rectangle
@@ -96,8 +99,10 @@ inline void SwAligner::initRef(
 	reflen_      = reflen;   // length of entire reference sequence
 	rect_        = &rect;    // DP rectangle
 	cural_       = 0;        // idx of next alignment to give out
-	initedRef_   = true;     // indicate we've initialized the ref portion
 	extend_      = extend;   // true iff this is a seed extension
+	// Only a success if the fixed buffer is large enough
+	initedRef_   = rflen<=sseU8fw_.get_max_cols();     // indicate we've initialized the ref portion
+	return initedRef_;
 }
 	
 /**
@@ -109,7 +114,7 @@ inline void SwAligner::initRef(
  * using, e.g., the location of a seed hit, or the range of possible fragment
  * lengths if we're searching for the opposite mate in a pair.
  */
-void SwAligner::initRef(
+bool SwAligner::initRef(
 	bool fw,               // whether to forward or revcomp read is aligning
 	TRefId refidx,         // reference aligned against
 	const DPRect& rect,    // DP rectangle
@@ -206,7 +211,7 @@ void SwAligner::initRef(
 	}
 	// Correct for having captured an extra reference character
 	rff--;
-	initRef(
+	return initRef(
 		fw,          // whether to forward or revcomp read is aligning
 		refidx,      // id of reference aligned against
 		rect,        // DP rectangle

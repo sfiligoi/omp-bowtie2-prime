@@ -243,8 +243,9 @@ public:
 	/**
 	 * Prepare the dynamic programming driver with a new read and a new scoring
 	 * scheme.
+	 * Return True iff everything went well.
 	 */
-	void initRead(
+	bool initRead(
 		const BTDnaString& rdfw, // read sequence for fw read
 		const BTDnaString& rdrc, // read sequence for rc read
 		const BTString& qufw,    // read qualities for fw read
@@ -254,8 +255,9 @@ public:
 	
 	/**
 	 * Initialize with a new alignment problem.
+	 * Return True iff everything went well.
 	 */
-	void initRef(
+	bool initRef(
 		bool fw,               // whether to forward or revcomp read is aligning
 		TRefId refidx,         // id of reference aligned against
 		const DPRect& rect,    // DP rectangle
@@ -279,7 +281,7 @@ public:
 	 *
 	 * Returns true if an alignment was found, false otherwise.
 	 */
-	void initRef(
+	bool initRef(
 		bool fw,               // whether to forward or revcomp read aligned
 		TRefId refidx,         // reference aligned against
 		const DPRect& rect,    // DP rectangle

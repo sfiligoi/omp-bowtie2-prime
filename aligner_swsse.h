@@ -37,6 +37,8 @@ static constexpr size_t EEI16_NBITS_PER_WORD  = 16;
 static constexpr size_t EEI16_NBYTES_PER_WORD = 2;
 
 // Hardcode for now. May want to pass in Makefile
+// The cosen values are appropriate for short reads alignment
+// since rdlen is typically 150 (as of July 2024)
 #define SSE_MAX_ROWS 160
 #define SSE_MAX_COLS 200
 
@@ -538,6 +540,9 @@ struct SSEData {
 			* 2;                    // & gap barrier data
 		return nsses;
 	}
+
+	static constexpr uint16_t get_max_rows() {return max_rows;}
+	static constexpr uint16_t get_max_cols() {return max_cols;}
 
 	typedef EList_sse<get_nsses(max_rows)>		EList_pb;
 	typedef SSEMatrix<i16,max_rows,max_cols>	SDMatrix;
