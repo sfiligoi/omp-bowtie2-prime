@@ -211,7 +211,6 @@ public:
 		state_(STATE_UNINIT),
 		initedRead_(false),
 		initedRef_(false),
-		rfwbuf_(DP_CAT),
 		btnstack_(DP_CAT),
 		btcells_(DP_CAT),
 		btdiag_(),
@@ -229,7 +228,6 @@ public:
 	SwAligner& operator=(const SwAligner& other) = delete;
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		rfwbuf_.set_alloc(alloc, propagate_alloc);
 		btnstack_.set_alloc(alloc, propagate_alloc);
 		btcells_.set_alloc(alloc, propagate_alloc);
 		btdiag_.set_alloc(alloc, propagate_alloc);
@@ -509,7 +507,11 @@ protected:
 	int                 state_;        // state
 	bool                initedRead_;   // true iff initialized with initRead
 	bool                initedRef_;    // true iff initialized with initRef
-	EList<uint32_t>     rfwbuf_;       // buffer for wordized ref stretches
+
+	// large enough to accommodate both the reference
+	// sequence and any Ns we might add to either side.
+	constexpr static uint16_t rfwbuf_max_size_ = (SSE_MAX_COLS + 1 + 16) / 4;
+	uint32_t            rfwbuf_[rfwbuf_max_size_];  // buffer for wordized ref stretches
 	
 	EList<DpNucFrame>    btnstack_;    // backtrace stack for nucleotides
 	EList<SizeTPair>     btcells_;     // cells involved in current backtrace

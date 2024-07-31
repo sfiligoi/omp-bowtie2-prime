@@ -135,6 +135,11 @@ bool SwAligner::initRef(
 	// rflen = full length of the reference substring to consider, including
 	// overhang off the boundaries of the reference sequence
 	const size_t rflen = (size_t)(rff - rfi);
+	if (rflen>sseU8fw_.get_max_cols()) {
+		// We used fixed buffers, and they are not big enough
+		initedRef_ = false;
+		return false;
+	}
 	// Figure the number of Ns we're going to add to either side
 	size_t leftNs  =
 		(rfi >= 0               ? 0 : (size_t)std::abs(static_cast<long>(rfi)));
@@ -145,7 +150,7 @@ bool SwAligner::initRef(
 	// rflenInner = length of just the portion that doesn't overhang ref ends
 	assert_geq(rflen, leftNs + rightNs);
 	const size_t rflenInner = rflen - (leftNs + rightNs);
-#ifndef NDEBUG
+#if 0
 	bool haveRfbuf2 = false;
 	EList<char> rfbuf2(rflen);
 	// This is really slow, so only do it some of the time
@@ -164,15 +169,15 @@ bool SwAligner::initRef(
 #endif
 	// rfbuf_ = uint32_t list large enough to accommodate both the reference
 	// sequence and any Ns we might add to either side.
-	rfwbuf_.resize((rflen + 16) / 4);
+	//rfwbuf_.resize((rflen + 16) / 4);
 	int offset = refs.getStretch(
-		rfwbuf_.ptr(),               // buffer to store words in
+		rfwbuf_,                     // buffer to store words in
 		refidx,                      // which reference
 		(rfi < 0) ? 0 : (size_t)rfi, // starting offset (can't be < 0)
 		rflenInner                   // length to grab (exclude overhang)
 		ASSERT_ONLY(, tmp_destU32_));// for BitPairReference::getStretch()
 	assert_leq(offset, 16);
-	rf_ = (char*)rfwbuf_.ptr() + offset;
+	rf_ = (char*)rfwbuf_ + offset;
 	// Shift ref chars away from 0 so we can stick Ns at the beginning
 	if(leftNs > 0) {
 		// Slide everyone down
