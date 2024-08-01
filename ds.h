@@ -589,7 +589,7 @@ public:
 	 */
 	void push_back_noalloc(const T& el) {
 #ifndef NDEBUG
-		if ((cur_ >= sz_)  || (list == NULL)) throw "Unexpected alloc";
+		if ((cur_ >= sz_)  || (list_ == NULL)) throw "Unexpected alloc";
 #endif
 		list_[cur_++] = el;
 	}
@@ -600,7 +600,7 @@ public:
 	 */
 	void expand_noalloc() {
 #ifndef NDEBUG
-		if ((cur_ >= sz_)  || (list == NULL))throw "Unexpected alloc";
+		if ((cur_ >= sz_)  || (list_ == NULL))throw "Unexpected alloc";
 #endif
 		cur_++;
 	}
@@ -647,7 +647,7 @@ public:
 	 */
 	void trim(size_t sz) {
 #ifndef NDEBUG
-		if ((sz >= sz_) || (list == NULL)) throw "Unexpected alloc";
+		if ((sz >= sz_) || (list_ == NULL)) throw "Unexpected alloc";
 #endif
 		assert_leq(sz, sz_);
 		cur_ = sz;
@@ -684,7 +684,7 @@ public:
 	 */
 	void insert_noalloc(const T& el, size_t idx) {
 #ifndef NDEBUG
-		if ((cur_ >= sz_)  || (list == NULL)) throw "Unexpected alloc";
+		if ((cur_ >= sz_)  || (list_ == NULL)) throw "Unexpected alloc";
 #endif
 		assert_lt(idx, cur_);
 		for(size_t i = cur_; i > idx; i--) {
@@ -700,7 +700,7 @@ public:
 	void insert_noalloc(const AList<T>& l, size_t idx) {
 		if(l.cur_ == 0) return;
 #ifndef NDEBUG
-		if (((cur_ + l.cur_) > sz_)  || (list == NULL)) throw "Unexpected alloc";
+		if (((cur_ + l.cur_) > sz_)  || (list_ == NULL)) throw "Unexpected alloc";
 #endif
 		assert_lt(idx, cur_);
 		for(size_t i = cur_ + l.cur_ - 1; i > idx + (l.cur_ - 1); i--) {
@@ -1032,7 +1032,7 @@ public:
 	 */
 	inline void ensure(size_t thresh) {
 #ifndef NDEBUG
-		if ((thresh > this->sz_)  || (list == NULL)) throw "Unexpected alloc";
+		if ((thresh > this->sz_)  || (this->list_ == NULL)) throw "Unexpected alloc";
 #endif
 	}
 
