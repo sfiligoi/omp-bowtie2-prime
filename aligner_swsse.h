@@ -36,13 +36,6 @@ static constexpr size_t EEI16_NWORDS_PER_REG  = NBYTES_PER_REG/2;
 static constexpr size_t EEI16_NBITS_PER_WORD  = 16;
 static constexpr size_t EEI16_NBYTES_PER_WORD = 2;
 
-// Hardcode for now. May want to pass in Makefile
-// The cosen values are appropriate for short reads alignment
-// since rdlen is typically 150 (as of July 2024)
-#define SSE_MAX_ROWS 160
-#define SSE_MAX_COLS 200
-
-
 struct SSEMetrics {
 	
 	SSEMetrics() { reset(); }
@@ -119,7 +112,7 @@ struct SSEMatrixConsts {
 	constexpr static uint16_t nvecPerCell_ = 4; // # vectors per matrix cell (4)
 };
 
-template<bool i16, uint16_t max_rows = SSE_MAX_ROWS, uint16_t max_cols = SSE_MAX_COLS>
+template<bool i16, uint16_t max_rows, uint16_t max_cols>
 struct SSEMatrix {
 
 	// Each matrix element is a quartet of vectors.  These constants are used
@@ -521,7 +514,7 @@ struct SSEMatrix {
  * All the data associated with the query profile and other data needed for SSE
  * alignment of a query.
  */
-template<bool i16, uint16_t max_rows = SSE_MAX_ROWS, uint16_t max_cols = SSE_MAX_COLS>
+template<bool i16, uint16_t max_rows, uint16_t max_cols>
 struct SSEData {
 	SSEData(int cat = 0) { }
 

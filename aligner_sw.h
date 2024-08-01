@@ -476,11 +476,11 @@ protected:
 	TAlScore            minsc_;  // penalty ceiling for valid alignments
 	int                 nceil_;  // max # Ns allowed in ref portion of aln
 
-	SSEData<false>      sseU8fw_;   // buf for fw query, 8-bit score
-	SSEData<false>      sseU8rc_;   // buf for rc query, 8-bit score
+	SSEData<false,ALN_MAX_ROWS,ALN_MAX_COLS>      sseU8fw_;   // buf for fw query, 8-bit score
+	SSEData<false,ALN_MAX_ROWS,ALN_MAX_COLS>      sseU8rc_;   // buf for rc query, 8-bit score
 #ifdef ENABLE_I16
-	SSEData<true>       sseI16fw_;  // buf for fw query, 16-bit score
-	SSEData<true>       sseI16rc_;  // buf for rc query, 16-bit score
+	SSEData<true,ALN_MAX_ROWS,ALN_MAX_COLS>       sseI16fw_;  // buf for fw query, 16-bit score
+	SSEData<true,ALN_MAX_ROWS,ALN_MAX_COLS>       sseI16rc_;  // buf for rc query, 16-bit score
 #endif
 	bool                sseU8fwBuilt_;   // built fw query profile, 8-bit score
 	bool                sseU8rcBuilt_;   // built rc query profile, 8-bit score
@@ -502,13 +502,13 @@ protected:
 
 	// large enough to accommodate both the reference
 	// sequence and any Ns we might add to either side.
-	constexpr static uint16_t rfwbuf_max_size_ = (SSE_MAX_COLS + 1 + 16) / 4;
+	constexpr static uint16_t rfwbuf_max_size_ = (ALN_MAX_COLS + 1 + 16) / 4;
 	uint32_t            rfwbuf_[rfwbuf_max_size_];  // buffer for wordized ref stretches
 	
-	DList<DpNucFrame,SSE_MAX_ROWS>    btnstack_;    // backtrace stack for nucleotides
-	DList<SizeTPair,SSE_MAX_COLS>     btcells_;     // cells involved in current backtrace
+	DList<DpNucFrame,ALN_MAX_ROWS>    btnstack_;    // backtrace stack for nucleotides
+	DList<SizeTPair,ALN_MAX_COLS>     btcells_;     // cells involved in current backtrace
 
-	DList<DpBtCandidate,SSE_MAX_COLS> btncand_;     // cells we might backtrace from
+	DList<DpBtCandidate,ALN_MAX_COLS> btncand_;     // cells we might backtrace from
 	
 	size_t              colstop_;      // bailed on DP loop after this many cols
 	size_t              lastsolcol_;   // last DP col with valid cell
