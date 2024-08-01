@@ -128,7 +128,6 @@ struct SSEMatrix {
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		matbuf_.set_alloc(alloc, propagate_alloc);
 		masks_.set_alloc(alloc, propagate_alloc);
-		reset_.set_alloc(alloc, propagate_alloc);
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
@@ -505,7 +504,7 @@ struct SSEMatrix {
 	size_t           rowstride_;   // # vectors b/t adjacent cells in same col
 	EList_mb         matbuf_;      // buffer for holding vectors
 	ELList<uint16_t> masks_;       // buffer for masks/backtracking flags
-	EList<bool>      reset_;       // true iff row in masks_ has been reset
+	DList<bool,max_rows> reset_;       // true iff row in masks_ has been reset
 };
 
 #define ALPHA_SIZE 5
