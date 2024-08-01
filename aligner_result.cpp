@@ -127,10 +127,10 @@ void AlnRes::setShape(
 void AlnRes::init(
 	size_t             rdlen,           // # chars after hard trimming
 	const AlnScore&    score,           // alignment score
-	const EList<Edit>* ned,             // nucleotide edits
+	const EDList     * ned,             // nucleotide edits
 	size_t             ned_i,           // first position to copy
 	size_t             ned_n,           // # positions to copy
-	const EList<Edit>* aed,             // ambiguous base resolutions
+	const EDList     * aed,             // ambiguous base resolutions
 	size_t             aed_i,           // first position to copy
 	size_t             aed_n,           // # positions to copy
 	Coord              refcoord,        // leftmost ref pos of 1st al char
@@ -555,7 +555,7 @@ bool AlnRes::matchesRef(
  */
 void StackedAln::init(
 	const BTDnaString& s,
-	const EList<Edit>& ed,
+	const AList<Edit>& ed,
 	size_t trimLS,
 	size_t trimLH,
 	size_t trimRS,
@@ -934,7 +934,7 @@ void RedundantAlns::add(const AlnRes& res) {
 	if(!res.fw()) {
 		const_cast<AlnRes&>(res).invertEdits();
 	}
-	const EList<Edit>& ned = res.ned();
+	const auto& ned = res.ned();
 	size_t nedidx = 0;
 	assert_leq(len, cells_.size());
 	// For each row...
@@ -985,7 +985,7 @@ bool RedundantAlns::overlap(const AlnRes& res) {
 	if(!res.fw()) {
 		const_cast<AlnRes&>(res).invertEdits();
 	}
-	const EList<Edit>& ned = res.ned();
+	const auto& ned = res.ned();
 	size_t nedidx = 0;
 	// For each row...
 	bool olap = false;

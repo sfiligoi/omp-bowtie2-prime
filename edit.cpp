@@ -36,7 +36,7 @@ ostream& operator<< (ostream& os, const Edit& e) {
 /**
  * Print a list of edits to a std::ostream, separated by commas.
  */
-void Edit::print(ostream& os, const EList<Edit>& edits, char delim) {
+void Edit::print(ostream& os, const AList<Edit>& edits, char delim) {
 	for(size_t i = 0; i < edits.size(); i++) {
 		os << edits[i];
 		if(i < edits.size()-1) os << delim;
@@ -48,7 +48,7 @@ void Edit::print(ostream& os, const EList<Edit>& edits, char delim) {
  * the other end of the read (of length 'sz').
  */
 void Edit::invertPoss(
-	EList<Edit>& edits,
+	AList<Edit>& edits,
 	size_t sz,
 	size_t ei,
 	size_t en,
@@ -94,7 +94,7 @@ void Edit::invertPoss(
 void Edit::printQAlign(
 	std::ostream& os,
 	const BTDnaString& read,
-	const EList<Edit>& edits)
+	const AList<Edit>& edits)
 {
 	printQAlign(os, "", read, edits);
 }
@@ -106,7 +106,7 @@ void Edit::printQAlign(
 void Edit::printQAlignNoCheck(
 	std::ostream& os,
 	const BTDnaString& read,
-	const EList<Edit>& edits)
+	const AList<Edit>& edits)
 {
 	printQAlignNoCheck(os, "", read, edits);
 }
@@ -119,7 +119,7 @@ void Edit::printQAlign(
 	std::ostream& os,
 	const char *prefix,
 	const BTDnaString& read,
-	const EList<Edit>& edits)
+	const AList<Edit>& edits)
 {
 	size_t eidx = 0;
 	os << prefix;
@@ -196,7 +196,7 @@ void Edit::printQAlignNoCheck(
 	std::ostream& os,
 	const char *prefix,
 	const BTDnaString& read,
-	const EList<Edit>& edits)
+	const AList<Edit>& edits)
 {
 	size_t eidx = 0;
 	os << prefix;
@@ -263,7 +263,7 @@ void Edit::printQAlignNoCheck(
 /**
  * Sort the edits in the provided list.
  */
-void Edit::sort(EList<Edit>& edits) {
+void Edit::sort(AList<Edit>& edits) {
 	edits.sort(); // simple!
 }
 
@@ -277,7 +277,7 @@ void Edit::sort(EList<Edit>& edits) {
  */
 void Edit::toRef(
 	const BTDnaString& read,
-	const EList<Edit>& edits,
+	const AList<Edit>& edits,
 	BTDnaString& ref,
 	bool fw,
 	size_t trim5,
@@ -291,7 +291,7 @@ void Edit::toRef(
 	size_t trimEnd = fw ? trim3 : trim5;
 	assert(Edit::repOk(edits, read, fw, trim5, trim3));
 	if(!fw) {
-		invertPoss(const_cast<EList<Edit>&>(edits), read.length()-trimBeg-trimEnd, false);
+		invertPoss(const_cast<AList<Edit>&>(edits), read.length()-trimBeg-trimEnd, false);
 	}
 	for(size_t i = 0; i < rdlen; i++) {
 		ASSERT_ONLY(int c = read[i]);
@@ -336,7 +336,7 @@ void Edit::toRef(
 		}
 	}
 	if(!fw) {
-		invertPoss(const_cast<EList<Edit>&>(edits), read.length()-trimBeg-trimEnd, false);
+		invertPoss(const_cast<AList<Edit>&>(edits), read.length()-trimBeg-trimEnd, false);
 	}
 }
 
@@ -361,14 +361,14 @@ bool Edit::repOk() const {
  * query.
  */
 bool Edit::repOk(
-	const EList<Edit>& edits,
+	const AList<Edit>& edits,
 	const BTDnaString& s,
 	bool fw,
 	size_t trimBeg,
 	size_t trimEnd)
 {
 	if(!fw) {
-		invertPoss(const_cast<EList<Edit>&>(edits), s.length()-trimBeg-trimEnd, false);
+		invertPoss(const_cast<AList<Edit>&>(edits), s.length()-trimBeg-trimEnd, false);
 		swap(trimBeg, trimEnd);
 	}
 	for(size_t i = 0; i < edits.size(); i++) {
@@ -400,7 +400,7 @@ bool Edit::repOk(
 		}
 	}
 	if(!fw) {
-		invertPoss(const_cast<EList<Edit>&>(edits), s.length()-trimBeg-trimEnd, false);
+		invertPoss(const_cast<AList<Edit>&>(edits), s.length()-trimBeg-trimEnd, false);
 	}
 	return true;
 }
@@ -410,7 +410,7 @@ bool Edit::repOk(
  * Merge second argument into the first.  Assume both are sorted to
  * begin with.
  */
-void Edit::merge(EList<Edit>& dst, const EList<Edit>& src) {
+void Edit::merge(EList<Edit>& dst, const AList<Edit>& src) {
 	size_t di = 0, si = 0;
 	while(di < dst.size()) {
 		if(src[si].pos < dst[di].pos) {
@@ -435,7 +435,7 @@ void Edit::merge(EList<Edit>& dst, const EList<Edit>& src) {
 /**
  * Clip off some of the low-numbered positions.
  */
-void Edit::clipLo(EList<Edit>& ed, size_t len, size_t amt) {
+void Edit::clipLo(AList<Edit>& ed, size_t len, size_t amt) {
 	size_t nrm = 0;
 	for(size_t i = 0; i < ed.size(); i++) {
 		assert_lt(ed[i].pos, len);
@@ -452,7 +452,7 @@ void Edit::clipLo(EList<Edit>& ed, size_t len, size_t amt) {
 /**
  * Clip off some of the high-numbered positions.
  */
-void Edit::clipHi(EList<Edit>& ed, size_t len, size_t amt) {
+void Edit::clipHi(AList<Edit>& ed, size_t len, size_t amt) {
 	assert_leq(amt, len);
 	size_t max = len - amt;
 	size_t nrm = 0;
@@ -467,5 +467,5 @@ void Edit::clipHi(EList<Edit>& ed, size_t len, size_t amt) {
 			break;
 		}
 	}
-	ed.resize(ed.size() - nrm);
+	ed.trim(ed.size() - nrm);
 }

@@ -770,7 +770,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 	size_t origCol = col;
 	size_t gaps = 0, readGaps = 0, refGaps = 0;
 	res.alres.reset();
-	EList<Edit>& ned = res.alres.ned();
+	auto& ned = res.alres.ned();
 	assert(ned.empty());
 	assert_gt(dpRows(), row);
 	size_t trimEnd = dpRows() - row - 1; 

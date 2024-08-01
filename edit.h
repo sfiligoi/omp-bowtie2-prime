@@ -180,7 +180,7 @@ struct Edit {
 	/**
 	 * Return the number of gaps in the given edit list.
 	 */
-	static size_t numGaps(const EList<Edit>& es) {
+	static size_t numGaps(const AList<Edit>& es) {
 		size_t gaps = 0;
 		for(size_t i = 0; i < es.size(); i++) {
 			if(es[i].isGap()) gaps++;
@@ -199,14 +199,14 @@ struct Edit {
 	/**
 	 * Sort the edits in the provided list.
 	 */
-	static void sort(EList<Edit>& edits);
+	static void sort(AList<Edit>& edits);
 
 	/**
 	 * Flip all the edits.pos fields so that they're with respect to
 	 * the other end of the read (of length 'sz').
 	 */
 	static void invertPoss(
-		EList<Edit>& edits,
+		AList<Edit>& edits,
 		size_t sz,
 		size_t ei,
 		size_t en,
@@ -216,19 +216,19 @@ struct Edit {
 	 * Flip all the edits.pos fields so that they're with respect to
 	 * the other end of the read (of length 'sz').
 	 */
-	static void invertPoss(EList<Edit>& edits, size_t sz, bool sort = false) {
+	static void invertPoss(AList<Edit>& edits, size_t sz, bool sort = false) {
 		invertPoss(edits, sz, 0, edits.size(), sort);
 	}
 	
 	/**
 	 * Clip off some of the low-numbered positions.
 	 */
-	static void clipLo(EList<Edit>& edits, size_t len, size_t amt);
+	static void clipLo(AList<Edit>& edits, size_t len, size_t amt);
 
 	/**
 	 * Clip off some of the high-numbered positions.
 	 */
-	static void clipHi(EList<Edit>& edits, size_t len, size_t amt);
+	static void clipHi(AList<Edit>& edits, size_t len, size_t amt);
 
 	/**
 	 * Given a read string and some edits, generate and append the
@@ -236,7 +236,7 @@ struct Edit {
 	 */
 	static void toRef(
 		const BTDnaString& read,
-		const EList<Edit>& edits,
+		const AList<Edit>& edits,
 		BTDnaString& ref,
 		bool fw = true,
 		size_t trim5 = 0,
@@ -250,7 +250,7 @@ struct Edit {
 	static void printQAlign(
 		std::ostream& os,
 		const BTDnaString& read,
-		const EList<Edit>& edits);
+		const AList<Edit>& edits);
 
 	/**
 	 * Given a string and its edits with respect to some other string,
@@ -262,7 +262,7 @@ struct Edit {
 		std::ostream& os,
 		const char *prefix,
 		const BTDnaString& read,
-		const EList<Edit>& edits);
+		const AList<Edit>& edits);
 
 	/**
 	 * Given a string and its edits with respect to some other string,
@@ -272,7 +272,7 @@ struct Edit {
 	static void printQAlignNoCheck(
 		std::ostream& os,
 		const BTDnaString& read,
-		const EList<Edit>& edits);
+		const AList<Edit>& edits);
 
 	/**
 	 * Given a string and its edits with respect to some other string,
@@ -284,7 +284,7 @@ struct Edit {
 		std::ostream& os,
 		const char *prefix,
 		const BTDnaString& read,
-		const EList<Edit>& edits);
+		const AList<Edit>& edits);
 
 #ifndef NDEBUG
 	bool repOk() const;
@@ -295,7 +295,7 @@ struct Edit {
 	 * query.
 	 */
 	static bool repOk(
-		const EList<Edit>& edits,
+		const AList<Edit>& edits,
 		const BTDnaString& s,
 		bool fw = true,
 		size_t trim5 = 0,
@@ -317,14 +317,14 @@ struct Edit {
 	 */
 	static void print(
 		std::ostream& os,
-		const EList<Edit>& edits,
+		const AList<Edit>& edits,
 		char delim = '\t');
 
 	/**
 	 * Merge second argument into the first.  Assume both are sorted to
 	 * begin with.
 	 */
-	static void merge(EList<Edit>& dst, const EList<Edit>& src);
+	static void merge(EList<Edit>& dst, const AList<Edit>& src);
 };
 
 #endif /* EDIT_H_ */

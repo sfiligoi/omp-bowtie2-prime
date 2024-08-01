@@ -699,7 +699,7 @@ public:
 	 */
 	void init(
 		const BTDnaString& s,
-		const EList<Edit>& ed,
+		const AList<Edit>& ed,
 		size_t trimLS,
 		size_t trimLH,
 		size_t trimRS,
@@ -817,22 +817,17 @@ protected:
 class AlnRes {
 
 public:
+	typedef DList<Edit,ALN_MAX_ROWS> EDList;
 
-	AlnRes() :
-		ned_(RES_CAT),
-		aed_(RES_CAT)
+	AlnRes()
 	{
 		reset();
 	}
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		ned_.set_alloc(alloc,propagate_alloc);
-		aed_.set_alloc(alloc,propagate_alloc);
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		ned_.set_alloc(arg);
-		aed_.set_alloc(arg);
 	}
 
 	/**
@@ -1028,10 +1023,10 @@ public:
 
 	const AlnScore&    score()          const { return score_;    }
 	const AlnScore&    oscore()         const { return oscore_;   }
-	EList<Edit>&       ned()                  { return ned_;      }
-	EList<Edit>&       aed()                  { return aed_;      }
-	const EList<Edit>& ned()            const { return ned_;      }
-	const EList<Edit>& aed()            const { return aed_;      }
+	EDList&            ned()                  { return ned_;      }
+	EDList&            aed()                  { return aed_;      }
+	const EDList&      ned()            const { return ned_;      }
+	const EDList&      aed()            const { return aed_;      }
 	size_t             readExtent()     const { return rdextent_; }
 	size_t             readExtentRows() const { return rdexrows_; }
 	size_t             readLength()     const { return rdlen_;    }
@@ -1393,10 +1388,10 @@ public:
 	void init(
 		size_t             rdlen,           // # chars after hard trimming
 		const AlnScore&    score,           // alignment score
-		const EList<Edit>* ned,             // nucleotide edits
+		const EDList*      ned,             // nucleotide edits
 		size_t             ned_i,           // first position to copy
 		size_t             ned_n,           // # positions to copy
-		const EList<Edit>* aed,             // ambiguous base resolutions
+		const EDList*      aed,             // ambiguous base resolutions
 		size_t             aed_i,           // first position to copy
 		size_t             aed_n,           // # positions to copy
 		Coord              refcoord,        // leftmost ref pos of 1st al char
@@ -1535,7 +1530,7 @@ public:
 		size_t trimRH = trimmed3p(false);
 		size_t len_trimmed = rd.length() - trimLS - trimRS;
 		if(!fw()) {
-			Edit::invertPoss(const_cast<EList<Edit>&>(ned_), len_trimmed, false);
+			Edit::invertPoss(const_cast<EDList&>(ned_), len_trimmed, false);
 			swap(trimLS, trimRS);
 			swap(trimLH, trimRH);
 		}
@@ -1543,7 +1538,7 @@ public:
 			fw() ? rd.patFw : rd.patRc,
 			ned_, trimLS, trimLH, trimRS, trimRH);
 		if(!fw()) {
-			Edit::invertPoss(const_cast<EList<Edit>&>(ned_), len_trimmed, false);
+			Edit::invertPoss(const_cast<EDList&>(ned_), len_trimmed, false);
 		}
 	}
 
@@ -1566,8 +1561,8 @@ protected:
 	size_t      rdrows_;       // # rows in alignment problem
 	AlnScore    score_;        // best SW score found
 	AlnScore    oscore_;       // score of opposite mate
-	EList<Edit> ned_;          // base edits
-	EList<Edit> aed_;          // ambiguous base resolutions
+	EDList      ned_;          // base edits
+	EDList      aed_;          // ambiguous base resolutions
 	Coord       refcoord_;     // ref coordinates (seq idx, offset, orient)
 	TRefOff     reflen_;       // reference length
 	Interval    refival_;      // ref interval (coord + length)
