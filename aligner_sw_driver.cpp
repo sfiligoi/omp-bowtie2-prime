@@ -621,9 +621,7 @@ int SwDriver::extendSeeds(
 				assert(!gws_[i].done());
 				riter++;
 				if(minsc == perfectScore) {
-					if(eehits_[i].score < perfectScore) {
-						return EXTEND_PERFECT_SCORE;
-					}
+					return EXTEND_PERFECT_SCORE;
 				}
 				if(prm.nExDps >= maxDp || prm.nMateDps >= maxDp) {
 					return EXTEND_EXCEEDED_HARD_LIMIT;

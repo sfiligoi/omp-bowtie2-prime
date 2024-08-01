@@ -312,8 +312,6 @@ struct ExtendRange {
 
 class SwDriver {
 
-	typedef EList<TIndexOffU> TSAList;
-
 public:
 
 	SwDriver() :
@@ -338,7 +336,6 @@ public:
 		rand_.set_alloc(alloc,propagate_alloc);
 		rands_.set_alloc(alloc,propagate_alloc);
 		rands2_.set_alloc(alloc,propagate_alloc);
-		eehits_.set_alloc(alloc,propagate_alloc);
 		satups_.set_alloc(alloc,propagate_alloc);
 		mateStreaks_.set_alloc(alloc,propagate_alloc);
 		rowsamp_.set_alloc(alloc,propagate_alloc);
@@ -516,7 +513,6 @@ protected:
 	Random1toN               rand_;    // random number generators
 	EList<Random1toN, 16>    rands_;   // random number generators
 	EList<Random1toN, 16>    rands2_;  // random number generators
-	EList<EEHit, 16>         eehits_;  // holds end-to-end hits
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos_;  // holds SATuple, SeedPos pairs
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos2_; // holds SATuple, SeedPos pairs
 	EList<SATuple, 16>       satups_;  // holds SATuples to explore elements from
