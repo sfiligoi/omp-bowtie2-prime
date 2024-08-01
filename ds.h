@@ -29,7 +29,6 @@
 #include <limits>
 #include "assert_helpers.h"
 #include "threading.h"
-#include "random_source.h"
 #include "btypes.h"
 
 /**
@@ -549,144 +548,19 @@ private:
 };
 
 /**
- * An EList<T> is an expandable list with these features:
- *
- *  - Payload type is a template parameter T.
- *  - Initial size can be specified at construction time, otherwise
- *    default of 128 is used.
- *  - When allocated initially or when expanding, the new[] operator is
- *    used, which in turn calls the default constructor for T.
- *  - All copies (e.g. assignment of a const T& to an EList<T> element,
- *    or during expansion) use operator=.
- *  - When the EList<T> is resized to a smaller size (or cleared, which
- *    is like resizing to size 0), the underlying containing is not
- *    reshaped.  Thus, ELists<T>s never release memory before
- *    destruction.
- *
- * And these requirements:
- *
- *  - Payload type T must have a default constructor.
- *
- * For efficiency reasons, ELists should not be declared on the stack
- * in often-called worker functions.  Best practice is to declare
- * ELists at a relatively stable layer of the stack (such that it
- * rarely bounces in and out of scope) and let the worker function use
- * it and *expand* it only as needed.  The effect is that only
- * relatively few allocations and copies will be incurred, and they'll
- * occur toward the beginning of the computation before stabilizing at
- * a "high water mark" for the remainder of the computation.
- *
- * A word about multidimensional lists.  One way to achieve a
- * multidimensional lists is to nest ELists.  This works, but it often
- * involves a lot more calls to the default constructor and to
- * operator=, especially when the outermost EList needs expanding, than
- * some of the alternatives.  One alternative is use a most specialized
- * container that still uses ELists but knows to use xfer instead of
- * operator= when T=EList.
- *
- * The 'cat_' fiends encodes a category.  This makes it possible to
- * distinguish between object subgroups in the global memory tally.
- *
- * Memory allocation is lazy.  Allocation is only triggered when the
- * user calls push_back, expand, resize, or another function that
- * increases the size of the list.  This saves memory and also makes it
- * easier to deal with nested ELists, since the default constructor
- * doesn't set anything in stone.
- */
-template <typename T, int S = 128>
-class EList : public BTAllocatorHandler<T> {
+ * An AList<T> is a list class that has all the needed methods for 
+ * operating on the list without changing its size.
+ * Typically used as a base class for the other classes.
+ **/
+template <typename T>
+class AList {
 
 public:
-	/**
-	 * Allocate initial default of S elements.
-	 */
-	explicit EList() :
-		cat_(0), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
-	{
-#ifndef USE_MEM_TALLY
-		(void)cat_;
-#endif
-	}
+	AList() :
+		list_(NULL), sz_(0), cur_(0)
+	{}
 
-	/**
-	 * Allocate initial default of S elements.
-	 */
-	explicit EList(int cat) :
-		cat_(cat), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
-	{
-		assert_geq(cat, 0);
-	}
-
-	/**
-	 * Initially allocate given number of elements; should be > 0.
-	 */
-	explicit EList(size_t isz, int cat = 0) :
-		cat_(cat), allocCat_(-1), list_(NULL), sz_(std::max(isz,size_t(S))), cur_(0)
-	{
-		assert_geq(cat, 0);
-	}
-
-	/**
-	 * Copy from another EList using operator=.
-	 */
-	EList(const EList<T, S>& o) :
-		cat_(o.cat_), allocCat_(-1), list_(NULL), sz_(S), cur_(0)
-	{
-		*this = o;
-	}
-
-	/**
-	 * Destructor.
-	 */
-	~EList() { free(); }
-
-	/**
-	 * Make this object into a copy of o by allocat
-	 */
-	EList<T, S>& operator=(const EList<T, S>& o) {
-		assert_eq(cat_, o.cat());
-		this->copy_alloc(o);
-		if(o.cur_ == 0) {
-			// Nothing to copy
-			cur_ = 0;
-			return *this;
-		}
-		if(list_ == NULL) {
-			// cat_ should already be set
-			if (sz_ < o.cur_) {
-				size_t newsz = compExact(o.cur_ + 1);
-                                sz_ = newsz;
-			}
-			lazyInit();
-		} else if(sz_ < o.cur_) {
-			expandNoCopy(o.cur_ + 1);
-		}
-		assert_geq(sz_, o.cur_);
-		cur_ = o.cur_;
-		for(size_t i = 0; i < cur_; i++) {
-			list_[i] = o.list_[i];
-		}
-		return *this;
-	}
-
-	/**
-	 * Transfer the guts of another EList into this one without using
-	 * operator=, etc.  We have to set EList o's list_ field to NULL to
-	 * avoid o's destructor from deleting list_ out from under us.
-	 */
-	void xfer(EList<T, S>& o) {
-		// Can only transfer into an empty object
-		free();
-		cat_ = o.cat_;
-		this->copy_alloc(o);
-		allocCat_ = cat_;
-		list_ = o.list_;
-		sz_ = o.sz_;
-		cur_ = o.cur_;
-		o.list_ = NULL;
-		o.sz_ = o.cur_ = 0;
-		o.allocCat_ = -1;
-	}
+	~AList() { } // nothing to do
 
 	/**
 	 * Return number of elements.
@@ -697,72 +571,6 @@ public:
 	 * Return number of elements allocated.
 	 */
 	inline size_t capacity() const { return sz_; }
-
-	/**
-	 * Return the total size in bytes occupied by this list.
-	 */
-	size_t totalSizeBytes() const {
-		return 	2 * sizeof(int) +
-		        2 * sizeof(size_t) +
-				cur_ * sizeof(T);
-	}
-
-	/**
-	 * Return the total capacity in bytes occupied by this list.
-	 */
-	size_t totalCapacityBytes() const {
-		return 	2 * sizeof(int) +
-		        2 * sizeof(size_t) +
-				sz_ * sizeof(T);
-	}
-
-	/**
-	 * Ensure that there is sufficient capacity to expand to include
-	 * 'thresh' more elements without having to expand.
-	 * Also ensure that all the elements have been initialized.
-	 */
-	inline void ensure(size_t thresh) {
-		if(list_ == NULL) {
-			if(thresh > sz_) {
-				size_t newsz = compExact(thresh); // cur_==0
-				sz_ = newsz;
-			}
-			if(sz_>0) lazyInit();
-		} else {
-			expandCopy(cur_ + thresh);
-		}
-	}
-
-	/**
-	 * Ensure that there is sufficient capacity to include 'newsz' elements.
-	 * If there isn't enough capacity right now, expand capacity to exactly
-	 * equal 'newsz'.
-	 */
-	inline void reserveExact(size_t newsz) {
-		if(list_ == NULL) {
-			if(newsz > 0) lazyInitExact(newsz);
-		} else {
-			expandCopyExact(newsz);
-		}
-	}
-
-	/**
-	 * Ensure that there is sufficient capacity to include 'thresh' elements.
-	 * If there isn't enough capacity right now, expand capacity to 
-	 * at leastl 'thresh'. Does not force initialization.
-	 */
-	inline void reserve(size_t thresh) {
-		if(list_ == NULL) {
-			if(thresh > sz_) {
-				size_t newsz = compExact(thresh);
-				sz_ = newsz;
-			} // nothing to do else
-		} else if (cur_==0) {
-			expandNoCopy(thresh);
-		} else {
-			expandCopy(thresh);
-		}
-	}
 
 	/**
 	 * Return true iff there are no elements.
@@ -777,28 +585,23 @@ public:
 	/**
 	 * Add an element to the back and immediately initialize it via
 	 * operator=.
+	 * Throw if there is not enough space.
 	 */
-	void push_back(const T& el) {
-		if(list_ == NULL) lazyInit();
-		if(cur_ == sz_) expandCopy(sz_+1);
+	void push_back_noalloc(const T& el) {
+#ifndef NDEBUG
+		if ((cur_ >= sz_)  || (list == NULL)) throw "Unexpected alloc";
+#endif
 		list_[cur_++] = el;
 	}
 
 	/**
 	 * Add an element to the back.  No intialization is done.
+	 * Throw if there is not enough space.
 	 */
-	void expand() {
-		if(list_ == NULL) lazyInit();
-		if(cur_ == sz_) expandCopy(sz_+1);
-		cur_++;
-	}
-
-	/**
-	 * Add an element to the back.  No intialization is done.
-	 * Throw if there is not enoutg space.
-	 */
-	void expand_noresize() {
-		if(cur_ >= sz_) throw "Unexpected resize";
+	void expand_noalloc() {
+#ifndef NDEBUG
+		if ((cur_ >= sz_)  || (list == NULL))throw "Unexpected alloc";
+#endif
 		cur_++;
 	}
 
@@ -840,52 +643,13 @@ public:
 	/**
 	 * If size is less than requested size, resize up to at least sz
 	 * and set cur_ to requested sz.
-	 */
-	void resizeNoCopy(size_t sz) {
-		if(sz > 0 && list_ == NULL) lazyInit();
-		if(sz <= cur_) {
-			cur_ = sz;
-			return;
-		}
-		if(sz_ < sz) expandNoCopy(sz);
-		cur_ = sz;
-	}
-
-	/**
-	 * If size is less than requested size, resize up to at least sz
-	 * and set cur_ to requested sz.
-	 */
-	void resize(size_t sz) {
-		if(sz > 0 && list_ == NULL) lazyInit();
-		if(sz <= cur_) {
-			cur_ = sz;
-			return;
-		}
-		if(sz_ < sz) {
-			expandCopy(sz);
-		}
-		cur_ = sz;
-	}
-
-	/**
-	 * Similar to resizeNoCopy, but sz MUST be smaller than sz_
+	 * Throw if there is not enough space.
 	 */
 	void trim(size_t sz) {
+#ifndef NDEBUG
+		if ((sz >= sz_) || (list == NULL)) throw "Unexpected alloc";
+#endif
 		assert_leq(sz, sz_);
-		cur_ = sz;
-	}
-
-	/**
-	 * If size is less than requested size, resize up to exactly sz and set
-	 * cur_ to requested sz.
-	 */
-	void resizeExact(size_t sz) {
-		if(sz > 0 && list_ == NULL) lazyInitExact(sz);
-		if(sz <= cur_) {
-			cur_ = sz;
-			return;
-		}
-		if(sz_ < sz) expandCopyExact(sz);
 		cur_ = sz;
 	}
 
@@ -918,10 +682,11 @@ public:
 	/**
 	 * Insert value 'el' at offset 'idx'
 	 */
-	void insert(const T& el, size_t idx) {
-		if(list_ == NULL) lazyInit();
-		assert_leq(idx, cur_);
-		if(cur_ == sz_) expandCopy(sz_+1);
+	void insert_noalloc(const T& el, size_t idx) {
+#ifndef NDEBUG
+		if ((cur_ >= sz_)  || (list == NULL)) throw "Unexpected alloc";
+#endif
+		assert_lt(idx, cur_);
 		for(size_t i = cur_; i > idx; i--) {
 			list_[i] = list_[i-1];
 		}
@@ -932,11 +697,12 @@ public:
 	/**
 	 * Insert contents of list 'l' at offset 'idx'
 	 */
-	void insert(const EList<T>& l, size_t idx) {
-		if(list_ == NULL) lazyInit();
-		assert_lt(idx, cur_);
+	void insert_noalloc(const AList<T>& l, size_t idx) {
 		if(l.cur_ == 0) return;
-		if(cur_ + l.cur_ > sz_) expandCopy(cur_ + l.cur_);
+#ifndef NDEBUG
+		if (((cur_ + l.cur_) > sz_)  || (list == NULL)) throw "Unexpected alloc";
+#endif
+		assert_lt(idx, cur_);
 		for(size_t i = cur_ + l.cur_ - 1; i > idx + (l.cur_ - 1); i--) {
 			list_[i] = list_[i - l.cur_];
 		}
@@ -1009,7 +775,7 @@ public:
 	 * Return true iff this list and list o contain the same elements in the
 	 * same order according to type T's operator==.
 	 */
-	bool operator==(const EList<T, S>& o) const {
+	bool operator==(const AList<T>& o) const {
 		if(size() != o.size()) {
 			return false;
 		}
@@ -1025,7 +791,7 @@ public:
 	 * Return true iff this list contains all of the elements in o according to
 	 * type T's operator==.
 	 */
-	bool isSuperset(const EList<T, S>& o) const {
+	bool isSuperset(const AList<T>& o) const {
 		if(o.size() > size()) {
 			// This can't be a superset if the other set contains more elts
 			return false;
@@ -1104,8 +870,10 @@ public:
 
 	/**
 	 * Shuffle a portion of the list.
+	 * Rand typically RandomSource
 	 */
-	void shufflePortion(size_t begin, size_t num, RandomSource& rnd) {
+	template<class Rand>
+	void shufflePortion(size_t begin, size_t num, Rand& rnd) {
 		assert_leq(begin+num, cur_);
 		if(num < 2) return;
 		size_t left = num;
@@ -1161,21 +929,6 @@ public:
 	const T *ptr() const { return list_; }
 
 	/**
-	 * Set the memory category for this object.
-	 */
-	void setCat(int cat) {
-		// What does it mean to set the category after the list_ is
-		// already allocated?
-		assert(null());
-		assert_gt(cat, 0); cat_ = cat;
-	}
-
-	/**
-	 * Return memory category.
-	 */
-	int cat() const { return cat_; }
-
-	/**
 	 * Perform a linear search for the first element that is
 	 * 'el'.  Return cur_ if all elements are not el.
 	 */
@@ -1212,14 +965,330 @@ public:
 		}
 	}
 
+protected:
+
+	T *list_;      // list pointer, returned from new[]
+	size_t sz_;    // capacity
+	size_t cur_;   // occupancy (AKA size)
+};
+
+/**
+ * An EList<T> is an expandable list with these features:
+ *
+ *  - Payload type is a template parameter T.
+ *  - Initial size can be specified at construction time, otherwise
+ *    default of 128 is used.
+ *  - When allocated initially or when expanding, the new[] operator is
+ *    used, which in turn calls the default constructor for T.
+ *  - All copies (e.g. assignment of a const T& to an EList<T> element,
+ *    or during expansion) use operator=.
+ *  - When the EList<T> is resized to a smaller size (or cleared, which
+ *    is like resizing to size 0), the underlying containing is not
+ *    reshaped.  Thus, ELists<T>s never release memory before
+ *    destruction.
+ *
+ * And these requirements:
+ *
+ *  - Payload type T must have a default constructor.
+ *
+ * For efficiency reasons, ELists should not be declared on the stack
+ * in often-called worker functions.  Best practice is to declare
+ * ELists at a relatively stable layer of the stack (such that it
+ * rarely bounces in and out of scope) and let the worker function use
+ * it and *expand* it only as needed.  The effect is that only
+ * relatively few allocations and copies will be incurred, and they'll
+ * occur toward the beginning of the computation before stabilizing at
+ * a "high water mark" for the remainder of the computation.
+ *
+ * A word about multidimensional lists.  One way to achieve a
+ * multidimensional lists is to nest ELists.  This works, but it often
+ * involves a lot more calls to the default constructor and to
+ * operator=, especially when the outermost EList needs expanding, than
+ * some of the alternatives.  One alternative is use a most specialized
+ * container that still uses ELists but knows to use xfer instead of
+ * operator= when T=EList.
+ *
+ * The 'cat_' fiends encodes a category.  This makes it possible to
+ * distinguish between object subgroups in the global memory tally.
+ *
+ * Memory allocation is lazy.  Allocation is only triggered when the
+ * user calls push_back, expand, resize, or another function that
+ * increases the size of the list.  This saves memory and also makes it
+ * easier to deal with nested ELists, since the default constructor
+ * doesn't set anything in stone.
+ */
+template <typename T, int S = 128>
+class EList : public AList<T>, public BTAllocatorHandler<T> {
+
+public:
+	/**
+	 * Allocate initial default of S elements.
+	 */
+	explicit EList() :
+		cat_(0), allocCat_(-1)
+	{
+		this->sz_ = S;
+#ifndef USE_MEM_TALLY
+		(void)cat_;
+#endif
+	}
+
+	/**
+	 * Allocate initial default of S elements.
+	 */
+	explicit EList(int cat) :
+		cat_(cat), allocCat_(-1)
+	{
+		this->sz_ = S;
+		assert_geq(cat, 0);
+	}
+
+	/**
+	 * Initially allocate given number of elements; should be > 0.
+	 */
+	explicit EList(size_t isz, int cat = 0) :
+		cat_(cat), allocCat_(-1)
+	{
+		this->sz_ = std::max(isz,size_t(S));
+		assert_geq(cat, 0);
+	}
+
+	/**
+	 * Copy from another EList using operator=.
+	 */
+	EList(const EList<T, S>& o) :
+		cat_(o.cat_), allocCat_(-1)
+	{
+		this->sz_ = S;
+		*this = o;
+	}
+
+	/**
+	 * Destructor.
+	 */
+	~EList() { free(); }
+
+	/**
+	 * Make this object into a copy of o by allocat
+	 */
+	EList<T, S>& operator=(const EList<T, S>& o) {
+		assert_eq(cat_, o.cat());
+		this->copy_alloc(o);
+		if(o.cur_ == 0) {
+			// Nothing to copy
+			this->cur_ = 0;
+			return *this;
+		}
+		if(this->list_ == NULL) {
+			// cat_ should already be set
+			if (this->sz_ < o.cur_) {
+				size_t newsz = compExact(o.cur_ + 1);
+                                this->sz_ = newsz;
+			}
+			lazyInit();
+		} else if(this->sz_ < o.cur_) {
+			expandNoCopy(o.cur_ + 1);
+		}
+		assert_geq(this->sz_, o.cur_);
+		this->cur_ = o.cur_;
+		for(size_t i = 0; i < this->cur_; i++) {
+			this->list_[i] = o.list_[i];
+		}
+		return *this;
+	}
+
+	/**
+	 * Transfer the guts of another EList into this one without using
+	 * operator=, etc.  We have to set EList o's list_ field to NULL to
+	 * avoid o's destructor from deleting list_ out from under us.
+	 */
+	void xfer(EList<T, S>& o) {
+		// Can only transfer into an empty object
+		free();
+		cat_ = o.cat_;
+		this->copy_alloc(o);
+		allocCat_ = cat_;
+		this->list_ = o.list_;
+		this->sz_ = o.sz_;
+		this->cur_ = o.cur_;
+		o.list_ = NULL;
+		o.sz_ = o.cur_ = 0;
+		o.allocCat_ = -1;
+	}
+
+	/**
+	 * Return the total size in bytes occupied by this list.
+	 */
+	size_t totalSizeBytes() const {
+		return 	2 * sizeof(int) +
+		        2 * sizeof(size_t) +
+				this->cur_ * sizeof(T);
+	}
+
+	/**
+	 * Return the total capacity in bytes occupied by this list.
+	 */
+	size_t totalCapacityBytes() const {
+		return 	2 * sizeof(int) +
+		        2 * sizeof(size_t) +
+				this->sz_ * sizeof(T);
+	}
+
+	/**
+	 * Ensure that there is sufficient capacity to expand to include
+	 * 'thresh' more elements without having to expand.
+	 * Also ensure that all the elements have been initialized.
+	 */
+	inline void ensure(size_t thresh) {
+		if(this->list_ == NULL) {
+			if(thresh > this->sz_) {
+				size_t newsz = compExact(thresh); // cur_==0
+				this->sz_ = newsz;
+			}
+			if(this->sz_>0) lazyInit();
+		} else {
+			expandCopy(this->cur_ + thresh);
+		}
+	}
+
+	/**
+	 * Ensure that there is sufficient capacity to include 'newsz' elements.
+	 * If there isn't enough capacity right now, expand capacity to exactly
+	 * equal 'newsz'.
+	 */
+	inline void reserveExact(size_t newsz) {
+		if(this->list_ == NULL) {
+			if(newsz > 0) lazyInitExact(newsz);
+		} else {
+			expandCopyExact(newsz);
+		}
+	}
+
+	/**
+	 * Ensure that there is sufficient capacity to include 'thresh' elements.
+	 * If there isn't enough capacity right now, expand capacity to 
+	 * at leastl 'thresh'. Does not force initialization.
+	 */
+	inline void reserve(size_t thresh) {
+		if(this->list_ == NULL) {
+			if(thresh > this->sz_) {
+				size_t newsz = compExact(thresh);
+				this->sz_ = newsz;
+			} // nothing to do else
+		} else if (this->cur_==0) {
+			expandNoCopy(thresh);
+		} else {
+			expandCopy(thresh);
+		}
+	}
+
+	/**
+	 * Add an element to the back and immediately initialize it via
+	 * operator=.
+	 */
+	void push_back(const T& el) {
+		if(this->list_ == NULL) lazyInit();
+		if(this->cur_ == this->sz_) expandCopy(this->sz_+1);
+		this->list_[this->cur_++] = el;
+	}
+
+	/**
+	 * Add an element to the back.  No intialization is done.
+	 */
+	void expand() {
+		if(this->list_ == NULL) lazyInit();
+		if(this->cur_ == this->sz_) expandCopy(this->sz_+1);
+		this->cur_++;
+	}
+
+	/**
+	 * If size is less than requested size, resize up to at least sz
+	 * and set cur_ to requested sz.
+	 */
+	void resizeNoCopy(size_t sz) {
+		if(sz > 0 && this->list_ == NULL) lazyInit();
+		if(sz <= this->cur_) {
+			this->cur_ = sz;
+			return;
+		}
+		if(this->sz_ < sz) expandNoCopy(sz);
+		this->cur_ = sz;
+	}
+
+	/**
+	 * If size is less than requested size, resize up to at least sz
+	 * and set cur_ to requested sz.
+	 */
+	void resize(size_t sz) {
+		if(sz > 0 && this->list_ == NULL) lazyInit();
+		if(sz <= this->cur_) {
+			this->cur_ = sz;
+			return;
+		}
+		if(this->sz_ < sz) {
+			expandCopy(sz);
+		}
+		this->cur_ = sz;
+	}
+
+	/**
+	 * If size is less than requested size, resize up to exactly sz and set
+	 * cur_ to requested sz.
+	 */
+	void resizeExact(size_t sz) {
+		if(sz > 0 && this->list_ == NULL) lazyInitExact(sz);
+		if(sz <= this->cur_) {
+			this->cur_ = sz;
+			return;
+		}
+		if(this->sz_ < sz) expandCopyExact(sz);
+		this->cur_ = sz;
+	}
+
+	/**
+	 * Insert value 'el' at offset 'idx'
+	 */
+	void insert(const T& el, size_t idx) {
+		if(this->list_ == NULL) lazyInit();
+		assert_leq(idx, this->cur_);
+		if(this->cur_ == this->sz_) expandCopy(this->sz_+1);
+		insert_noalloc(el,idx);
+	}
+
+	/**
+	 * Insert contents of list 'l' at offset 'idx'
+	 */
+	void insert(const EList<T>& l, size_t idx) {
+		if(this->list_ == NULL) lazyInit();
+		assert_lt(idx, this->cur_);
+		if(l.cur_ == 0) return;
+		if(this->cur_ + l.cur_ > sz_) expandCopy(this->cur_ + l.cur_);
+		insert_noalloc(l,idx);
+	}
+
+	/**
+	 * Set the memory category for this object.
+	 */
+	void setCat(int cat) {
+		// What does it mean to set the category after the list_ is
+		// already allocated?
+		assert(null());
+		assert_gt(cat, 0); cat_ = cat;
+	}
+
+	/**
+	 * Return memory category.
+	 */
+	int cat() const { return cat_; }
+
 private:
 
 	/**
 	 * Initialize memory for EList.
 	 */
 	void lazyInit() {
-		assert(list_ == NULL);
-		list_ = alloc(sz_);
+		assert(this->list_ == NULL);
+		this->list_ = alloc(this->sz_);
 	}
 
 	/**
@@ -1227,9 +1296,9 @@ private:
 	 */
 	void lazyInitExact(size_t sz) {
 		assert_gt(sz, 0);
-		assert(list_ == NULL);
-		sz_ = sz;
-		list_ = alloc(sz);
+		assert(this->list_ == NULL);
+		this->sz_ = sz;
+		this->list_ = alloc(sz);
 	}
 
 	/**
@@ -1251,15 +1320,15 @@ private:
 	 * tally into the global memory tally.
 	 */
 	void free() {
-		if(list_ != NULL) {
+		if(this->list_ != NULL) {
 			assert_neq(-1, allocCat_);
 			assert_eq(allocCat_, cat_);
-			this->deallocate(list_, sz_);
+			this->deallocate(this->list_, this->sz_);
 #ifdef USE_MEM_TALLY
-			gMemTally.del(cat_, sz_);
+			gMemTally.del(cat_, this->sz_);
 #endif
-			list_ = NULL;
-			sz_ = cur_ = 0;
+			this->list_ = NULL;
+			this->sz_ = this->cur_ = 0;
 		}
 	}
 
@@ -1269,7 +1338,7 @@ private:
 	 * into new buffer using operator=.
 	 */
 	inline void expandCopy(size_t thresh) {
-		if(thresh <= sz_) return;
+		if(thresh <= this->sz_) return;
 		const size_t newsz = compExact(thresh);
 		expandCopyExact(newsz);
 	}
@@ -1279,20 +1348,20 @@ private:
 	 * old contents into new buffer using operator=.
 	 */
 	void expandCopyExact(size_t newsz) {
-		if(newsz <= sz_) return;
+		if(newsz <= this->sz_) return;
 		T* tmp = alloc(newsz);
 		assert(tmp != NULL);
-		size_t cur = cur_;
-		if(list_ != NULL) {
- 			for(size_t i = 0; i < cur_; i++) {
+		size_t cur = this->cur_;
+		if(this->list_ != NULL) {
+ 			for(size_t i = 0; i < this->cur_; i++) {
 				// Note: operator= is used
-				tmp[i] = list_[i];
+				tmp[i] = this->list_[i];
 			}
 			free();
 		}
-		list_ = tmp;
-		sz_ = newsz;
-		cur_ = cur;
+		this->list_ = tmp;
+		this->sz_ = newsz;
+		this->cur_ = cur;
 	}
 
 	/**
@@ -1301,7 +1370,7 @@ private:
 	 * contents into the new buffer.
 	 */
 	inline void expandNoCopy(size_t thresh) {
-		if(thresh <= sz_) return;
+		if(thresh <= this->sz_) return;
 		const size_t newsz = compExact(thresh);
 		expandNoCopyExact(newsz);
 	}
@@ -1315,24 +1384,19 @@ private:
 		free();
 		T* tmp = alloc(newsz);
 		assert(tmp != NULL);
-		list_ = tmp;
-		sz_ = newsz;
-		assert_gt(sz_, 0);
+		this->list_ = tmp;
+		this->sz_ = newsz;
+		assert_gt(this->sz_, 0);
 	}
 
 	inline size_t compExact(size_t thresh) {
-		size_t newsz = std::max((sz_ * 4),size_t(S));
+		size_t newsz = std::max((this->sz_ * 4),size_t(S));
 		while(newsz < thresh) newsz *= 4;
 		return newsz;
 	}
 
 	int cat_;      // memory category, for accounting purposes
 	int allocCat_; // category at time of allocation
-	T *list_;      // list pointer, returned from new[]
-	mutable BTAllocator *alloc_; // if !=NULL, use it to allocate the list_
-	size_t sz_;    // capacity
-	size_t cur_;   // occupancy (AKA size)
-	bool   propagate_alloc_; // should I propagate the allocator to the constructed objects?
 };
 
 /**
