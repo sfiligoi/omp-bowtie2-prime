@@ -213,7 +213,6 @@ public:
 		initedRef_(false),
 		btnstack_(DP_CAT),
 		btcells_(DP_CAT),
-		btncand_(DP_CAT),
 		colstop_(0),
 		lastsolcol_(0),
 		cural_(0)
@@ -229,7 +228,6 @@ public:
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		btnstack_.set_alloc(alloc, propagate_alloc);
 		btcells_.set_alloc(alloc, propagate_alloc);
-		btncand_.set_alloc(alloc, propagate_alloc);
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
@@ -514,7 +512,7 @@ protected:
 	EList<DpNucFrame>    btnstack_;    // backtrace stack for nucleotides
 	EList<SizeTPair>     btcells_;     // cells involved in current backtrace
 
-	EList<DpBtCandidate> btncand_;     // cells we might backtrace from
+	DList<DpBtCandidate,SSE_MAX_COLS> btncand_;     // cells we might backtrace from
 	
 	size_t              colstop_;      // bailed on DP loop after this many cols
 	size_t              lastsolcol_;   // last DP col with valid cell

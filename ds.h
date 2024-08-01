@@ -973,6 +973,43 @@ protected:
 };
 
 /**
+ * A DList<T> is a list with a fixed array as a backend
+ **/
+
+template <typename T, size_t max_size>
+class DList : public AList<T> {
+
+public:
+	DList()
+	{
+		this->sz_ = max_size;
+		this->list_ = buf_;
+	}
+
+	~DList() { } // nothing to do
+
+	/**
+	 * Add an element to the back and immediately initialize it via
+	 * operator=.
+	 * Throw if there is not enough space.
+	 */
+	void push_back(const T& el) { push_back_noalloc(el); }
+
+	/**
+	 * Insert value 'el' at offset 'idx'
+	 */
+	void insert(const T& el, size_t idx) { insert_noalloc(el, idx); }
+
+	/**
+	 * Insert contents of list 'l' at offset 'idx'
+	 */
+	void insert(const AList<T>& l, size_t idx) { insert_noalloc(l, idx); }
+
+private:
+	T buf_[max_size];
+};
+
+/**
  * An EList<T> is an expandable list with these features:
  *
  *  - Payload type is a template parameter T.

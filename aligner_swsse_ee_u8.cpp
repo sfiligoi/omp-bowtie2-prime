@@ -609,7 +609,7 @@ bool SwAligner::alignEnd2EndSseU8(
 	assert_leq(iter,   (size_t)MAX_U16);
 	assert_leq(rflen_, (size_t)MAX_U16);
 	uint16_t btnfilled = 0;
-	btncand_.resizeNoCopy(rflen_); // cannot be bigger that this
+	btncand_.trim(rflen_); // cannot be bigger that this
 
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
 					d.mat_.ptr(),
