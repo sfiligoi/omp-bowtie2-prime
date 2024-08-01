@@ -1024,6 +1024,18 @@ public:
 	 * Throw if there is not enough space.
 	 */
 	void resize(size_t sz) { this->trim(sz); }
+
+	/**
+	 * Ensure that there is sufficient capacity to expand to include
+	 * 'thresh' more elements without having to expand.
+	 * Also ensure that all the elements have been initialized.
+	 */
+	inline void ensure(size_t thresh) {
+#ifndef NDEBUG
+		if ((thresh > this->sz_)  || (list == NULL)) throw "Unexpected alloc";
+#endif
+	}
+
 private:
 	T buf_[max_size];
 };

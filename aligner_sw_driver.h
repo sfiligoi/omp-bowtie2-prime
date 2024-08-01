@@ -90,6 +90,11 @@
 #include "simple_func.h"
 #include "random_util.h"
 
+// Hardcode for now. May want to pass in Makefile
+// The chosen values are appropriate for the default SHOTGUN paramers
+#define ALN_MAX_ITER 800
+
+
 struct SeedPos {
 
 	SeedPos() : fw(false), offidx(0), rdoff(0), seedlen(0) { }
@@ -180,7 +185,7 @@ class RowSampler {
 
 public:
 
-	RowSampler(int cat = 0) : elim_(cat), masses_(cat) { 
+	RowSampler(int cat = 0) { 
 		mass_ = 0.0f;
 	}
 
@@ -193,13 +198,9 @@ public:
 	RowSampler& operator=(const RowSampler& o) = delete;
 	
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		elim_.set_alloc(alloc, propagate_alloc);
-		masses_.set_alloc(alloc, propagate_alloc);
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-		elim_.set_alloc(arg);
-		masses_.set_alloc(arg);
 	}
 
 	/**
@@ -207,7 +208,7 @@ public:
 	 * SATupleAndPos's.
 	 */
 	void init(
-		const EList<SATupleAndPos, 16>& salist,
+		const AList<SATupleAndPos>& salist,
 		size_t sai,
 		size_t saf,
 		bool lensq, // whether to square the numerator, which = extended length
@@ -268,9 +269,9 @@ public:
 	}
 
 protected:
-	double        mass_;    // total probability mass to throw darts at
-	EList<bool>   elim_;    // whether the range is eliminated
-	EList<double> masses_;  // mass of each range
+	double                       mass_;    // total probability mass to throw darts at
+	DList<bool  , ALN_MAX_ITER>  elim_;    // whether the range is eliminated
+	DList<double, ALN_MAX_ITER>  masses_;  // mass of each range
 };
 
 /**
@@ -317,7 +318,6 @@ public:
 
 	SwDriver() :
 		satups_(DP_CAT),
-		gws_(DP_CAT),
 		seenDiags1_(DP_CAT),
 		seenDiags2_(DP_CAT),
 		redAnchor_(DP_CAT),
@@ -339,10 +339,7 @@ public:
 		rands_.set_alloc(alloc,propagate_alloc);
 		rands2_.set_alloc(alloc,propagate_alloc);
 		eehits_.set_alloc(alloc,propagate_alloc);
-		satpos_.set_alloc(alloc,propagate_alloc);
-		satpos2_.set_alloc(alloc,propagate_alloc);
 		satups_.set_alloc(alloc,propagate_alloc);
-		gws_.set_alloc(alloc,propagate_alloc);
 		mateStreaks_.set_alloc(alloc,propagate_alloc);
 		rowsamp_.set_alloc(alloc,propagate_alloc);
 		for (int i=0;i<2; i++) seedExRangeFw_[i].set_alloc(alloc,propagate_alloc);
@@ -520,10 +517,10 @@ protected:
 	EList<Random1toN, 16>    rands_;   // random number generators
 	EList<Random1toN, 16>    rands2_;  // random number generators
 	EList<EEHit, 16>         eehits_;  // holds end-to-end hits
-	EList<SATupleAndPos, 16> satpos_;  // holds SATuple, SeedPos pairs
-	EList<SATupleAndPos, 16> satpos2_; // holds SATuple, SeedPos pairs
+	DList<SATupleAndPos, ALN_MAX_ITER> satpos_;  // holds SATuple, SeedPos pairs
+	DList<SATupleAndPos, ALN_MAX_ITER> satpos2_; // holds SATuple, SeedPos pairs
 	EList<SATuple, 16>       satups_;  // holds SATuples to explore elements from
-	EList<GroupWalk2S<TSlice, 16> > gws_;   // list of GroupWalks; no particular order
+	DList<GroupWalk2S<TSlice, 16>, ALN_MAX_ITER > gws_;   // list of GroupWalks; no particular order
 	EList<size_t>            mateStreaks_; // mate-find fail streaks
 	RowSampler               rowsamp_;     // row sampler
 	

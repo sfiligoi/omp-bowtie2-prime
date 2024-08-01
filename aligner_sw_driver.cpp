@@ -278,8 +278,7 @@ void SwDriver::prioritizeSATups(
 	satpos_.clear();
 	satpos2_.clear();
 	size_t nrange = 0, nelt = 0, nsmall = 0, nsmall_elts = 0;
-	bool keepWhole = false;
-	EList<SATupleAndPos, 16>& satpos = keepWhole ? satpos_ : satpos2_;
+	auto& satpos = satpos2_;
 	for(size_t i = 0; i < nonz; i++) {
 		bool fw = true;
 		uint32_t offidx = 0, rdoff = 0, seedlen = 0;
@@ -370,26 +369,6 @@ void SwDriver::prioritizeSATups(
 	nelt_out = nelt; // return the total number of elements
 	assert_eq(nrange, satpos.size());
 	satpos.sort();
-	if(keepWhole) {
-		gws_.ensure(nrange);
-		rands_.ensure(nrange);
-		for(size_t i = 0; i < nrange; i++) {
-			gws_.expand();
-			SARangeWithOffs<TSlice> sa;
-			sa.topf = satpos_.back().sat.topf;
-			sa.len = satpos_.back().sat.key.len;
-			sa.offs = satpos_.back().sat.offs;
-			gws_.back().init(
-				ebwtFw, // forward Bowtie index
-				ref,    // reference sequences
-				sa,     // SA tuples: ref hit, salist range
-				rnd);    // pseudo-random generator
-			assert(gws_.back().initialized());
-			rands_.expand();
-			rands_.back().init(satpos_[i].sat.size(), all);
-		}
-		return;
-	}
 	// Resize satups_ list so that ranges having elements that we might
 	// possibly explore are present
 	satpos_.ensure(min(maxelt, nelt));

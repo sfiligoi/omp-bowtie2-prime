@@ -2185,7 +2185,12 @@ public:
 		, mxDp(   maxDp       + mxKHMul * maxItersIncr  )
 		, mxUg(   maxUg       + mxKHMul * maxItersIncr  )
 		, mxIter( maxIters    + mxKHMul * maxItersIncr  )
-	{}
+	{
+		if (mxIter>ALN_MAX_ITER) {
+			cerr << "FATAL: mxIter too big" << endl;
+			throw 1;
+		}
+	}
 
 	const BitPairReference& ref;
 	const Scoring&          sc;
