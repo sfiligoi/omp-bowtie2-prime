@@ -123,11 +123,9 @@ struct SSEMatrix {
 	constexpr static uint16_t TMP = SSEMatrixConsts::TMP;
 	constexpr static uint16_t nvecPerCell_ = SSEMatrixConsts::nvecPerCell_;
 
-	SSEMatrix(int cat = 0) : matbuf_(cat) { }
+	SSEMatrix(int cat = 0) { }
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		matbuf_.set_alloc(alloc, propagate_alloc);
-		masks_.set_alloc(alloc, propagate_alloc);
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
@@ -315,6 +313,14 @@ struct SSEMatrix {
 	inline int helt(size_t row, size_t col) const {
 		return elt(row, col, H);
 	}
+
+	uint16_t& masks(size_t row, size_t col) {
+		return masks_mat_[row*ncol_+col];
+	} 
+
+	uint16_t masks(size_t row, size_t col) const {
+		return masks_mat_[row*ncol_+col];
+	} 
 	
 	/**
 	 * Return true iff the given cell has its reportedThru bit set.
@@ -323,7 +329,7 @@ struct SSEMatrix {
 		size_t row,          // current row
 		size_t col) const    // current column
 	{
-		return (masks_[row][col] & (1 << 0)) != 0;
+		return (masks(row,col) & (1 << 0)) != 0;
 	}
 
 	/**
@@ -333,7 +339,7 @@ struct SSEMatrix {
 		size_t row,          // current row
 		size_t col)          // current column
 	{
-		masks_[row][col] |= (1 << 0);
+		masks(row,col) |= (1 << 0);
 	}
 
 	/**
@@ -343,7 +349,7 @@ struct SSEMatrix {
 		size_t row,          // current row
 		size_t col) const    // current column
 	{
-		return (masks_[row][col] & (1 << 1)) != 0;
+		return (masks(row,col) & (1 << 1)) != 0;
 	}
 
 	/**
@@ -357,8 +363,8 @@ struct SSEMatrix {
 		int mask)
 	{
 		assert_lt(mask, 32);
-		masks_[row][col] &= ~(31 << 1);
-		masks_[row][col] |= (1 << 1 | mask << 2);
+		masks(row,col) &= ~(31 << 1);
+		masks(row,col) |= (1 << 1 | mask << 2);
 	}
 
 	/**
@@ -368,7 +374,7 @@ struct SSEMatrix {
 		size_t row,          // current row
 		size_t col) const    // current column
 	{
-		return (masks_[row][col] & (1 << 7)) != 0;
+		return (masks(row,col) & (1 << 7)) != 0;
 	}
 
 	/**
@@ -382,8 +388,8 @@ struct SSEMatrix {
 		int mask)
 	{
 		assert_lt(mask, 4);
-		masks_[row][col] &= ~(7 << 7);
-		masks_[row][col] |=  (1 << 7 | mask << 8);
+		masks(row,col) &= ~(7 << 7);
+		masks(row,col) |=  (1 << 7 | mask << 8);
 	}
 	
 	/**
@@ -393,7 +399,7 @@ struct SSEMatrix {
 		size_t row,          // current row
 		size_t col) const    // current column
 	{
-		return (masks_[row][col] & (1 << 10)) != 0;
+		return (masks(row,col) & (1 << 10)) != 0;
 	}
 
 	/**
@@ -407,8 +413,8 @@ struct SSEMatrix {
 		int mask)
 	{
 		assert_lt(mask, 4);
-		masks_[row][col] &= ~(7 << 10);
-		masks_[row][col] |=  (1 << 10 | mask << 11);
+		masks(row,col) &= ~(7 << 10);
+		masks(row,col) |=  (1 << 10 | mask << 11);
 	}
 
 	/**
@@ -444,8 +450,8 @@ struct SSEMatrix {
 	void initMasks() {
 		assert_gt(nrow_, 0);
 		assert_gt(ncol_, 0);
-		masks_.resize(nrow_);
-		reset_.resizeNoCopy(nrow_);
+		masks_mat_.trim(nrow_*ncol_);
+		reset_.trim(nrow_);
 		reset_.fill(false);
 	}
 
@@ -468,8 +474,7 @@ struct SSEMatrix {
 	 */
 	void resetRow(size_t i) {
 		assert(!reset_[i]);
-		masks_[i].resizeNoCopy(ncol_);
-		masks_[i].fillZero();
+		masks_mat_.fillZero(i*ncol_,(i+1)*ncol_);
 		reset_[i] = true;
 	}
 
@@ -503,7 +508,7 @@ struct SSEMatrix {
 	size_t           colstride_;   // # vectors b/t adjacent cells in same row
 	size_t           rowstride_;   // # vectors b/t adjacent cells in same col
 	EList_mb         matbuf_;      // buffer for holding vectors
-	ELList<uint16_t> masks_;       // buffer for masks/backtracking flags
+	DList<uint16_t,size_t(max_rows)*max_cols> masks_mat_;   // buffer for masks/backtracking flags
 	DList<bool,max_rows> reset_;       // true iff row in masks_ has been reset
 };
 
