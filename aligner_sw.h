@@ -211,8 +211,6 @@ public:
 		state_(STATE_UNINIT),
 		initedRead_(false),
 		initedRef_(false),
-		btnstack_(DP_CAT),
-		btcells_(DP_CAT),
 		colstop_(0),
 		lastsolcol_(0),
 		cural_(0)
@@ -226,8 +224,6 @@ public:
 	SwAligner& operator=(const SwAligner& other) = delete;
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		btnstack_.set_alloc(alloc, propagate_alloc);
-		btcells_.set_alloc(alloc, propagate_alloc);
 	}
 
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
@@ -509,8 +505,8 @@ protected:
 	constexpr static uint16_t rfwbuf_max_size_ = (SSE_MAX_COLS + 1 + 16) / 4;
 	uint32_t            rfwbuf_[rfwbuf_max_size_];  // buffer for wordized ref stretches
 	
-	EList<DpNucFrame>    btnstack_;    // backtrace stack for nucleotides
-	EList<SizeTPair>     btcells_;     // cells involved in current backtrace
+	DList<DpNucFrame,SSE_MAX_ROWS>    btnstack_;    // backtrace stack for nucleotides
+	DList<SizeTPair,SSE_MAX_COLS>     btcells_;     // cells involved in current backtrace
 
 	DList<DpBtCandidate,SSE_MAX_COLS> btncand_;     // cells we might backtrace from
 	

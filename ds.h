@@ -993,18 +993,37 @@ public:
 	 * operator=.
 	 * Throw if there is not enough space.
 	 */
-	void push_back(const T& el) { push_back_noalloc(el); }
+	void push_back(const T& el) { this->push_back_noalloc(el); }
+
+	/**
+	 * Add an element to the back.  No intialization is done.
+	 * Throw if there is not enough space.
+	 */
+	void expand() { this->expand_noalloc(); }
 
 	/**
 	 * Insert value 'el' at offset 'idx'
 	 */
-	void insert(const T& el, size_t idx) { insert_noalloc(el, idx); }
+	void insert(const T& el, size_t idx) { this->insert_noalloc(el, idx); }
 
 	/**
 	 * Insert contents of list 'l' at offset 'idx'
 	 */
-	void insert(const AList<T>& l, size_t idx) { insert_noalloc(l, idx); }
+	void insert(const AList<T>& l, size_t idx) { this->insert_noalloc(l, idx); }
 
+	/**
+	 * If size is less than requested size, resize up to at least sz
+	 * and set cur_ to requested sz.
+	 * Throw if there is not enough space.
+	 */
+	void resizeNoCopy(size_t sz) { this->trim(sz); }
+
+	/**
+	 * If size is less than requested size, resize up to at least sz
+	 * and set cur_ to requested sz.
+	 * Throw if there is not enough space.
+	 */
+	void resize(size_t sz) { this->trim(sz); }
 private:
 	T buf_[max_size];
 };
