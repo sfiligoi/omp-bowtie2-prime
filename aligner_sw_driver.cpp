@@ -270,7 +270,7 @@ void SwDriver::prioritizeSATups(
 	bool all)                    // report all hits?
 {
 	const size_t nonz = sh.nonzeroOffsets(); // non-zero positions
-	const int matei = (read.mate <= 1 ? 0 : 1);
+	//const int matei = 0;
 	satups_.clear();
 	gws_.clear();
 	rands_.clear();
@@ -293,8 +293,7 @@ void SwDriver::prioritizeSATups(
 			// another hit we already processed for this read.
 			if(seedmms == 0) {
 				// See if we're covered by a previous extended seed hit
-				EList<ExtendRange>& range =
-					fw ? seedExRangeFw_[matei] : seedExRangeRc_[matei];
+				auto& range = fw ? seedExRangeFw_ : seedExRangeRc_;
 				bool skip = false;
 				for(size_t k = 0; k < range.size(); k++) {
 					size_t p5 = range[k].off;
@@ -355,8 +354,7 @@ void SwDriver::prioritizeSATups(
 			if(seedmms == 0 && (nlex > 0 || nrex > 0)) {
 				assert_geq(rdoff, (fw ? nlex : nrex));
 				size_t p5 = rdoff - (fw ? nlex : nrex);
-				EList<ExtendRange>& range =
-					fw ? seedExRangeFw_[matei] : seedExRangeRc_[matei];
+				auto& range = fw ? seedExRangeFw_ : seedExRangeRc_;
 				range.expand();
 				range.back().off = p5;
 				range.back().len = seedlen + nlex + nrex;

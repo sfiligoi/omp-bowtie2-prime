@@ -339,8 +339,6 @@ public:
 		satups_.set_alloc(alloc,propagate_alloc);
 		mateStreaks_.set_alloc(alloc,propagate_alloc);
 		rowsamp_.set_alloc(alloc,propagate_alloc);
-		for (int i=0;i<2; i++) seedExRangeFw_[i].set_alloc(alloc,propagate_alloc);
-		for (int i=0;i<2; i++) seedExRangeRc_[i].set_alloc(alloc,propagate_alloc);	
 		seenDiags1_.set_alloc(alloc,propagate_alloc);
 		seenDiags2_.set_alloc(alloc,propagate_alloc);
 		redAnchor_.set_alloc(alloc,propagate_alloc);
@@ -458,10 +456,8 @@ public:
 		redAnchor_.reset();
 		seenDiags1_.reset();
 		seenDiags2_.reset();
-		seedExRangeFw_[0].clear(); // mate 1 fw
-		seedExRangeFw_[1].clear(); // mate 2 fw
-		seedExRangeRc_[0].clear(); // mate 1 rc
-		seedExRangeRc_[1].clear(); // mate 2 rc
+		seedExRangeFw_.clear();
+		seedExRangeRc_.clear();
 		size_t maxlen = mate1len;
 		if(paired) {
 			redMate1_.reset();
@@ -521,8 +517,8 @@ protected:
 	RowSampler               rowsamp_;     // row sampler
 	
 	// Ranges that we've extended through when extending seed hits
-	EList<ExtendRange> seedExRangeFw_[2];
-	EList<ExtendRange> seedExRangeRc_[2];
+	EList<ExtendRange> seedExRangeFw_;
+	EList<ExtendRange> seedExRangeRc_;
 
 	// Data structures encapsulating the diagonals that have already been used
 	// to seed alignment for mate 1 and mate 2.
