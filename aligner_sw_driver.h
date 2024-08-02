@@ -315,7 +315,6 @@ class SwDriver {
 public:
 
 	SwDriver() :
-		satups_(DP_CAT),
 		seenDiags1_(DP_CAT),
 		seenDiags2_(DP_CAT),
 		redAnchor_(DP_CAT),
@@ -334,9 +333,6 @@ public:
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
 		rand_.set_alloc(alloc,propagate_alloc);
-		rands_.set_alloc(alloc,propagate_alloc);
-		rands2_.set_alloc(alloc,propagate_alloc);
-		satups_.set_alloc(alloc,propagate_alloc);
 		mateStreaks_.set_alloc(alloc,propagate_alloc);
 		rowsamp_.set_alloc(alloc,propagate_alloc);
 		seenDiags1_.set_alloc(alloc,propagate_alloc);
@@ -507,11 +503,11 @@ protected:
 		bool all);                   // report all hits?
 
 	Random1toN               rand_;    // random number generators
-	EList<Random1toN, 16>    rands_;   // random number generators
-	EList<Random1toN, 16>    rands2_;  // random number generators
+	DList<Random1toN, ALN_MAX_ITER>    rands_;   // random number generators
+	DList<Random1toN, ALN_MAX_ITER>    rands2_;  // random number generators
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos_;  // holds SATuple, SeedPos pairs
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos2_; // holds SATuple, SeedPos pairs
-	EList<SATuple, 16>       satups_;  // holds SATuples to explore elements from
+	TSATups                  satups_;  // holds SATuples to explore elements from
 	DList<GroupWalk2S<TSlice, 16>, ALN_MAX_ITER > gws_;   // list of GroupWalks; no particular order
 	EList<size_t>            mateStreaks_; // mate-find fail streaks
 	RowSampler               rowsamp_;     // row sampler

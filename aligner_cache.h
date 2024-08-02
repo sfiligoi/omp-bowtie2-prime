@@ -495,6 +495,9 @@ public:
 	TSlice   offs; // offsets
 };
 
+// we will ever only get 0 or 1 satups
+typedef DList<SATuple,1> TSATups;
+
 class AlignmentCacheInterface;
 
 /**
@@ -594,11 +597,11 @@ private:
 	 * describing all of the cached information about the QVal's
 	 * reference substrings.
 	 */
-	template <int S1, int S2>
+	template <int S>
 	inline void queryQvalImpl(
 		const QVal& qv,
-		EList<TIndexOffU, S1>& salist,
-		EList<SATuple, S2>&    satups,
+		EList<TIndexOffU, S>& salist,
+		TSATups&              satups,
 		size_t& nrange,
 		size_t& nelt) const
 	{
@@ -642,14 +645,13 @@ public:
 		:cache_(cache) , salist_(salist) {}
 
 	/**
-	 * Given a QVal, populate the given EList of SATuples with records
+	 * Given a QVal, populate the given SATuples with any record
 	 * describing all of the cached information about the QVal's
 	 * reference substrings.
 	 */
-	template <int S>
 	void queryQval(
 		const QVal& qv,
-		EList<SATuple, S>& satups,
+		TSATups& satups,
 		size_t& nrange,
 		size_t& nelt)
 	{
