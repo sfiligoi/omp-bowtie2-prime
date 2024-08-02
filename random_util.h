@@ -38,14 +38,14 @@ public:
 	// A set with fewer than this many elements should kick us into swap-list
 	// mode immediately.  Otherwise we start in seen-list mode and then
 	// possibly proceed to swap-list mode later.
-	static const size_t SWAPLIST_THRESH;
+	static constexpr size_t SWAPLIST_THRESH = 128;
 	
 	// Convert seen-list to swap-list after this many entries in the seen-list.
-	static const size_t CONVERSION_THRESH;
+	static constexpr size_t CONVERSION_THRESH = 16;
 
 	// Convert seen-list to swap-list after this (this times n_) many entries
 	// in the seen-list.
-	static const float CONVERSION_FRAC;
+	static constexpr float CONVERSION_FRAC = 0.10f;
 
 	Random1toN(int cat = 0) :
 		sz_(0), n_(0), cur_(0),
