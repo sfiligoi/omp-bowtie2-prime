@@ -591,15 +591,17 @@ int SwDriver::extendSeeds(
 					prm,           // per-read metrics
 					nelt,          // out: # elements total
 					all);          // report all hits?
+	const uint16_t gws_size = gws_.size();
 	assert_eq(gws_.size(), rands_.size());
 	assert_eq(gws_.size(), satpos_.size());
+
 	neltLeft = nelt;
 
 	while(neltLeft>0) {
 		if(minsc == perfectScore) {
 			return EXTEND_PERFECT_SCORE; // Already found all perfect hits!
 		}
-		for(size_t i = 0; i < gws_.size(); i++) {
+		for(uint16_t i = 0; i < gws_size; i++) {
 			bool is_small       = satpos_[i].sat.size() < nsm;
 			bool fw             = satpos_[i].pos.fw;
 			uint32_t rdoff      = satpos_[i].pos.rdoff;
