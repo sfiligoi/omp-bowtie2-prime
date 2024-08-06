@@ -533,10 +533,6 @@ int SwDriver::extendSeeds(
 	// Initialize a set of GroupWalks, one for each seed.  Also, intialize the
 	// accompanying lists of reference seed hits (satups*)
 	const size_t nsm = 5;
-	const size_t nonz = sh.nonzeroOffsets(); // non-zero positions
-	if(nonz == 0) {
-		return EXTEND_EXHAUSTED_CANDIDATES; // No seed hits!  Bail.
-	}
 
 	//const bool eeMode = false;
 

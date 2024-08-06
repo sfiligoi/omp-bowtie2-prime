@@ -2621,6 +2621,9 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					if (!als.searchAllSeedsOneFinalize(mate, msinkwrap)) {
 						// No seed alignments!  Done with this mate.
 						mate_idx[mate] = MATE_DONE;
+					} else {
+						const size_t nonz = psrs->getSR(mate).nonzeroOffsets(); // non-zero positions
+						if(nonz == 0) mate_idx[mate] = MATE_DONE; // No seed hits!  Bail.
 					}
 				} // if
 			} // for mate
