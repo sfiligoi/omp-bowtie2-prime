@@ -528,8 +528,6 @@ int SwDriver::extendSeeds(
 	assert_geq(nceil, 0);
 	assert_leq((size_t)nceil, rd.length());
 	
-	swa.reset();
-
 	// Initialize a set of GroupWalks, one for each seed.  Also, intialize the
 	// accompanying lists of reference seed hits (satups*)
 	const size_t nsm = 5;
@@ -544,21 +542,6 @@ int SwDriver::extendSeeds(
 	// Calculate the largest possible number of read and reference gaps
 	const size_t rdlen = rd.length();
 	TAlScore perfectScore = sc.perfectScore(rdlen);
-
-	// Initialize the aligner with a new read
-	if (!swa.initRead(
-		rd.patFw,  // fw version of query
-		rd.patRc,  // rc version of query
-		rd.qual,   // fw version of qualities
-		rd.qualRev,// rc version of qualities
-		rdlen,     // off of last char (excl) in 'rd' to consider
-		sc)) {     // scoring scheme
-		// Something went terribly wrong (likely read too long)
-		// Just bail out
-		prm.nExDpFails++;
-		prm.nDpFail++;
-		return EXTEND_EXCEEDED_HARD_LIMIT;
-	}
 
 	DynProgFramer dpframe(!reportOverhangs);
 

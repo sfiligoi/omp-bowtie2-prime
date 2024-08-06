@@ -2642,13 +2642,26 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 					const uint16_t interval = intervals[mate];
+					Read& rd = *rds[mate];
+					const size_t rdlen = rd.length();
+					// Initialize the aligner with a new read
+					msobj.sw.reset();
+					if (!msobj.sw.initRead(
+						rd.patFw,  // fw version of query
+						rd.patRc,  // rc version of query
+						rd.qual,   // fw version of qualities
+						rd.qualRev,// rc version of qualities
+						rdlen,     // off of last char (excl) in 'rd' to consider
+						msconsts->sc)) {     // scoring scheme
+								// Something went terribly wrong (likely read too long)
+								// Bail out
+								mate_idx[mate] = MATE_DONE;
+					} else {
 								// Sort seed hits into ranks
 								psrs->getSR(mate).rankSeedHits(msobj.rnd, msinkwrap.allHits());
-								int ret = 0;
-                                                                {
-									// Unpaired dynamic programming driver
-									ret = msobj.sd.extendSeeds(
-										*rds[mate],     // read
+								// Unpaired dynamic programming driver
+								int ret = msobj.sd.extendSeeds(
+										rd,             // read
 										true,           // mate #1?
 										psrs->getSR(mate),      // seed hits
 										msconsts->ebwtFw,         // bowtie index
@@ -2676,7 +2689,6 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 										&msinkwrap,     // for organizing hits
 										true,           // report hits once found
 										exhaustive[mate]);
-								}
 								assert_gt(ret, 0);
 								if ((ret == EXTEND_EXHAUSTED_CANDIDATES) ||
 								     (ret == EXTEND_EXCEEDED_SOFT_LIMIT) ||
@@ -2695,7 +2707,8 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 									mate_idx[mate] = MATE_DONE;
 								}
 
-				} // if
+					} // if initRead
+				} // if mate done
 			} // for mate
 		   tmr.next("extendSeeds");
 
