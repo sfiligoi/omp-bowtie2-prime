@@ -2657,10 +2657,36 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 								// Bail out
 								mate_idx[mate] = MATE_DONE;
 					} else {
-								// Sort seed hits into ranks
-								psrs->getSR(mate).rankSeedHits(msobj.rnd, msinkwrap.allHits());
+						SeedResults& sh = psrs->getSR(mate);
+						AlignmentCacheInterface ca = als.getCacheInterface(mate); // copy OK, just a few references
+
+						// Sort seed hits into ranks
+						sh.rankSeedHits(msobj.rnd, msinkwrap.allHits());
+
+						const bool all = msinkwrap.allHits();
+						size_t nelt = 0;
+						msobj.sd.prioritizeSATups(
+							rd,            // read
+							sh,            // seed hits to extend into full alignments
+							msconsts->ebwtFw,        // BWT
+							msconsts->ebwtBw,        // BWT'
+							msconsts->ref,           // Reference strings
+							multiseedMms,       // # seed mismatches allowed
+							msconsts->mxIter,      // max rows to consider per position
+							msconsts->extend,      // extend out seeds
+							true,          // square extended length
+							true,          // square SA range size
+							ca,            // alignment cache for seed hits
+							msobj.rnd,           // pseudo-random generator
+							msinkwrap.prm,           // per-read metrics
+							nelt,          // out: # elements total
+							all);          // report all hits?
+
+
+
 								// Unpaired dynamic programming driver
 								int ret = msobj.sd.extendSeeds(
+										nelt,		// # elements total
 										rd,             // read
 										psrs->getSR(mate),      // seed hits
 										msconsts->ebwtFw,         // bowtie index
@@ -2682,7 +2708,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 										msconsts->extend,       // extend seed hits
 										msconsts->doEnable8,        // use 8-bit SSE where possible
 										msconsts->doTighten,        // -M score tightening mode
-										als.getCacheInterface(mate),  // seed alignment cache
+										ca,  // seed alignment cache
 										msobj.rnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
 										&msinkwrap,     // for organizing hits

@@ -262,7 +262,6 @@ void SwDriver::prioritizeSATups(
 	bool doExtend,               // do extension of seed hits?
 	bool lensq,                  // square length in weight calculation
 	bool szsq,                   // square range size in weight calculation
-	size_t nsm,                  // if range as <= nsm elts, it's "small"
 	AlignmentCacheInterface ca,  // alignment cache for seed hits
 	RandomSource& rnd,           // pseudo-random generator
 	PerReadMetrics& prm,         // per-read metrics
@@ -491,6 +490,7 @@ enum {
  * stop).  Otherwise, returns false.
  */
 int SwDriver::extendSeeds(
+	const size_t nelt,           // # elements total
 	Read& rd,                    // read to align
 	SeedResults& sh,             // seed hits to extend into full alignments
 	const Ebwt& ebwtFw,          // BWT
@@ -519,18 +519,12 @@ int SwDriver::extendSeeds(
 	bool reportImmediately,      // whether to report hits immediately to msink
 	bool& exhaustive)            // set to true iff we searched all seeds exhaustively
 {
-	bool all = msink->allHits();
-
 	assert(!reportImmediately || msink != NULL);
 	assert(!reportImmediately || !msink->maxed());
 
 	assert_geq(nceil, 0);
 	assert_leq((size_t)nceil, rd.length());
 	
-	// Initialize a set of GroupWalks, one for each seed.  Also, intialize the
-	// accompanying lists of reference seed hits (satups*)
-	const size_t nsm = 5;
-
 	//const bool eeMode = false;
 
 	// Reset all the counters related to streaks
@@ -544,27 +538,10 @@ int SwDriver::extendSeeds(
 
 	DynProgFramer dpframe(!reportOverhangs);
 
-	size_t nelt = 0, neltLeft = 0;
+	size_t neltLeft = 0;
 	size_t rows = rdlen;
 	size_t eltsDone = 0;
 	// cerr << "===" << endl;
-	prioritizeSATups(
-					rd,            // read
-					sh,            // seed hits to extend into full alignments
-					ebwtFw,        // BWT
-					ebwtBw,        // BWT'
-					ref,           // Reference strings
-					seedmms,       // # seed mismatches allowed
-					maxIters,      // max rows to consider per position
-					doExtend,      // extend out seeds
-					true,          // square extended length
-					true,          // square SA range size
-					nsm,           // smallness threshold
-					ca,            // alignment cache for seed hits
-					rnd,           // pseudo-random generator
-					prm,           // per-read metrics
-					nelt,          // out: # elements total
-					all);          // report all hits?
 	const uint16_t gws_size = gws_.size();
 	assert_eq(gws_.size(), rands_.size());
 	assert_eq(gws_.size(), satpos_.size());
@@ -1068,7 +1045,6 @@ int SwDriver::extendSeedsPaired(
 
 	// Initialize a set of GroupWalks, one for each seed.  Also, intialize the
 	// accompanying lists of reference seed hits (satups*)
-	const size_t nsm = 5;
 	const size_t nonz = sh.nonzeroOffsets(); // non-zero positions
 	size_t eeHits = sh.numE2eHits();
 	bool eeMode = eeHits > 0;

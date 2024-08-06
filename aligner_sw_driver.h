@@ -347,6 +347,28 @@ public:
 	void set_alloc(std::pair<BTAllocator *, bool> arg) {
 		set_alloc(arg.first, arg.second);
 	}
+
+	/**
+	 * Given seed results, set up all of our state for resolving and keeping
+	 * track of reference offsets for hits.
+	 */
+	void prioritizeSATups(
+		const Read& rd,              // read
+		SeedResults& sh,             // seed hits to extend into full alignments
+		const Ebwt& ebwtFw,          // BWT
+		const Ebwt* ebwtBw,          // BWT'
+		const BitPairReference& ref, // Reference strings
+		int seedmms,                 // # seed mismatches allowed
+		size_t maxelt,               // max elts we'll consider
+		bool doExtend,               // extend out seeds
+		bool lensq,                  // square extended length
+		bool szsq,                   // square SA range size
+		AlignmentCacheInterface ca,  // alignment cache for seed hits
+		RandomSource& rnd,           // pseudo-random generator
+		PerReadMetrics& prm,         // per-read metrics
+		size_t& nelt_out,            // out: # elements total
+		bool all);                   // report all hits?
+
 	/**
 	 * Given a collection of SeedHits for a single read, extend seed alignments
 	 * into full alignments.  Where possible, try to avoid redundant offset
@@ -358,6 +380,7 @@ public:
 	 * policy is satisfied and we can stop).  Otherwise, returns false.
 	 */
 	int extendSeeds(
+		const size_t nelt,           // # elements total
 		Read& rd,                    // read to align
 		SeedResults& sh,             // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
@@ -483,23 +506,8 @@ protected:
 		size_t& nlex,         // # positions we can extend to left w/o edit
 		size_t& nrex);        // # positions we can extend to right w/o edit
 
-	void prioritizeSATups(
-		const Read& rd,              // read
-		SeedResults& sh,             // seed hits to extend into full alignments
-		const Ebwt& ebwtFw,          // BWT
-		const Ebwt* ebwtBw,          // BWT'
-		const BitPairReference& ref, // Reference strings
-		int seedmms,                 // # seed mismatches allowed
-		size_t maxelt,               // max elts we'll consider
-		bool doExtend,               // extend out seeds
-		bool lensq,                  // square extended length
-		bool szsq,                   // square SA range size
-		size_t nsm,                  // if range as <= nsm elts, it's "small"
-		AlignmentCacheInterface ca,  // alignment cache for seed hits
-		RandomSource& rnd,           // pseudo-random generator
-		PerReadMetrics& prm,         // per-read metrics
-		size_t& nelt_out,            // out: # elements total
-		bool all);                   // report all hits?
+	// if range as <= nsm elts, it's "small"
+	constexpr static size_t nsm = 5;
 
 	Random1toN               rand_;    // random number generators
 	DList<Random1toN, ALN_MAX_ITER>    rands_;   // random number generators
