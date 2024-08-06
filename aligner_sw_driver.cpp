@@ -549,10 +549,6 @@ int SwDriver::extendSeeds(
 	const size_t rdlen = rd.length();
 	TAlScore perfectScore = sc.perfectScore(rdlen);
 
-	if(minsc == perfectScore) {
-		return EXTEND_PERFECT_SCORE; // Already found all perfect hits!
-	}
-
 	// Initialize the aligner with a new read
 	if (!swa.initRead(
 		rd.patFw,  // fw version of query

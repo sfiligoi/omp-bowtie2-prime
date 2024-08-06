@@ -2458,7 +2458,12 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 
 					// Keep track of whether the read was filtered
 					bool filt = false;
-					{
+					if (!filt) {
+						TAlScore perfectScore = msconsts->sc.perfectScore(rdlen);
+						filt = (minsc[mate] != perfectScore);
+					}
+
+					if (!filt) {
 						// N filter; does the read have too many Ns?
 						bool nfilt = msconsts->sc.nFilter(rds[mate]->patFw);
 
