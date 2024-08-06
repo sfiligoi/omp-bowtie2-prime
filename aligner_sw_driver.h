@@ -359,7 +359,6 @@ public:
 	 */
 	int extendSeeds(
 		Read& rd,                    // read to align
-		bool mate1,                  // true iff rd is mate #1
 		SeedResults& sh,             // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
 		const Ebwt* ebwtBw,          // BWT'

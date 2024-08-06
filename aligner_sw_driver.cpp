@@ -492,7 +492,6 @@ enum {
  */
 int SwDriver::extendSeeds(
 	Read& rd,                    // read to align
-	bool mate1,                  // true iff rd is mate #1
 	SeedResults& sh,             // seed hits to extend into full alignments
 	const Ebwt& ebwtFw,          // BWT
 	const Ebwt* ebwtBw,          // BWT'
@@ -831,10 +830,7 @@ int SwDriver::extendSeeds(
 							raw_matches_));
 						// Report an unpaired alignment
 						assert(!msink->maxed());
-						if(msink->report(
-							0,
-							mate1 ? &res->alres : NULL,
-							mate1 ? NULL : &res->alres))
+						if(msink->report(0,&res->alres,NULL))
 						{
 							// Short-circuited because a limit, e.g. -k, -m or
 							// -M, was exceeded

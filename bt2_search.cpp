@@ -2662,7 +2662,6 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 								// Unpaired dynamic programming driver
 								int ret = msobj.sd.extendSeeds(
 										rd,             // read
-										true,           // mate #1?
 										psrs->getSR(mate),      // seed hits
 										msconsts->ebwtFw,         // bowtie index
 										msconsts->ebwtBw,         // rev bowtie index
