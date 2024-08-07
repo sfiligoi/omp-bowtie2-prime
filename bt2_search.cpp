@@ -32,6 +32,7 @@
 #include <time.h>
 #include <utility>
 #include <execution>
+#include <omp.h>
 
 #ifndef _WIN32
 #include <signal.h>
@@ -90,7 +91,8 @@ static int offRate;       // keep default offRate
 static bool solexaQuals;  // quality strings are solexa quals, not phred, and subtract 64 (not 33)
 static bool phred64Quals; // quality chars are phred, but must subtract 64 (not 33)
 static bool integerQuals; // quality strings are space-separated strings of integers, not ASCII
-static int nthreads;      // number of pthreads operating concurrently
+static int nthreads;      // number of tasks operating concurrently
+static int nthreads_multiplier;      // Argument, nthreads = OMP*nthreads_multiplier
 static int thread_ceiling;// maximum number of threads user wants bowtie to use
 static int outType;       // style of output
 static bool noRefNames;   // true -> print reference indexes; not names
@@ -284,7 +286,8 @@ static void resetOptions() {
 	solexaQuals	    = false;	// quality strings are solexa quals, not phred, and subtract 64 (not 33)
 	phred64Quals	    = false;	// quality chars are phred, but must subtract 64 (not 33)
 	integerQuals	    = false;	// quality strings are space-separated strings of integers, not ASCII
-	nthreads	    = 1;	// number of pthreads operating concurrently
+	nthreads	    = 10;	// number of tasks operating concurrently
+	nthreads_multiplier = 10;	// nthreads = OMP*nthreads_multiplier
 	thread_ceiling	    = 0;	// max # threads user asked for
 	FNAME_SIZE	    = 4096;
 	outType		    = OUTPUT_SAM;	// style of output
@@ -850,7 +853,7 @@ static void printUsage(ostream& out) {
 	    << endl
 	    << " Performance:" << endl
 		//    << "  -o/--offrate <int> override offrate of index; must be >= index's offrate" << endl
-	    << "  -p/--threads <int> number of alignment threads to launch (1)" << endl
+	    << "  -p/--threads <int> number of reads per thread (10)" << endl
 	    << "  --reorder          force SAM output order to match order of input reads" << endl
 #ifdef BOWTIE_MM
 	    << "  --mm               use memory-mapped I/O for index; many 'bowtie's can share" << endl
@@ -1132,7 +1135,7 @@ static void parseOption(int next_option, const char *arg) {
 		break;
 	case ARG_WRAPPER: wrapper = arg; break;
 	case 'p':
-		nthreads = parseInt(1, "-p/--threads arg must be at least 1", arg);
+		nthreads_multiplier = parseInt(1, "-p/--threads arg must be at least 1", arg);
 		break;
 	case ARG_THREAD_CEILING:
 		thread_ceiling = parseInt(0, "--thread-ceiling must be at least 0", arg);
@@ -1772,6 +1775,9 @@ static void parseOptions(int argc, const char **argv) {
 		     << endl;
 	}
 #endif
+
+	// TODO: Finda good GPU alternative, too
+	nthreads = omp_get_max_threads()*nthreads_multiplier;
 }
 
 static const char *argv0 = NULL;
