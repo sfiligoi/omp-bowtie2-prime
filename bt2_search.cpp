@@ -91,7 +91,7 @@ static int offRate;       // keep default offRate
 static bool solexaQuals;  // quality strings are solexa quals, not phred, and subtract 64 (not 33)
 static bool phred64Quals; // quality chars are phred, but must subtract 64 (not 33)
 static bool integerQuals; // quality strings are space-separated strings of integers, not ASCII
-static int nthreads;      // number of tasks operating concurrently
+static uint32_t nthreads;      // number of tasks operating concurrently
 static int nthreads_multiplier;      // Argument, nthreads = OMP*nthreads_multiplier
 static int thread_ceiling;// maximum number of threads user wants bowtie to use
 static int outType;       // style of output
@@ -2142,12 +2142,31 @@ public:
 };
 
 
+class bcWorkerObjs {
+public:
+	bcWorkerObjs()
+	: sw()
+	{}
+
+	bcWorkerObjs(bcWorkerObjs&& o) = default;
+	bcWorkerObjs(const bcWorkerObjs& o) = delete;
+
+	bcWorkerObjs &operator=(bcWorkerObjs&& o) noexcept = default;
+	bcWorkerObjs &operator=(const bcWorkerObjs& o) noexcept = delete;
+
+	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true)
+	{
+		sw.set_alloc(alloc,propagate_alloc);
+	}
+
+	SwAligner sw;
+};
+
 class msWorkerObjs {
 public:
 	msWorkerObjs()
 	: ftabLen(multiseed_ebwtFw->eh().ftabChars())
 	, sd()
-	, sw()
 	, rnd()
 	{}
 
@@ -2160,14 +2179,12 @@ public:
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true)
 	{
 		sd.set_alloc(alloc,propagate_alloc);
-		sw.set_alloc(alloc,propagate_alloc);
 	}
 
 	// redundant, but useful
 	const int ftabLen;
 
 	SwDriverBT2 sd;
-	SwAligner sw;
 	RandomSource rnd;
 
 };
@@ -2277,10 +2294,15 @@ public:
  * -
  */
  /* Work in progress: There is only one such invocation, parallelization inside */
-static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
+static void multiseedSearchWorker() {
 	assert(multiseed_ebwtFw != NULL);
 	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
 	AlnSink&                msink    = *multiseed_msink;
+
+	const uint16_t reads_per_batch = nthreads_multiplier;
+	const uint32_t batch_parallel_tasks = nthreads/reads_per_batch;
+	const uint32_t num_parallel_tasks = batch_parallel_tasks * reads_per_batch;
+	assert_eq(num_parallel_tasks,nthreads);
 
 	constexpr bool paired = false;
 
@@ -2332,9 +2354,12 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 		}
 		AlnSinkWrapOne *g_msinkwrap = v_msinkwrap.data();
 
+		// Major per-batch objects
+		bcWorkerObjs* g_bcobjs = new bcWorkerObjs[batch_parallel_tasks];
 		// Major per-thread objects
 		msWorkerObjs* g_msobjs = new msWorkerObjs[num_parallel_tasks];
 #ifdef USE_CUSTOM_ALLOCS
+		// Maybe: Consider doing set_alloc for batch objects, too
 		for (uint32_t mate=0; mate<num_parallel_tasks; mate++) g_msobjs[mate].set_alloc(&(mate_allocs[mate]));
 #endif
 
@@ -2642,8 +2667,15 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 #endif
 
 		   	// we can do all of the "mates" in parallel
-#pragma omp parallel for default(shared) schedule(dynamic,8)
-			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+#pragma omp parallel for default(shared)
+			for (uint32_t nb=0; nb<batch_parallel_tasks; nb++) {
+			   // These objects are really just work areas
+			   // Could have just created them here, but this way we minimize mallocs
+			   bcWorkerObjs& bcobj = g_bcobjs[nb];
+			   SwAligner &sw = bcobj.sw;
+
+			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
+				const uint32_t mate = nb*reads_per_batch + ib;
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
@@ -2651,8 +2683,8 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 					Read& rd = *rds[mate];
 					const size_t rdlen = rd.length();
 					// Initialize the aligner with a new read
-					msobj.sw.reset();
-					if (!msobj.sw.initRead(
+					sw.reset();
+					if (!sw.initRead(
 						rd.patFw,  // fw version of query
 						rd.patRc,  // rc version of query
 						rd.qual,   // fw version of qualities
@@ -2698,7 +2730,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 										msconsts->ebwtFw,         // bowtie index
 										msconsts->ebwtBw,         // rev bowtie index
 										msconsts->ref,            // packed reference strings
-										msobj.sw,       // dynamic prog aligner
+										sw,                       // dynamic prog aligner
 										msconsts->sc,             // scoring scheme
 										multiseedMms,   // # mms allowed in a seed
 										multiseedLen,   // length of a seed
@@ -2740,7 +2772,8 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 
 					} // if initRead
 				} // if mate done
-			} // for mate
+			   } // for ib
+			} // for nb
 		   tmr.next("extendSeeds");
 
 		   // always call ensure_spare from main CPU thread
@@ -2812,6 +2845,7 @@ static void multiseedSearchWorker(const uint32_t num_parallel_tasks) {
 
 		delete[] minsc;
 		delete[] g_msobjs;
+		delete[] g_bcobjs;
 
 		// do not delete objects managed by the allocator
 		// accept memory leak
@@ -3992,7 +4026,7 @@ static void multiseedSearch(
 				multiseedSearchWorkerPaired(nthreads);
 			} else {
 #endif
-				multiseedSearchWorker(nthreads);
+				multiseedSearchWorker();
 #ifdef ENABLE_2P5
 			}
 #endif
