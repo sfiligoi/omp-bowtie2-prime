@@ -2661,8 +2661,14 @@ static void multiseedSearchWorker() {
 						// No seed alignments!  Done with this mate.
 						mate_idx[mate] = MATE_DONE;
 					} else {
-						const size_t nonz = psrs->getSR(mate).nonzeroOffsets(); // non-zero positions
-						if(nonz == 0) mate_idx[mate] = MATE_DONE; // No seed hits!  Bail.
+						SeedResults& sh = psrs->getSR(mate);
+						const size_t nonz = sh.nonzeroOffsets(); // non-zero positions
+						if(nonz == 0) {
+							mate_idx[mate] = MATE_DONE; // No seed hits!  Bail.
+						} else {
+							// Sort seed hits into ranks
+							sh.rankSeedHits(msobj.rnd, msinkwrap.allHits());
+						}
 					}
 				} // if
 			   } // for ib
@@ -2704,11 +2710,8 @@ static void multiseedSearchWorker() {
 								// Bail out
 								mate_idx[mate] = MATE_DONE;
 					} else {
-						SeedResults& sh = psrs->getSR(mate);
+						const SeedResults& sh = psrs->getSR(mate);
 						AlignmentCacheInterface ca = als.getCacheInterface(mate); // copy OK, just a few references
-
-						// Sort seed hits into ranks
-						sh.rankSeedHits(msobj.rnd, msinkwrap.allHits());
 
 						const bool all = msinkwrap.allHits();
 						size_t nelt = 0;
@@ -2735,7 +2738,7 @@ static void multiseedSearchWorker() {
 								int ret = msobj.sd.extendSeeds(
 										nelt,		// # elements total
 										rd,             // read
-										psrs->getSR(mate),      // seed hits
+										sh,             // seed hits
 										msconsts->ebwtFw,         // bowtie index
 										msconsts->ebwtBw,         // rev bowtie index
 										msconsts->ref,            // packed reference strings

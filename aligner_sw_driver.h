@@ -350,7 +350,7 @@ public:
 	 */
 	void prioritizeSATups(
 		const Read& rd,              // read
-		SeedResults& sh,             // seed hits to extend into full alignments
+		const SeedResults& sh,       // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
 		const Ebwt* ebwtBw,          // BWT'
 		const BitPairReference& ref, // Reference strings
@@ -378,7 +378,7 @@ public:
 	int extendSeeds(
 		const size_t nelt,           // # elements total
 		Read& rd,                    // read to align
-		SeedResults& sh,             // seed hits to extend into full alignments
+		const SeedResults& sh,       // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
 		const Ebwt* ebwtBw,          // BWT'
 		const BitPairReference& ref, // Reference strings
