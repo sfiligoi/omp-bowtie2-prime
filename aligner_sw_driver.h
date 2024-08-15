@@ -318,8 +318,6 @@ public:
 		seenDiags1_(DP_CAT),
 		seenDiags2_(DP_CAT),
 		redAnchor_(DP_CAT),
-		redMate1_(DP_CAT),
-		redMate2_(DP_CAT),
 		gwstate_(GW_CAT),
 		reportOverhangs(gReportOverhangs) { }
 
@@ -338,8 +336,6 @@ public:
 		seenDiags1_.set_alloc(alloc,propagate_alloc);
 		seenDiags2_.set_alloc(alloc,propagate_alloc);
 		redAnchor_.set_alloc(alloc,propagate_alloc);
-		redMate1_.set_alloc(alloc,propagate_alloc);
-		redMate2_.set_alloc(alloc,propagate_alloc);
 		resGap_.set_alloc(alloc,propagate_alloc);
 		gwstate_.set_alloc(alloc,propagate_alloc);
 	}
@@ -470,22 +466,13 @@ public:
 	/**
 	 * Prepare for a new read.
 	 */
-	void nextRead(bool paired, size_t mate1len, size_t mate2len) {
+	void nextRead(size_t mate1len) {
 		redAnchor_.reset();
 		seenDiags1_.reset();
 		seenDiags2_.reset();
 		seedExRangeFw_.clear();
 		seedExRangeRc_.clear();
 		size_t maxlen = mate1len;
-		if(paired) {
-			redMate1_.reset();
-			redMate1_.init(mate1len);
-			redMate2_.reset();
-			redMate2_.init(mate2len);
-			if(mate2len > maxlen) {
-				maxlen = mate2len;
-			}
-		}
 		redAnchor_.init(maxlen);
 	}
 
@@ -530,8 +517,6 @@ protected:
 
 	// For weeding out redundant alignments
 	RedundantAlns  redAnchor_;  // database of cells used for anchor alignments
-	RedundantAlns  redMate1_;   // database of cells used for mate 1 alignments
-	RedundantAlns  redMate2_;   // database of cells used for mate 2 alignments
 
 	// For holding results for anchor (res_) and opposite (ores_) mates
 	SwResult       resGap_;    // temp holder for alignment result

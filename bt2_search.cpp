@@ -2521,7 +2521,7 @@ static void multiseedSearchWorker() {
 					msinkwrap.prm.nFilt += (filt ? 0 : 1);
 					// For each mate...
 					assert(msinkwrap.empty());
-					msobj.sd.nextRead(false, rdlen, 0); // SwDriver
+					msobj.sd.nextRead(rdlen); // SwDriver
 					exhaustive[mate] = false;
 					msobj.rnd.init(rds[mate]->seed);
 
