@@ -310,6 +310,47 @@ struct ExtendRange {
 	size_t sz;  // # of elements in SA range
 };
 
+class SwDriverRands {
+public:
+	SwDriverRands() : prnd(NULL) {}
+	~SwDriverRands() {} // nothing to do, prnd not owned
+
+	// Allow move operator
+	SwDriverRands(SwDriverRands&& other) = default;
+	SwDriverRands& operator=(SwDriverRands&& other) noexcept = default;
+
+	// but not copy
+	SwDriverRands(const SwDriverRands& other) = delete;
+	SwDriverRands& operator=(const SwDriverRands& other) = delete;
+
+	void reset(RandomSource& rnd) {
+		prnd = &rnd;
+		clear(); // clear any old states
+	}
+
+	void clear() {
+		rands_.clear();
+		rands2_.clear();
+	}
+
+	void ensure(size_t thresh) {
+		rands_.ensure(thresh);
+		rands2_.ensure(thresh);
+	}
+
+	RandomSource& get_rnd() {
+		assert(prnd!=NULL);
+		return *prnd;
+	}
+
+	DList<Random1toN, ALN_MAX_ITER>    rands_;   // random number generators
+	DList<Random1toN, ALN_MAX_ITER>    rands2_;  // random number generators
+
+protected:
+	RandomSource* prnd;           // pseudo-random source
+
+};
+
 class SwDriver {
 
 public:
@@ -358,7 +399,7 @@ public:
 		bool lensq,                  // square extended length
 		bool szsq,                   // square SA range size
 		AlignmentCacheInterface ca,  // alignment cache for seed hits
-		RandomSource& rnd,           // pseudo-random generator
+		SwDriverRands& sdrnd,        // pseudo-random generator object
 		PerReadMetrics& prm,         // per-read metrics
 		size_t& nelt_out,            // out: # elements total
 		bool all);                   // report all hits?
@@ -397,7 +438,7 @@ public:
 		bool enable8,                // use 8-bit SSE where possible
 		int tighten,                 // -M score tightening mode
 		AlignmentCacheInterface ca,  // alignment cache for seed hits
-		RandomSource& rnd,           // pseudo-random source
+		SwDriverRands& sdrnd,        // pseudo-random source object
 		PerReadMetrics& prm,         // per-read metrics
 		AlnSinkWrap* mhs,            // HitSink for multiseed-style aligner
 		bool reportImmediately,      // whether to report hits immediately to mhs
@@ -494,8 +535,6 @@ protected:
 	// if range as <= nsm elts, it's "small"
 	constexpr static size_t nsm = 5;
 
-	DList<Random1toN, ALN_MAX_ITER>    rands_;   // random number generators
-	DList<Random1toN, ALN_MAX_ITER>    rands2_;  // random number generators
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos_;  // holds SATuple, SeedPos pairs
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos2_; // holds SATuple, SeedPos pairs
 	TSATups                  satups_;  // holds SATuples to explore elements from

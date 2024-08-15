@@ -2146,6 +2146,7 @@ class bcWorkerObjs {
 public:
 	bcWorkerObjs()
 	: sw()
+	, sdrnd()
 	{}
 
 	bcWorkerObjs(bcWorkerObjs&& o) = default;
@@ -2160,6 +2161,7 @@ public:
 	}
 
 	SwAligner sw;
+	SwDriverRands sdrnd;
 };
 
 class msWorkerObjs {
@@ -2688,6 +2690,7 @@ static void multiseedSearchWorker() {
 			   // Could have just created them here, but this way we minimize mallocs
 			   bcWorkerObjs& bcobj = g_bcobjs[nb];
 			   SwAligner &sw = bcobj.sw;
+			   SwDriverRands &sdrnd = bcobj.sdrnd;
 
 			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
 				const uint32_t mate = nb*reads_per_batch + ib;
@@ -2713,6 +2716,9 @@ static void multiseedSearchWorker() {
 						const SeedResults& sh = psrs->getSR(mate);
 						AlignmentCacheInterface ca = als.getCacheInterface(mate); // copy OK, just a few references
 
+						// sdrnd is thread wise, but rnd is read specific
+						sdrnd.reset(msobj.rnd);
+
 						const bool all = msinkwrap.allHits();
 						size_t nelt = 0;
 						msobj.sd.prioritizeSATups(
@@ -2727,7 +2733,7 @@ static void multiseedSearchWorker() {
 							true,          // square extended length
 							true,          // square SA range size
 							ca,            // alignment cache for seed hits
-							msobj.rnd,           // pseudo-random generator
+							sdrnd,           // pseudo-random generator
 							msinkwrap.prm,           // per-read metrics
 							nelt,          // out: # elements total
 							all);          // report all hits?
@@ -2759,7 +2765,7 @@ static void multiseedSearchWorker() {
 										msconsts->doEnable8,        // use 8-bit SSE where possible
 										msconsts->doTighten,        // -M score tightening mode
 										ca,  // seed alignment cache
-										msobj.rnd,      // pseudo-random source
+										sdrnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
 										&msinkwrap,     // for organizing hits
 										true,           // report hits once found
