@@ -2425,8 +2425,10 @@ static void multiseedSearchWorker() {
 		   {
 			bool found_unread = false;
 			// Note: Will use mate to distinguish between tread-specific elements
-#pragma omp parallel for reduction(||:found_unread) default(shared) schedule(dynamic,8)
-			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+#pragma omp parallel for reduction(||:found_unread) default(shared)
+			for (uint32_t nb=0; nb<batch_parallel_tasks; nb++) {
+			  for (uint16_t ib=0; ib<reads_per_batch; ib++) {
+			    const uint32_t mate = nb*reads_per_batch + ib;
 			    msWorkerObjs& msobj = g_msobjs[mate];
 			    while (mate_idx[mate]!=MATE_DONE_READING) { // External loop, including filtering
 
@@ -2583,7 +2585,8 @@ static void multiseedSearchWorker() {
 						srs.prepareOneSeed(mate, offset, interval, rds[mate]);
 					} // if done
 			   } // if !done_reading[mate]
-			} // for mate - found_unread
+			  } // for ib
+			} // for nb - found_unread
 			if (!found_unread) break; // nothing else to do
 		   }
 		   tmr.next("read");
@@ -2612,15 +2615,18 @@ static void multiseedSearchWorker() {
 
 			uint32_t max_batches = 0;
 		   	// we can do all of the "mates" in parallel
-#pragma omp parallel for reduction(max:max_batches) default(shared) schedule(dynamic,8)
-			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+#pragma omp parallel for reduction(max:max_batches) default(shared)
+			for (uint32_t nb=0; nb<batch_parallel_tasks; nb++) {
+			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
+				const uint32_t mate = nb*reads_per_batch + ib;
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
 						// Fill internal structures
 						max_batches = std::max(max_batches,
 							als.prepareSearchAllSeedsOne(mate));
 				} // if
-			} // for mate
+			   } // for ib
+			} // for nb
 
 		   tmr.next("searchAllSeedsPrepare");
 
@@ -2643,8 +2649,10 @@ static void multiseedSearchWorker() {
 #endif
 
 		   	// we can do all of the "mates" in parallel
-#pragma omp parallel for default(shared) schedule(dynamic,8)
-			for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+#pragma omp parallel for default(shared)
+			for (uint32_t nb=0; nb<batch_parallel_tasks; nb++) {
+			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
+				const uint32_t mate = nb*reads_per_batch + ib;
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate];
@@ -2657,7 +2665,8 @@ static void multiseedSearchWorker() {
 						if(nonz == 0) mate_idx[mate] = MATE_DONE; // No seed hits!  Bail.
 					}
 				} // if
-			} // for mate
+			   } // for ib
+			} // for nb
 			als.finalizeCaches();
 		   tmr.next("searchAllSeedsFinalize");
 
@@ -2783,8 +2792,10 @@ static void multiseedSearchWorker() {
 
 #endif  /*DISABLE_PART_TWO_TESTING*/
 
-#pragma omp parallel for default(shared) schedule(dynamic,8)
-		   for (uint32_t mate=0; mate<num_parallel_tasks; mate++) {
+#pragma omp parallel for default(shared)
+		   for (uint32_t nb=0; nb<batch_parallel_tasks; nb++) {
+		     for (uint16_t ib=0; ib<reads_per_batch; ib++) {
+			const uint32_t mate = nb*reads_per_batch + ib;
 			if (mate_idx[mate]!=MATE_DONE_READING) { // only do it for valid ones, to handle end tails
 			  const uint16_t roundi = ++irounds[mate];  // increment the irounds, so we are ready for new round, if needed
 			  const uint16_t interval = intervals[mate];
@@ -2825,7 +2836,8 @@ static void multiseedSearchWorker() {
 
 			  } // if more rounds
 			} // if (!done_reading[mate])
-		   } // for mate
+		     } // for ib
+		   } // for nb
 		   tmr.next("finishReadOne");
 
 		} // while(true)
