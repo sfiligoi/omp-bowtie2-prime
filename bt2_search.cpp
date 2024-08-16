@@ -2764,7 +2764,6 @@ static void multiseedSearchWorker() {
 										msconsts->extend,       // extend seed hits
 										msconsts->doEnable8,        // use 8-bit SSE where possible
 										msconsts->doTighten,        // -M score tightening mode
-										ca,  // seed alignment cache
 										sdrnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
 										&msinkwrap,     // for organizing hits

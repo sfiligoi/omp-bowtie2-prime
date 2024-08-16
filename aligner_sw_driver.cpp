@@ -511,7 +511,6 @@ int SwDriver::extendSeeds(
 	bool doExtend,               // do seed extension
 	bool enable8,                // use 8-bit SSE where possible
 	int tighten,                 // -M score tightening mode
-	AlignmentCacheInterface ca,  // alignment cache for seed hits
 	SwDriverRands& sdrnd,        // pseudo-random source object
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
