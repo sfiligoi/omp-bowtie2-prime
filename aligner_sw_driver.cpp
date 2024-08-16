@@ -265,7 +265,6 @@ void SwDriver::prioritizeSATups(
 	AlignmentCacheInterface ca,  // alignment cache for seed hits
 	SwDriverRands& sdrnd,        // pseudo-random source object
 	PerReadMetrics& prm,         // per-read metrics
-	size_t& nelt_out,            // out: # elements total
 	bool all)                    // report all hits?
 {
 	RandomSource& rnd = sdrnd.get_rnd();
@@ -273,6 +272,7 @@ void SwDriver::prioritizeSATups(
 	//const int matei = 0;
 	satups_.clear();
 	gws_.clear();
+	rand_ns_.clear();
 	sdrnd.clear();
 	satpos_.clear();
 	satpos2_.clear();
@@ -363,13 +363,14 @@ void SwDriver::prioritizeSATups(
 		satups_.clear();
 	}
 	assert_leq(nsmall, nrange);
-	nelt_out = nelt; // return the total number of elements
+	nelt_ = nelt; // return the total number of elements
 	assert_eq(nrange, satpos.size());
 	satpos.sort();
 	// Resize satups_ list so that ranges having elements that we might
 	// possibly explore are present
 	satpos_.ensure(min(maxelt, nelt));
 	gws_.ensure(min(maxelt, nelt));
+	rand_ns_.ensure(min(maxelt, nelt));
 	sdrnd.ensure(min(maxelt, nelt));
 	size_t nlarge_elts = nelt - nsmall_elts;
 	if(maxelt < nelt) {
@@ -404,8 +405,7 @@ void SwDriver::prioritizeSATups(
 			sa,     // SA tuples: ref hit, salist range
 			rnd);   // pseudo-random generator
 		assert(gws_.back().initialized());
-		sdrnd.rands_.expand();
-		sdrnd.rands_.back().init(satpos_.back().sat.size(), all);
+		rand_ns_.push_back(satpos_.back().sat.size());
 		nelt_added += satpos_.back().sat.size();
 #ifndef NDEBUG
 		for(size_t k = 0; k < satpos_.size()-1; k++) {
@@ -414,16 +414,16 @@ void SwDriver::prioritizeSATups(
 #endif
 	}
 	if(nelt_added >= maxelt || nsmall == satpos2_.size()) {
-		nelt_out = nelt_added;
+		nelt_ = nelt_added;
 		return;
 	}
 	// 2. do the non-smalls
 	// Initialize the row sampler
 	rowsamp_.init(satpos2_, nsmall, satpos2_.size(), lensq, szsq);
 	// Initialize the random choosers
-	sdrnd.rands2_.resize(satpos2_.size());
+	sdrnd.rands_.resize(satpos2_.size());
 	for(size_t j = 0; j < satpos2_.size(); j++) {
-		sdrnd.rands2_[j].reset();
+		sdrnd.rands_[j].reset();
 	}
 	while(nelt_added < maxelt && nelt_added < nelt) {
 		// Pick a non-small range to sample from
@@ -431,14 +431,14 @@ void SwDriver::prioritizeSATups(
 		assert_geq(ri, nsmall);
 		assert_lt(ri, satpos2_.size());
 		// Initialize random element chooser for that range
-		if(!sdrnd.rands2_[ri].inited()) {
-			sdrnd.rands2_[ri].init(satpos2_[ri].sat.size(), all);
-			assert(!sdrnd.rands2_[ri].done());
+		if(!sdrnd.rands_[ri].inited()) {
+			sdrnd.rands_[ri].init(satpos2_[ri].sat.size(), all);
+			assert(!sdrnd.rands_[ri].done());
 		}
-		assert(!sdrnd.rands2_[ri].done());
+		assert(!sdrnd.rands_[ri].done());
 		// Choose an element from the range
-		size_t r = sdrnd.rands2_[ri].next(rnd);
-		if(sdrnd.rands2_[ri].done()) {
+		size_t r = sdrnd.rands_[ri].next(rnd);
+		if(sdrnd.rands_[ri].done()) {
 			// Tell the row sampler this range is done
 			rowsamp_.finishedRange(ri - nsmall);
 		}
@@ -464,11 +464,10 @@ void SwDriver::prioritizeSATups(
 			rnd);   // pseudo-random generator
 		assert(gws_.back().initialized());
 		// Initialize random selector
-		sdrnd.rands_.expand();
-		sdrnd.rands_.back().init(1, all);
+		rand_ns_.push_back(1);
 		nelt_added++;
 	}
-	nelt_out = nelt_added;
+	nelt_ = nelt_added;
 	return;
 }
 
@@ -489,7 +488,6 @@ enum {
  * stop).  Otherwise, returns false.
  */
 int SwDriver::extendSeeds(
-	const size_t nelt,           // # elements total
 	Read& rd,                    // read to align
 	const SeedResults& sh,       // seed hits to extend into full alignments
 	const Ebwt& ebwtFw,          // BWT
@@ -546,7 +544,13 @@ int SwDriver::extendSeeds(
 	assert_eq(gws_.size(), sdrnd.rands_.size());
 	assert_eq(gws_.size(), satpos_.size());
 
-	neltLeft = nelt;
+	const bool all = msink->allHits();
+	sdrnd.rands_.clear();
+	sdrnd.rands_.resize(gws_size);
+	for(uint16_t i = 0; i < gws_size; i++) {
+		sdrnd.rands_[i].init(rand_ns_[i],all);
+	}
+	neltLeft = nelt_;
 
 	while(neltLeft>0) {
 		if(minsc == perfectScore) {

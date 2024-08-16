@@ -2689,6 +2689,53 @@ static void multiseedSearchWorker() {
 			   // These objects are really just work areas
 			   // Could have just created them here, but this way we minimize mallocs
 			   bcWorkerObjs& bcobj = g_bcobjs[nb];
+			   SwDriverRands &sdrnd = bcobj.sdrnd;
+
+			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
+				const uint32_t mate = nb*reads_per_batch + ib;
+				if (mate_idx[mate]>=0 ) { // !done[mate]
+					msWorkerObjs& msobj = g_msobjs[mate];
+					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
+					const uint16_t interval = intervals[mate];
+					Read& rd = *rds[mate];
+					const SeedResults& sh = psrs->getSR(mate);
+					AlignmentCacheInterface ca = als.getCacheInterface(mate); // copy OK, just a few references
+
+					// sdrnd is thread wise, but rnd is read specific
+					sdrnd.reset(msobj.rnd);
+
+					const bool all = msinkwrap.allHits();
+					msobj.sd.prioritizeSATups(
+							rd,            // read
+							sh,            // seed hits to extend into full alignments
+							msconsts->ebwtFw,        // BWT
+							msconsts->ebwtBw,        // BWT'
+							msconsts->ref,           // Reference strings
+							multiseedMms,       // # seed mismatches allowed
+							msconsts->mxIter,      // max rows to consider per position
+							msconsts->extend,      // extend out seeds
+							true,          // square extended length
+							true,          // square SA range size
+							ca,            // alignment cache for seed hits
+							sdrnd,           // pseudo-random generator
+							msinkwrap.prm,           // per-read metrics
+							all);          // report all hits?
+				} // if mate done
+			   } // for ib
+			} // for nb
+		   tmr.next("prioritizeSATups");
+
+			// always call ensure_spare from main CPU thread
+#ifdef USE_CUSTOM_ALLOCS
+		 	mate_allocs.ensure_spare();
+#endif
+
+		   	// we can do all of the "mates" in parallel
+#pragma omp parallel for default(shared)
+			for (uint32_t nb=0; nb<batch_parallel_tasks; nb++) {
+			   // These objects are really just work areas
+			   // Could have just created them here, but this way we minimize mallocs
+			   bcWorkerObjs& bcobj = g_bcobjs[nb];
 			   SwAligner &sw = bcobj.sw;
 			   SwDriverRands &sdrnd = bcobj.sdrnd;
 
@@ -2714,35 +2761,12 @@ static void multiseedSearchWorker() {
 								mate_idx[mate] = MATE_DONE;
 					} else {
 						const SeedResults& sh = psrs->getSR(mate);
-						AlignmentCacheInterface ca = als.getCacheInterface(mate); // copy OK, just a few references
 
 						// sdrnd is thread wise, but rnd is read specific
 						sdrnd.reset(msobj.rnd);
 
-						const bool all = msinkwrap.allHits();
-						size_t nelt = 0;
-						msobj.sd.prioritizeSATups(
-							rd,            // read
-							sh,            // seed hits to extend into full alignments
-							msconsts->ebwtFw,        // BWT
-							msconsts->ebwtBw,        // BWT'
-							msconsts->ref,           // Reference strings
-							multiseedMms,       // # seed mismatches allowed
-							msconsts->mxIter,      // max rows to consider per position
-							msconsts->extend,      // extend out seeds
-							true,          // square extended length
-							true,          // square SA range size
-							ca,            // alignment cache for seed hits
-							sdrnd,           // pseudo-random generator
-							msinkwrap.prm,           // per-read metrics
-							nelt,          // out: # elements total
-							all);          // report all hits?
-
-
-
 								// Unpaired dynamic programming driver
 								int ret = msobj.sd.extendSeeds(
-										nelt,		// # elements total
 										rd,             // read
 										sh,             // seed hits
 										msconsts->ebwtFw,         // bowtie index

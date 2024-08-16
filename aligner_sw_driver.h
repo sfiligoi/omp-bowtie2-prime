@@ -330,12 +330,10 @@ public:
 
 	void clear() {
 		rands_.clear();
-		rands2_.clear();
 	}
 
 	void ensure(size_t thresh) {
 		rands_.ensure(thresh);
-		rands2_.ensure(thresh);
 	}
 
 	RandomSource& get_rnd() {
@@ -344,7 +342,6 @@ public:
 	}
 
 	DList<Random1toN, ALN_MAX_ITER>    rands_;   // random number generators
-	DList<Random1toN, ALN_MAX_ITER>    rands2_;  // random number generators
 
 protected:
 	RandomSource* prnd;           // pseudo-random source
@@ -401,7 +398,6 @@ public:
 		AlignmentCacheInterface ca,  // alignment cache for seed hits
 		SwDriverRands& sdrnd,        // pseudo-random generator object
 		PerReadMetrics& prm,         // per-read metrics
-		size_t& nelt_out,            // out: # elements total
 		bool all);                   // report all hits?
 
 	/**
@@ -415,7 +411,6 @@ public:
 	 * policy is satisfied and we can stop).  Otherwise, returns false.
 	 */
 	int extendSeeds(
-		const size_t nelt,           // # elements total
 		Read& rd,                    // read to align
 		const SeedResults& sh,       // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
@@ -534,12 +529,16 @@ protected:
 	// if range as <= nsm elts, it's "small"
 	constexpr static size_t nsm = 5;
 
+	size_t nelt_;  // set by prioritizeSATups
+
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos_;  // holds SATuple, SeedPos pairs
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos2_; // holds SATuple, SeedPos pairs
 	TSATups                  satups_;  // holds SATuples to explore elements from
 	DList<GroupWalk2S<TSlice, 16>, ALN_MAX_ITER > gws_;   // list of GroupWalks; no particular order
 	RowSampler               rowsamp_;     // row sampler
 	
+	DList<uint32_t, ALN_MAX_ITER> rand_ns_;  // How big are the random number ranges
+
 	// Ranges that we've extended through when extending seed hits
 	EList<ExtendRange> seedExRangeFw_;
 	EList<ExtendRange> seedExRangeRc_;
