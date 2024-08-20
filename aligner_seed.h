@@ -1122,7 +1122,7 @@ public:
 		uint32_t& offidx,  // out
 		uint32_t& off,     // out
 		bool&     fw,      // out
-		uint32_t& seedlen) // out
+		uint32_t& seedlen) const  // out
 	{
 		assert(sorted_);
 		assert_lt(r, nonzTot_);

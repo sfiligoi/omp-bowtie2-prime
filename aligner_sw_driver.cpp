@@ -253,7 +253,7 @@ void SwDriver::extend(
  */
 void SwDriver::prioritizeSATups(
 	const Read& read,            // read
-	SeedResults& sh,             // seed hits to extend into full alignments
+	const SeedResults& sh,       // seed hits to extend into full alignments
 	const Ebwt& ebwtFw,          // BWT
 	const Ebwt* ebwtBw,          // BWT
 	const BitPairReference& ref, // Reference strings
@@ -263,17 +263,17 @@ void SwDriver::prioritizeSATups(
 	bool lensq,                  // square length in weight calculation
 	bool szsq,                   // square range size in weight calculation
 	AlignmentCacheInterface ca,  // alignment cache for seed hits
-	RandomSource& rnd,           // pseudo-random generator
+	SwDriverRands& sdrnd,        // pseudo-random source object
 	PerReadMetrics& prm,         // per-read metrics
-	size_t& nelt_out,            // out: # elements total
 	bool all)                    // report all hits?
 {
+	RandomSource& rnd = sdrnd.get_rnd();
 	const size_t nonz = sh.nonzeroOffsets(); // non-zero positions
 	//const int matei = 0;
 	satups_.clear();
 	gws_.clear();
-	rands_.clear();
-	rands2_.clear();
+	rand_ns_.clear();
+	sdrnd.clear();
 	satpos_.clear();
 	satpos2_.clear();
 	size_t nrange = 0, nelt = 0, nsmall = 0, nsmall_elts = 0;
@@ -363,15 +363,15 @@ void SwDriver::prioritizeSATups(
 		satups_.clear();
 	}
 	assert_leq(nsmall, nrange);
-	nelt_out = nelt; // return the total number of elements
+	nelt_ = nelt; // return the total number of elements
 	assert_eq(nrange, satpos.size());
 	satpos.sort();
 	// Resize satups_ list so that ranges having elements that we might
 	// possibly explore are present
 	satpos_.ensure(min(maxelt, nelt));
 	gws_.ensure(min(maxelt, nelt));
-	rands_.ensure(min(maxelt, nelt));
-	rands2_.ensure(min(maxelt, nelt));
+	rand_ns_.ensure(min(maxelt, nelt));
+	sdrnd.ensure(min(maxelt, nelt));
 	size_t nlarge_elts = nelt - nsmall_elts;
 	if(maxelt < nelt) {
 		size_t diff = nelt - maxelt;
@@ -405,8 +405,7 @@ void SwDriver::prioritizeSATups(
 			sa,     // SA tuples: ref hit, salist range
 			rnd);   // pseudo-random generator
 		assert(gws_.back().initialized());
-		rands_.expand();
-		rands_.back().init(satpos_.back().sat.size(), all);
+		rand_ns_.push_back(satpos_.back().sat.size());
 		nelt_added += satpos_.back().sat.size();
 #ifndef NDEBUG
 		for(size_t k = 0; k < satpos_.size()-1; k++) {
@@ -415,16 +414,16 @@ void SwDriver::prioritizeSATups(
 #endif
 	}
 	if(nelt_added >= maxelt || nsmall == satpos2_.size()) {
-		nelt_out = nelt_added;
+		nelt_ = nelt_added;
 		return;
 	}
 	// 2. do the non-smalls
 	// Initialize the row sampler
 	rowsamp_.init(satpos2_, nsmall, satpos2_.size(), lensq, szsq);
 	// Initialize the random choosers
-	rands2_.resize(satpos2_.size());
+	sdrnd.rands_.resize(satpos2_.size());
 	for(size_t j = 0; j < satpos2_.size(); j++) {
-		rands2_[j].reset();
+		sdrnd.rands_[j].reset();
 	}
 	while(nelt_added < maxelt && nelt_added < nelt) {
 		// Pick a non-small range to sample from
@@ -432,14 +431,14 @@ void SwDriver::prioritizeSATups(
 		assert_geq(ri, nsmall);
 		assert_lt(ri, satpos2_.size());
 		// Initialize random element chooser for that range
-		if(!rands2_[ri].inited()) {
-			rands2_[ri].init(satpos2_[ri].sat.size(), all);
-			assert(!rands2_[ri].done());
+		if(!sdrnd.rands_[ri].inited()) {
+			sdrnd.rands_[ri].init(satpos2_[ri].sat.size(), all);
+			assert(!sdrnd.rands_[ri].done());
 		}
-		assert(!rands2_[ri].done());
+		assert(!sdrnd.rands_[ri].done());
 		// Choose an element from the range
-		size_t r = rands2_[ri].next(rnd);
-		if(rands2_[ri].done()) {
+		size_t r = sdrnd.rands_[ri].next(rnd);
+		if(sdrnd.rands_[ri].done()) {
 			// Tell the row sampler this range is done
 			rowsamp_.finishedRange(ri - nsmall);
 		}
@@ -465,11 +464,10 @@ void SwDriver::prioritizeSATups(
 			rnd);   // pseudo-random generator
 		assert(gws_.back().initialized());
 		// Initialize random selector
-		rands_.expand();
-		rands_.back().init(1, all);
+		rand_ns_.push_back(1);
 		nelt_added++;
 	}
-	nelt_out = nelt_added;
+	nelt_ = nelt_added;
 	return;
 }
 
@@ -490,9 +488,8 @@ enum {
  * stop).  Otherwise, returns false.
  */
 int SwDriver::extendSeeds(
-	const size_t nelt,           // # elements total
 	Read& rd,                    // read to align
-	SeedResults& sh,             // seed hits to extend into full alignments
+	const SeedResults& sh,       // seed hits to extend into full alignments
 	const Ebwt& ebwtFw,          // BWT
 	const Ebwt* ebwtBw,          // BWT'
 	const BitPairReference& ref, // Reference strings
@@ -512,8 +509,7 @@ int SwDriver::extendSeeds(
 	bool doExtend,               // do seed extension
 	bool enable8,                // use 8-bit SSE where possible
 	int tighten,                 // -M score tightening mode
-	AlignmentCacheInterface ca,  // alignment cache for seed hits
-	RandomSource& rnd,           // pseudo-random source
+	SwDriverRands& sdrnd,        // pseudo-random source object
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
 	bool reportImmediately,      // whether to report hits immediately to msink
@@ -538,15 +534,23 @@ int SwDriver::extendSeeds(
 
 	DynProgFramer dpframe(!reportOverhangs);
 
+	RandomSource& rnd = sdrnd.get_rnd();
+
 	size_t neltLeft = 0;
 	size_t rows = rdlen;
 	size_t eltsDone = 0;
 	// cerr << "===" << endl;
 	const uint16_t gws_size = gws_.size();
-	assert_eq(gws_.size(), rands_.size());
+	assert_eq(gws_.size(), sdrnd.rands_.size());
 	assert_eq(gws_.size(), satpos_.size());
 
-	neltLeft = nelt;
+	const bool all = msink->allHits();
+	sdrnd.rands_.clear();
+	sdrnd.rands_.resize(gws_size);
+	for(uint16_t i = 0; i < gws_size; i++) {
+		sdrnd.rands_[i].init(rand_ns_[i],all);
+	}
+	neltLeft = nelt_;
 
 	while(neltLeft>0) {
 		if(minsc == perfectScore) {
@@ -568,7 +572,7 @@ int SwDriver::extendSeeds(
 			// range is large, just investigate one and move on - we might come
 			// back to this range later.
 			size_t riter = 0;
-			while(!rands_[i].done() && (first || is_small )) {
+			while(!sdrnd.rands_[i].done() && (first || is_small )) {
 				assert(!gws_[i].done());
 				riter++;
 				if(minsc == perfectScore) {
@@ -587,7 +591,7 @@ int SwDriver::extendSeeds(
 				first = false;
 				// Resolve next element offset
 				WalkResult wr;
-				size_t elt = rands_[i].next(rnd);
+				size_t elt = sdrnd.rands_[i].next(rnd);
 				//cerr << "elt=" << elt << endl;
 				SARangeWithOffs<TSlice> sa;
 				sa.topf = satpos_[i].sat.topf;

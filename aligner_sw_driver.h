@@ -310,6 +310,44 @@ struct ExtendRange {
 	size_t sz;  // # of elements in SA range
 };
 
+class SwDriverRands {
+public:
+	SwDriverRands() : prnd(NULL) {}
+	~SwDriverRands() {} // nothing to do, prnd not owned
+
+	// Allow move operator
+	SwDriverRands(SwDriverRands&& other) = default;
+	SwDriverRands& operator=(SwDriverRands&& other) noexcept = default;
+
+	// but not copy
+	SwDriverRands(const SwDriverRands& other) = delete;
+	SwDriverRands& operator=(const SwDriverRands& other) = delete;
+
+	void reset(RandomSource& rnd) {
+		prnd = &rnd;
+		clear(); // clear any old states
+	}
+
+	void clear() {
+		rands_.clear();
+	}
+
+	void ensure(size_t thresh) {
+		rands_.ensure(thresh);
+	}
+
+	RandomSource& get_rnd() {
+		assert(prnd!=NULL);
+		return *prnd;
+	}
+
+	DList<Random1toN, ALN_MAX_ITER>    rands_;   // random number generators
+
+protected:
+	RandomSource* prnd;           // pseudo-random source
+
+};
+
 class SwDriver {
 
 public:
@@ -318,8 +356,6 @@ public:
 		seenDiags1_(DP_CAT),
 		seenDiags2_(DP_CAT),
 		redAnchor_(DP_CAT),
-		redMate1_(DP_CAT),
-		redMate2_(DP_CAT),
 		gwstate_(GW_CAT),
 		reportOverhangs(gReportOverhangs) { }
 
@@ -332,14 +368,10 @@ public:
 	SwDriver& operator=(const SwDriver& other) = delete;
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		rand_.set_alloc(alloc,propagate_alloc);
-		mateStreaks_.set_alloc(alloc,propagate_alloc);
 		rowsamp_.set_alloc(alloc,propagate_alloc);
 		seenDiags1_.set_alloc(alloc,propagate_alloc);
 		seenDiags2_.set_alloc(alloc,propagate_alloc);
 		redAnchor_.set_alloc(alloc,propagate_alloc);
-		redMate1_.set_alloc(alloc,propagate_alloc);
-		redMate2_.set_alloc(alloc,propagate_alloc);
 		resGap_.set_alloc(alloc,propagate_alloc);
 		gwstate_.set_alloc(alloc,propagate_alloc);
 	}
@@ -354,7 +386,7 @@ public:
 	 */
 	void prioritizeSATups(
 		const Read& rd,              // read
-		SeedResults& sh,             // seed hits to extend into full alignments
+		const SeedResults& sh,       // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
 		const Ebwt* ebwtBw,          // BWT'
 		const BitPairReference& ref, // Reference strings
@@ -364,9 +396,8 @@ public:
 		bool lensq,                  // square extended length
 		bool szsq,                   // square SA range size
 		AlignmentCacheInterface ca,  // alignment cache for seed hits
-		RandomSource& rnd,           // pseudo-random generator
+		SwDriverRands& sdrnd,        // pseudo-random generator object
 		PerReadMetrics& prm,         // per-read metrics
-		size_t& nelt_out,            // out: # elements total
 		bool all);                   // report all hits?
 
 	/**
@@ -380,9 +411,8 @@ public:
 	 * policy is satisfied and we can stop).  Otherwise, returns false.
 	 */
 	int extendSeeds(
-		const size_t nelt,           // # elements total
 		Read& rd,                    // read to align
-		SeedResults& sh,             // seed hits to extend into full alignments
+		const SeedResults& sh,       // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
 		const Ebwt* ebwtBw,          // BWT'
 		const BitPairReference& ref, // Reference strings
@@ -402,8 +432,7 @@ public:
 		bool doExtend,               // do seed extension
 		bool enable8,                // use 8-bit SSE where possible
 		int tighten,                 // -M score tightening mode
-		AlignmentCacheInterface ca,  // alignment cache for seed hits
-		RandomSource& rnd,           // pseudo-random source
+		SwDriverRands& sdrnd,        // pseudo-random source object
 		PerReadMetrics& prm,         // per-read metrics
 		AlnSinkWrap* mhs,            // HitSink for multiseed-style aligner
 		bool reportImmediately,      // whether to report hits immediately to mhs
@@ -470,22 +499,13 @@ public:
 	/**
 	 * Prepare for a new read.
 	 */
-	void nextRead(bool paired, size_t mate1len, size_t mate2len) {
+	void nextRead(size_t mate1len) {
 		redAnchor_.reset();
 		seenDiags1_.reset();
 		seenDiags2_.reset();
 		seedExRangeFw_.clear();
 		seedExRangeRc_.clear();
 		size_t maxlen = mate1len;
-		if(paired) {
-			redMate1_.reset();
-			redMate1_.init(mate1len);
-			redMate2_.reset();
-			redMate2_.init(mate2len);
-			if(mate2len > maxlen) {
-				maxlen = mate2len;
-			}
-		}
 		redAnchor_.init(maxlen);
 	}
 
@@ -509,16 +529,16 @@ protected:
 	// if range as <= nsm elts, it's "small"
 	constexpr static size_t nsm = 5;
 
-	Random1toN               rand_;    // random number generators
-	DList<Random1toN, ALN_MAX_ITER>    rands_;   // random number generators
-	DList<Random1toN, ALN_MAX_ITER>    rands2_;  // random number generators
+	size_t nelt_;  // set by prioritizeSATups
+
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos_;  // holds SATuple, SeedPos pairs
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos2_; // holds SATuple, SeedPos pairs
 	TSATups                  satups_;  // holds SATuples to explore elements from
 	DList<GroupWalk2S<TSlice, 16>, ALN_MAX_ITER > gws_;   // list of GroupWalks; no particular order
-	EList<size_t>            mateStreaks_; // mate-find fail streaks
 	RowSampler               rowsamp_;     // row sampler
 	
+	DList<uint32_t, ALN_MAX_ITER> rand_ns_;  // How big are the random number ranges
+
 	// Ranges that we've extended through when extending seed hits
 	EList<ExtendRange> seedExRangeFw_;
 	EList<ExtendRange> seedExRangeRc_;
@@ -530,8 +550,6 @@ protected:
 
 	// For weeding out redundant alignments
 	RedundantAlns  redAnchor_;  // database of cells used for anchor alignments
-	RedundantAlns  redMate1_;   // database of cells used for mate 1 alignments
-	RedundantAlns  redMate2_;   // database of cells used for mate 2 alignments
 
 	// For holding results for anchor (res_) and opposite (ores_) mates
 	SwResult       resGap_;    // temp holder for alignment result
