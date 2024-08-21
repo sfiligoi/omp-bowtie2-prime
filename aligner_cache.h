@@ -597,11 +597,10 @@ private:
 	 * describing all of the cached information about the QVal's
 	 * reference substrings.
 	 */
-	template <int S>
 	inline void queryQvalImpl(
 		const QVal& qv,
-		EList<TIndexOffU, S>& salist,
-		TSATups&              satups,
+		AList<TIndexOffU>& salist,
+		TSATups&           satups,
 		size_t& nrange,
 		size_t& nelt) const
 	{
@@ -641,7 +640,7 @@ private:
  **/
 class AlignmentCacheInterface {
 public:
-	AlignmentCacheInterface(const AlignmentCache& cache, EList<TIndexOffU>& salist)
+	AlignmentCacheInterface(const AlignmentCache& cache, AList<TIndexOffU>& salist)
 		:cache_(cache) , salist_(salist) {}
 
 	/**
@@ -659,7 +658,7 @@ public:
 	}
 private:
 	const AlignmentCache& cache_;
-	EList<TIndexOffU>&    salist_;
+	AList<TIndexOffU>&    salist_;
 };
 
 /**
