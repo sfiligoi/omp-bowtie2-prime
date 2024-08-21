@@ -88,6 +88,9 @@
 #include "reference.h"
 #include "mem_ids.h"
 
+// We need 4+1, but keep it even
+#define TStateVSize ((int)6)
+
 /**
  * Encapsulate an SA range and an associated list of slots where the resolved
  * offsets can be placed.
@@ -401,12 +404,12 @@ public:
 	 *
 	 * Returns true iff at least one elt was resolved.
 	 */
-	template<int S>
+	template<class S>
 	pair<TIndexOff, TIndexOff> init(
 		const Ebwt& ebwt,             // index to walk left in
 		const BitPairReference& ref,  // bitpair-encoded reference
 		SARangeWithOffs<T>& sa,       // SA range with offsets
-		EList<GWState, S>& sts,       // EList of GWStates for range being advanced
+		S& sts,       // DList of GWStates for range being advanced
 		GWHit<T>& hit,                // Corresponding hit structure
 		TIndexOffU range,               // which range is this?
 		bool reportList,              // if true, "report" resolved offsets immediately by adding them to 'res' list
@@ -437,12 +440,12 @@ public:
 	 * resolved but unreported offsets found during this advance, the
 	 * second being the number of as-yet-unresolved offsets.
 	 */
-	template<int S>
+	template<class S>
 	pair<TIndexOff, TIndexOff> init(
 		const Ebwt& ebwt,             // forward Bowtie index
 		const BitPairReference& ref,  // bitpair-encoded reference
 		SARangeWithOffs<T>& sa,       // SA range with offsets
-		EList<GWState, S>& st,        // EList of GWStates for advancing range
+		S& st,        // DList of GWStates for advancing range
 		GWHit<T>& hit,                // Corresponding hit structure
 		TIndexOffU range,               // range being inited
 		bool reportList,              // report resolutions, adding to 'res' list?
@@ -809,7 +812,7 @@ public:
 	 * resolved but unreported offsets found during this advance, the
 	 * second being the number of as-yet-unresolved offsets.
 	 */
-	template <int S>
+	template <class S>
 	pair<TIndexOff, TIndexOff> advance(
 		const Ebwt& ebwt,            // the forward Bowtie index, for stepping left
 		const BitPairReference& ref, // bitpair-encoded reference
@@ -818,7 +821,7 @@ public:
 		TIndexOffU range,              // which range is this?
 		bool reportList,             // if true, "report" resolved offsets immediately by adding them to 'res' list
 		EList<WalkResult, 16>* res,  // EList where resolved offsets should be appended
-		EList<GWState, S>& st,       // EList of GWStates for range being advanced
+		S& st,       // DList of GWStates for range being advanced
 		GroupWalkState& gws,         // temporary storage for masks
 		PerReadMetrics& prm)
 	{
@@ -1026,12 +1029,12 @@ protected:
 	TIndexOffU mapi_;           // first untrimmed element of map
 };
 
-template<typename T, int S>
+template<typename T>
 class GroupWalk2S {
 public:
-	typedef EList<GWState<T>, S> TStateV;
+	typedef DList<GWState<T>, TStateVSize> TStateV;
 
-	GroupWalk2S() : st_(8, GW_CAT) {
+	GroupWalk2S() {
 		reset();
 	}
 
