@@ -270,7 +270,6 @@ void SwDriver::prioritizeSATups(
 	RandomSource& rnd = sdrnd.get_rnd();
 	const size_t nonz = sh.nonzeroOffsets(); // non-zero positions
 	//const int matei = 0;
-	satups_.clear();
 	gws_.clear();
 	rand_ns_.clear();
 	sdrnd.clear();
@@ -285,15 +284,16 @@ void SwDriver::prioritizeSATups(
 		assert(qv.valid());
 		assert(!qv.empty());
 		assert(qv.repOk(ca.current()));
-		ca.queryQval(qv, satups_, nrange, nelt);
-		for(size_t j = 0; j < satups_.size(); j++) {
-			const size_t sz = satups_[j].size();
-			// Check whether this hit occurs inside the extended boundaries of
-			// another hit we already processed for this read.
-			if(seedmms == 0) {
+		SATuple satup;
+		ca.queryQval(qv, satup, nrange, nelt);
+		if (satup.valid()) {
+		   const size_t sz = satup.size();
+		   // Check whether this hit occurs inside the extended boundaries of
+		   // another hit we already processed for this read.
+		   bool skip = false;
+		   if(seedmms == 0) {
 				// See if we're covered by a previous extended seed hit
 				auto& range = fw ? seedExRangeFw_ : seedExRangeRc_;
-				bool skip = false;
 				for(size_t k = 0; k < range.size(); k++) {
 					size_t p5 = range[k].off;
 					size_t len = range[k].len;
@@ -304,16 +304,16 @@ void SwDriver::prioritizeSATups(
 						}
 					}
 				}
-				if(skip) {
-					assert_gt(nrange, 0);
-					nrange--;
-					assert_geq(nelt, sz);
-					nelt -= sz;
-					continue; // Skip this seed
-				}
-			}
+		   }
+		   if(skip) {
+				assert_gt(nrange, 0);
+				nrange--;
+				assert_geq(nelt, sz);
+				nelt -= sz;
+				// Skip this seed
+		   } else {
 			satpos.expand();
-			satpos.back().sat = satups_[j];
+			satpos.back().sat = satup;
 			satpos.back().origSz = sz;
 			satpos.back().pos.init(fw, offidx, rdoff, seedlen);
 			if(sz <= nsm) {
@@ -359,9 +359,9 @@ void SwDriver::prioritizeSATups(
 				range.back().len = seedlen + nlex + nrex;
 				range.back().sz = sz;
 			}
-		}
-		satups_.clear();
-	}
+		   } // not skip
+		} // setup valid
+	} // for i
 	assert_leq(nsmall, nrange);
 	nelt_ = nelt; // return the total number of elements
 	assert_eq(nrange, satpos.size());

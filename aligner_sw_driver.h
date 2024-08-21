@@ -533,7 +533,6 @@ protected:
 
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos_;  // holds SATuple, SeedPos pairs
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos2_; // holds SATuple, SeedPos pairs
-	TSATups                  satups_;  // holds SATuples to explore elements from
 	DList<GroupWalk2S<TSlice, 16>, ALN_MAX_ITER > gws_;   // list of GroupWalks; no particular order
 	RowSampler               rowsamp_;     // row sampler
 	

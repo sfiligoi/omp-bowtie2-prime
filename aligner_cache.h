@@ -489,14 +489,18 @@ public:
 	 */
 	size_t size() const { return offs.size(); }
 
+	/**
+	* Return true iff the slice is initialized.
+ 	*/
+        bool valid() const {
+                return offs.valid();
+        }
+
 	// bot/length of SA range equals offs.size()
 	SAKey    key;  // sequence key
 	TIndexOffU topf;  // top in BWT index
 	TSlice   offs; // offsets
 };
-
-// we will ever only get 0 or 1 satups
-typedef DList<SATuple,1> TSATups;
 
 class AlignmentCacheInterface;
 
@@ -600,7 +604,7 @@ private:
 	inline void queryQvalImpl(
 		const QVal& qv,
 		AList<TIndexOffU>& salist,
-		TSATups&           satups,
+		SATuple&           satup,
 		size_t& nrange,
 		size_t& nelt) const
 	{
@@ -616,19 +620,10 @@ private:
 			assert(sav.repOk(*this));
 			if(sav.len > 0) {
 				nrange++;
-				satups.expand();
 				TSlice offs = TSlice(salist, salist_offs_+sav.i, sav.len);
 				offs.fill(OFF_MASK);
-				satups.back().init(sak, sav.topf, offs);
+				satup.init(sak, sav.topf, offs);
 				nelt += sav.len;
-#ifndef NDEBUG
-				// Shouldn't add consecutive identical entries too satups
-				if(i > refi) {
-					const SATuple b1 = satups.back();
-					const SATuple b2 = satups[satups.size()-2];
-					assert(b1.key != b2.key || b1.topf != b2.topf || b1.offs != b2.offs);
-				}
-#endif
 			}
 		}
 	}
@@ -650,11 +645,11 @@ public:
 	 */
 	void queryQval(
 		const QVal& qv,
-		TSATups& satups,
+		SATuple& satup,
 		size_t& nrange,
 		size_t& nelt)
 	{
-		cache_.queryQvalImpl(qv, salist_, satups, nrange, nelt);
+		cache_.queryQvalImpl(qv, salist_, satup, nrange, nelt);
 	}
 private:
 	const AlignmentCache& cache_;
