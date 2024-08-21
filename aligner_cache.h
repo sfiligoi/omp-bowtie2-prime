@@ -121,7 +121,7 @@ public:
 	TIndexOffU botf;        // bot in BWT
 };
 
-typedef EListSlice<TIndexOffU,128> TSlice;
+typedef EListSlice<TIndexOffU> TSlice;
 
 /**
  * Key for the query multimap: the read substring and its length.

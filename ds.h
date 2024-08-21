@@ -4170,7 +4170,7 @@ protected:
 /**
  * A slice of an EList.
  */
-template<typename T, int S>
+template<typename T>
 class EListSlice {
 
 public:
@@ -4181,7 +4181,7 @@ public:
 	{ }
 
 	EListSlice(
-		EList<T, S>& list,
+		AList<T>& list,
 		size_t i,
 		size_t len) :
 		i_(i),
@@ -4192,7 +4192,7 @@ public:
 	/**
 	 * Initialize from a piece of another PListSlice.
 	 */
-	void init(const EListSlice<T, S>& sl, size_t first, size_t last) {
+	void init(const EListSlice<T>& sl, size_t first, size_t last) {
 		assert_gt(last, first);
 		assert_leq(last - first, sl.len_);
 		i_ = sl.i_ + first;
@@ -4334,7 +4334,7 @@ public:
 protected:
 	size_t i_;
 	size_t len_;
-	EList<T, S>* list_;
+	AList<T>* list_;
 };
 
 /**
