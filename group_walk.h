@@ -372,8 +372,6 @@ public:
 		S& sts,       // DList of GWStates for range being advanced
 		GWHit<T>& hit,                // Corresponding hit structure
 		TIndexOffU range,               // which range is this?
-		bool reportList,              // if true, "report" resolved offsets immediately by adding them to 'res' list
-		EList<WalkResult, 16>* res,   // EList where resolved offsets should be appended
 		TIndexOffU tp,                  // top of range at this step
 		TIndexOffU bt,                  // bot of range at this step
 		TIndexOffU st)                  // # steps taken to get to this step
@@ -386,7 +384,7 @@ public:
 		assert(!inited_);
 		ASSERT_ONLY(inited_ = true);
 		ASSERT_ONLY(lastStep_ = step-1);
-		return init(ebwt, ref, sa, sts, hit, range, reportList, res);
+		return init(ebwt, ref, sa, sts, hit, range);
 	}
 
 	/**
@@ -407,12 +405,8 @@ public:
 		SARangeWithOffs<T>& sa,       // SA range with offsets
 		S& st,        // DList of GWStates for advancing range
 		GWHit<T>& hit,                // Corresponding hit structure
-		TIndexOffU range,               // range being inited
-		bool reportList,              // report resolutions, adding to 'res' list?
-		EList<WalkResult, 16>* res)   // EList to append resolutions
+		TIndexOffU range)               // range being inited
 	{
-		assert(reportList==false);
-
 		assert(inited_);
 		assert_eq(step, lastStep_+1);
 		ASSERT_ONLY(lastStep_++);
@@ -437,7 +431,7 @@ public:
 					toff += step;
 					assert_eq(toff, ebwt.getOffset(origBwRow));
 					setOff(i, toff, sa);
-					if(!reportList) ret.first++;
+					ret.first++;
 				}
 			}
 			// Is the element resolved?  We ask this regardless of how it was
@@ -525,8 +519,6 @@ public:
 				st,
 				hit,
 				(TIndexOffU)st.size()-1,
-				reportList,
-				res,
 				ztop,
 				oldbot,
 				step);
@@ -698,14 +690,10 @@ public:
 		SARangeWithOffs<T>& sa,      // SA range with offsets
 		GWHit<T>& hit,               // the associated GWHit object
 		TIndexOffU range,              // which range is this?
-		bool reportList,             // if true, "report" resolved offsets immediately by adding them to 'res' list
-		EList<WalkResult, 16>* res,  // EList where resolved offsets should be appended
 		S& st,       // DList of GWStates for range being advanced
 		GroupWalkState& gws,         // temporary storage for masks
 		PerReadMetrics& prm)
 	{
-		assert(reportList==false);
-
 		ASSERT_ONLY(TIndexOffU origTop = top);
 		ASSERT_ONLY(TIndexOffU origBot = bot);
 		assert_geq(step, 0);
@@ -791,8 +779,6 @@ public:
 							st,          // EList of all GWStates associated with original range
 							hit,         // associated GWHit object
 							(TIndexOffU)st.size()-1, // range offset
-							reportList,  // if true, report hits to 'res' list
-							res,         // report hits here if reportList is true
 							ntop,        // BW top of new range
 							nbot,        // BW bot of new range
 							step+1);     // # steps taken to get to this new range
@@ -843,9 +829,7 @@ public:
 			sa,         // SA range with offsets
 			st,         // EList of all GWStates associated with original range
 			hit,        // associated GWHit object
-			range,      // range offset
-			reportList, // if true, report hits to 'res' list
-			res);        // report hits here if reportList is true
+			range);      // range offset
 		ret.first += rret.first;
 		ret.second += rret.second;
 		return ret;
@@ -957,8 +941,6 @@ public:
 			st_,                // EList<GWState>
 			hit_,               // GWHit
 			0,                  // range 0
-			false,              // put resolved elements into res_?
-			NULL,               // put resolved elements here
 			top,                // BW row at top
 			bot,                // BW row at bot
 			0);                 // # steps taken
@@ -1013,8 +995,6 @@ public:
 				sa,
 				hit_,
 				(TIndexOffU)range,
-				false,
-				NULL,
 				st_,
 				gws,
 				prm);
