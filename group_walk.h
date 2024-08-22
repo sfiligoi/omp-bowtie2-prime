@@ -256,8 +256,7 @@ struct WalkResult {
 
 /**
  * A GW hit encapsulates an SATuple describing a reference substring
- * in the cache, along with a bool indicating whether each element of
- * the hit has been reported yet.
+ * in the cache
  */
 template<typename T>
 class GWHit {
@@ -269,9 +268,7 @@ public:
 		offidx(OFF_MASK),
 		fw(false),
 		range(OFF_MASK),
-		len(OFF_MASK),
-		reported_(0, GW_CAT),
-		nrep_(0)
+		len(OFF_MASK)
 	{
 		assert(repOkBasic());
 	}
@@ -286,13 +283,10 @@ public:
 		bool f,
 		TIndexOffU r)
 	{
-		nrep_ = 0;
 		offidx = oi;
 		fw = f;
 		range = r;
 		len = (TIndexOffU)sa.len;
-		reported_.resize(sa.offs.size());
-		reported_.fill(false);
 		fmap.resize(sa.offs.size());
 		fmap.fill(OFF_MASK);
 	}
@@ -301,9 +295,7 @@ public:
 	 * Clear contents of sat and done.
 	 */
 	void reset() {
-		reported_.clear();
 		fmap.clear();
-		nrep_ = 0;
 		offidx = OFF_MASK;
 		fw = false;
 		range = OFF_MASK;
@@ -318,12 +310,11 @@ public:
 	 * reverse mappings match up for the as-yet-unresolved elements.
 	 */
 	bool repOk(const SARangeWithOffs<T>& sa) const {
-		assert_eq(reported_.size(), sa.offs.size());
 		assert_eq(fmap.size(), sa.offs.size());
 		// Shouldn't be any repeats among as-yet-unresolveds
-		size_t nrep = 0;
+		//size_t nrep = 0;
 		for(size_t i = 0; i < fmap.size(); i++) {
-			if(reported_[i]) nrep++;
+			//if(reported_[i]) nrep++;
 			if(sa.offs[i] != OFF_MASK) {
 				continue;
 			}
@@ -334,7 +325,7 @@ public:
 				assert(fmap[i] != fmap[j]);
 			}
 		}
-		assert_eq(nrep_, nrep);
+		//assert_eq(nrep_, nrep);
 		return true;
 	}
 
@@ -346,42 +337,11 @@ public:
 	}
 #endif
 
-	/**
-	 * Set the ith element to be reported.
-	 */
-	void setReported(size_t i) {
-		assert(!reported_[i]);
-		assert_lt(i, reported_.size());
-		reported_[i] = true;
-		nrep_++;
-	}
-
-	/**
-	 * Return true iff element i has been reported.
-	 */
-	bool reported(size_t i) const {
-		assert_lt(i, reported_.size());
-		return reported_[i];
-	}
-
-	/**
-	 * Return true iff all elements have been reported.
-	 */
-	bool done() const {
-		assert_leq(nrep_, reported_.size());
-		return nrep_ == reported_.size();
-	}
-
 	EList<TIndexOffU, 16> fmap; // forward map; to GWState
 	TIndexOffU offidx; // offset idx
 	bool fw;         // orientation
 	TIndexOffU range;  // original range index
 	TIndexOffU len;    // length of hit
-
-protected:
-
-	EList<bool, 16> reported_; // per-elt bool indicating whether it's been reported
-	size_t nrep_;
 };
 
 /**
@@ -451,6 +411,8 @@ public:
 		bool reportList,              // report resolutions, adding to 'res' list?
 		EList<WalkResult, 16>* res)   // EList to append resolutions
 	{
+		assert(reportList==false);
+
 		assert(inited_);
 		assert_eq(step, lastStep_+1);
 		ASSERT_ONLY(lastStep_++);
@@ -476,63 +438,6 @@ public:
 					assert_eq(toff, ebwt.getOffset(origBwRow));
 					setOff(i, toff, sa);
 					if(!reportList) ret.first++;
-#if 0
-// used to be #ifndef NDEBUG, but since we no longer require that the reference
-// string info be included, this is no longer relevant.
-
-					// Sanity check that the reference characters under this
-					// hit match the seed characters in hit.satup->key.seq.
-					// This is NOT a check that we associated the exact right
-					// text offset with the BW row.  This is an important
-					// distinction because when resolved offsets are filled in
-					// via refernce scanning, they are not necessarily the
-					// exact right text offsets to associate with the
-					// respective BW rows but they WILL all be correct w/r/t
-					// the reference sequence underneath, which is what really
-					// matters here.
-					TIndexOffU tidx = OFF_MASK, tof, tlen;
-					bool straddled = false;
-					ebwt.joinedToTextOff(
-						hit.len, // length of seed
-						toff,    // offset in joined reference string
-						tidx,    // reference sequence id
-						tof,     // offset in reference coordinates
-						tlen,    // length of reference sequence
-						true,    // don't reject straddlers
-						straddled);
-					if(tidx != OFF_MASK &&
-					   hit.satup->key.seq != std::numeric_limits<uint64_t>::max())
-					{
-						// key: 2-bit characters packed into a 64-bit word with
-						// the least significant bitpair corresponding to the
-						// rightmost character on the Watson reference strand.
-						uint64_t key = hit.satup->key.seq;
-						for(int64_t j = tof + hit.len-1; j >= tof; j--) {
-							// Get next reference base to the left
-							int c = ref.getBase(tidx, j);
-							assert_range(0, 3, c);
-							// Must equal least significant bitpair of key
-							if(c != (int)(key & 3)) {
-								// Oops; when we jump to the piece of the
-								// reference where the seed hit is, it doesn't
-								// match the seed hit.  Before dying, check
-								// whether we have the right spot in the joined
-								// reference string
-								SString<char> jref;
-								ebwt.restore(jref);
-								uint64_t key2 = hit.satup->key.seq;
-								for(int64_t k = toff + hit.len-1; k >= toff; k--) {
-									int c = jref[k];
-									assert_range(0, 3, c);
-									assert_eq(c, (int)(key2 & 3));
-									key2 >>= 2;
-								}
-								assert(false);
-							}
-							key >>= 2;
-						}
-					}
-#endif
 				}
 			}
 			// Is the element resolved?  We ask this regardless of how it was
@@ -540,22 +445,6 @@ public:
 			// it a while ago, or whether some other function outside GroupWalk
 			// did it).
 			if(off(i, sa) != OFF_MASK) {
-				if(reportList && !hit.reported(map(i))) {
-					// Report it
-					TIndexOffU toff = off(i, sa);
-					assert(res != NULL);
-					res->expand();
-					TIndexOffU origBwRow = sa.topf + map(i);
-					res->back().init(
-						hit.offidx, // offset idx
-						hit.fw,     // orientation
-						hit.range,  // original range index
-						map(i),     // original element offset
-						origBwRow,  // BW row resolved
-						hit.len,    // hit length
-						toff);      // text offset
-					hit.setReported(map(i));
-				}
 				// Offset resolved
 				if(empty) {
 					// Haven't seen a non-empty entry yet, so we
@@ -815,6 +704,8 @@ public:
 		GroupWalkState& gws,         // temporary storage for masks
 		PerReadMetrics& prm)
 	{
+		assert(reportList==false);
+
 		ASSERT_ONLY(TIndexOffU origTop = top);
 		ASSERT_ONLY(TIndexOffU origBot = bot);
 		assert_geq(step, 0);
@@ -1131,10 +1022,6 @@ public:
 			       !st_[hit_.fmap[elt]].doneResolving(sa));
 		}
 		assert_neq(OFF_MASK, sa.offs[elt]);
-		// Report it!
-		if(!hit_.reported(elt)) {
-			hit_.setReported(elt);
-		}
 		res.init(
 			0,              // seed offset
 			false,          // orientation
@@ -1168,13 +1055,13 @@ public:
 			if(sa.offs[m] != OFF_MASK) {
 				resolved++;
 			} else {
-				assert(!hit_.reported(m));
+				//assert(!hit_.reported(m));
 			}
 			// Is it reported?
-			if(hit_.reported(m)) {
-				reported++;
-			}
-			assert_geq(resolved, reported);
+			//if(hit_.reported(m)) {
+			//	reported++;
+			//}
+			//assert_geq(resolved, reported);
 		}
 		assert_geq(resolved, reported);
 		assert_eq(rep_, reported);
