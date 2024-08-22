@@ -294,7 +294,7 @@ public:
 		reported_.resize(sa.offs.size());
 		reported_.fill(false);
 		fmap.resize(sa.offs.size());
-		fmap.fill(make_pair(OFF_MASK, OFF_MASK));
+		fmap.fill(OFF_MASK);
 	}
 
 	/**
@@ -372,7 +372,7 @@ public:
 		return nrep_ == reported_.size();
 	}
 
-	EList<std::pair<TIndexOffU, TIndexOffU>, 16> fmap; // forward map; to GWState & elt
+	EList<TIndexOffU, 16> fmap; // forward map; to GWState
 	TIndexOffU offidx; // offset idx
 	bool fw;         // orientation
 	TIndexOffU range;  // original range index
@@ -574,17 +574,7 @@ public:
 				// range
 				assert_geq(i, mapi_);
 				TIndexOffU bmap = map(i);
-				hit.fmap[bmap].first = range;
-				hit.fmap[bmap].second = (TIndexOffU)i;
-#ifndef NDEBUG
-				for(size_t j = 0; j < bmap; j++) {
-					if(sa.offs[j] == OFF_MASK &&
-					   hit.fmap[j].first == range)
-					{
-						assert_neq(i, hit.fmap[j].second);
-					}
-				}
-#endif
+				hit.fmap[bmap] = range;
 			}
 		}
 		// Trim from beginning
@@ -609,7 +599,7 @@ public:
 			// this range are resolved.
 			for(size_t i = 0; i < hit.fmap.size(); i++) {
 				if(sa.offs[i] == OFF_MASK) {
-					assert_neq(range, hit.fmap[i].first);
+					assert_neq(range, hit.fmap[i]);
 				}
 			}
 #endif
@@ -710,7 +700,7 @@ public:
 	bool repOkMapInclusive(GWHit<T>& hit, TIndexOffU range) const {
 		for(size_t i = 0; i < hit.fmap.size(); i++) {
 			if(hit.satup->offs[i] == OFF_MASK) {
-				if(range == hit.fmap[i].first) {
+				if(range == hit.fmap[i]) {
 					ASSERT_ONLY(bool found = false);
 					for(size_t j = mapi_; j < map_.size(); j++) {
 						if(map(j) == i) {
@@ -1119,7 +1109,7 @@ public:
 		// Until we've resolved our element of interest...
 		while(sa.offs[elt] == OFF_MASK) {
 			// Get the GWState that contains our element of interest
-			size_t range = hit_.fmap[elt].first;
+			size_t range = hit_.fmap[elt];
 			st_.ensure(4);
 			GWState<T>& st = st_[range];
 			assert(!st.doneResolving(sa));
@@ -1138,7 +1128,7 @@ public:
 				gws,
 				prm);
 			assert(sa.offs[elt] != OFF_MASK ||
-			       !st_[hit_.fmap[elt].first].doneResolving(sa));
+			       !st_[hit_.fmap[elt]].doneResolving(sa));
 		}
 		assert_neq(OFF_MASK, sa.offs[elt]);
 		// Report it!
