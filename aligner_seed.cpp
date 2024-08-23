@@ -498,39 +498,6 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 	return (seedsearches+(ibatch_size-1))/ibatch_size;
 }
 
-inline void SeedAligner::searchAllSeedsDoAll(const Ebwt* ebwtFw)
-{
-	assert(ebwtFw != NULL);
-	assert(ebwtFw->isInMemory());
-
-	const SeedAlignerSearchParams* paramVec = paramVec_;
-	SeedAlignerSearchData*         dataVec = dataVec_;
-	const size_t seedsearches = seedsearches_;
-
-	// do the searches in batches
-	for (size_t mnr=0; mnr<seedsearches; mnr+=ibatch_size) {
-		const size_t ibatch_max = std::min(mnr+ibatch_size,seedsearches);
-		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec[mnr]), &(dataVec[mnr]) );
-	} // mnr loop
-
-}
-
-inline void SeedAligner::searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwtFw)
-{
-	const size_t mnr = ibatch*ibatch_size;
-	const size_t seedsearches = seedsearches_;
-	const size_t ibatch_max = std::min(mnr+ibatch_size,seedsearches);
-	if (mnr<ibatch_max) {
-		assert(ebwtFw != NULL);
-		assert(ebwtFw->isInMemory());
-
-		// Note: Updates on bwops_ may not be atomi
-		// But a small discrepancy is acceptable, as it is only rarely used diagnostics
-		searchSeedBi<ibatch_size>(ebwtFw, bwops_, ibatch_max-mnr, &(paramVec_[mnr]), &(dataVec_[mnr]) );
-	}
-}
-
-
 void SeedAligner::searchAllSeedsFinalize(
 	AlignmentCache& cache,  // local cache for seed alignments
 	SeedResults& sr)

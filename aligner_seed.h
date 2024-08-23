@@ -1374,9 +1374,6 @@ public:
 		const SeedResults& sr,      // holds all the seed hits
 		const int ftabLen);         // forward index (BWT) value
 
-	void searchAllSeedsDoAll(const Ebwt* ebwtFw);
-	void searchAllSeedsDoBatch(uint32_t ibatch, const Ebwt* ebwtFw);
-
 	void searchAllSeedsFinalize(
 		AlignmentCache& cache,  // local cache for seed alignments
 		SeedResults& sr);            // holds all the seed hits
