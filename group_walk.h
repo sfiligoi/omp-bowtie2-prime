@@ -102,12 +102,12 @@ public:
 
 	SARangeWithOffs() { reset(); };
 
-	SARangeWithOffs(TIndexOffU tf, size_t len, const T& o) {
-		init(tf, len, o);
+	SARangeWithOffs(TIndexOffU tf, size_t l, const T& o, const T& m) {
+		init(tf, l, o, m);
 	}
 
-	void init(TIndexOffU tf, const T& o) {
-		topf = tf, offs = o;
+	void init(TIndexOffU tf, size_t l, const T& o, const T& m) {
+		topf = tf; len= l; offs = o; fmap = m;
 	}
 
 	/**
@@ -126,11 +126,12 @@ public:
 	 * Return the number of times this reference substring occurs in the
 	 * reference, which is also the size of the 'offs' TSlice.
 	 */
-	size_t size() const { return offs.size(); }
+	size_t size() const { return offs.size(); } // fmap and offs same size
 
 	TIndexOffU topf; // top in BWT index
 	size_t    len;  // length of the reference sequence involved
 	T         offs; // offsets
+	T         fmap; // // forward map to GWState
 };
 
 /**
@@ -264,7 +265,6 @@ class GWHit {
 public:
 
 	GWHit() :
-		fmap(0, GW_CAT),
 		offidx(OFF_MASK),
 		fw(false),
 		range(OFF_MASK),
@@ -287,7 +287,7 @@ public:
 		fw = f;
 		range = r;
 		len = (TIndexOffU)sa.len;
-		fmap.resize(sa.offs.size());
+		fmap = sa.fmap;
 		fmap.fill(OFF_MASK);
 	}
 
@@ -295,7 +295,7 @@ public:
 	 * Clear contents of sat and done.
 	 */
 	void reset() {
-		fmap.clear();
+		fmap.reset();
 		offidx = OFF_MASK;
 		fw = false;
 		range = OFF_MASK;
@@ -337,7 +337,7 @@ public:
 	}
 #endif
 
-	EList<TIndexOffU, 16> fmap; // forward map; to GWState
+	EListSlice<TIndexOffU> fmap; // forward map; to GWState
 	TIndexOffU offidx; // offset idx
 	bool fw;         // orientation
 	TIndexOffU range;  // original range index

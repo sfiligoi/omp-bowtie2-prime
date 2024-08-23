@@ -305,6 +305,14 @@ void SwDriver::prioritizeSATups(
 					}
 				}
 		   }
+		   if(!skip) {
+			// Check satups not already in satpos
+			const uint16_t sp_sz = satpos.size(); // if it were any larger than uint16_t, too slow anyway
+			for (uint16_t k = 0; k < sp_sz; k++) {
+				// We are relying on fmap being uquique in each satpos
+				skip |= satpos[k].sat.fmap == satup.fmap;
+			}
+		   }
 		   if(skip) {
 				assert_gt(nrange, 0);
 				nrange--;
@@ -395,10 +403,11 @@ void SwDriver::prioritizeSATups(
 		satpos_.expand();
 		satpos_.back() = satpos2_[j];
 		gws_.expand();
-		SARangeWithOffs<TSlice> sa;
-		sa.topf = satpos_.back().sat.topf;
-		sa.len = satpos_.back().sat.key.len;
-		sa.offs = satpos_.back().sat.offs;
+		SARangeWithOffs<TSlice> sa(
+			satpos_.back().sat.topf,
+			satpos_.back().sat.key.len,
+			satpos_.back().sat.offs,
+			satpos_.back().sat.fmap);
 		gws_.back().init(
 			ebwtFw, // forward Bowtie index
 			ref,    // reference sequences
@@ -446,17 +455,20 @@ void SwDriver::prioritizeSATups(
 		SATuple sat;
 		TSlice o;
 		o.init(satpos2_[ri].sat.offs, r, r+1);
-		sat.init(satpos2_[ri].sat.key, (TIndexOffU)(satpos2_[ri].sat.topf + r), o);
+		TSlice m;
+		m.init(satpos2_[ri].sat.fmap, r, r+1);
+		sat.init(satpos2_[ri].sat.key, (TIndexOffU)(satpos2_[ri].sat.topf + r), o, m);
 		satpos_.expand();
 		satpos_.back().sat = sat;
 		satpos_.back().origSz = satpos2_[ri].origSz;
 		satpos_.back().pos = satpos2_[ri].pos;
 		// Initialize GroupWalk object
 		gws_.expand();
-		SARangeWithOffs<TSlice> sa;
-		sa.topf = sat.topf;
-		sa.len = sat.key.len;
-		sa.offs = sat.offs;
+		SARangeWithOffs<TSlice> sa(
+			sat.topf,
+			sat.key.len,
+			sat.offs,
+			sat.fmap);
 		gws_.back().init(
 			ebwtFw, // forward Bowtie index
 			ref,    // reference sequences
@@ -593,10 +605,11 @@ int SwDriver::extendSeeds(
 				WalkResult wr;
 				size_t elt = sdrnd.rands_[i].next(rnd);
 				//cerr << "elt=" << elt << endl;
-				SARangeWithOffs<TSlice> sa;
-				sa.topf = satpos_[i].sat.topf;
-				sa.len = satpos_[i].sat.key.len;
-				sa.offs = satpos_[i].sat.offs;
+				SARangeWithOffs<TSlice> sa(
+					satpos_[i].sat.topf,
+					satpos_[i].sat.key.len,
+					satpos_[i].sat.offs,
+					satpos_[i].sat.fmap);
 				gws_[i].advanceElement((TIndexOffU)elt, ebwtFw, ref, sa, gwstate_, wr, prm);
 				eltsDone++;
 				assert_gt(neltLeft, 0);
@@ -1176,10 +1189,11 @@ int SwDriver::extendSeedsPaired(
 				// Resolve next element offset
 				WalkResult wr;
 				size_t elt = rands_[i].next(rnd);
-				SARangeWithOffs<TSlice> sa;
-				sa.topf = satpos_[i].sat.topf;
-				sa.len = satpos_[i].sat.key.len;
-				sa.offs = satpos_[i].sat.offs;
+				SARangeWithOffs<TSlice> sa(
+					satpos_[i].sat.topf,
+					satpos_[i].sat.key.len,
+					satpos_[i].sat.offs,
+					satpos_[i].sat.fmap);
 				gws_[i].advanceElement((TIndexOffU)elt, ebwtFw, ref, sa, gwstate_, wr, prm);
 				eltsDone++;
 				assert_gt(neltLeft, 0);

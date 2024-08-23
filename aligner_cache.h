@@ -416,12 +416,12 @@ public:
 
 	SATuple() { reset(); };
 
-	SATuple(SAKey k, TIndexOffU tf, TSlice o) {
-		init(k, tf, o);
+	SATuple(SAKey k, TIndexOffU tf, TSlice& o, TSlice& m) {
+		init(k, tf, o, m);
 	}
 
-	void init(SAKey k, TIndexOffU tf, TSlice o) {
-		key = k; topf = tf; offs = o;
+	void init(SAKey k, TIndexOffU tf, TSlice& o, TSlice& m) {
+		key = k; topf = tf; offs = o; fmap = m;
 	}
 
 	/**
@@ -431,6 +431,7 @@ public:
 		key = src.key;
 		topf = (TIndexOffU)(src.topf + first);
 		offs.init(src.offs, first, last);
+		fmap.init(src.fmap, first, last);
 	}
 
 #ifndef NDEBUG
@@ -439,7 +440,9 @@ public:
 	 * PListSlice is consistent with its backing PList.
 	 */
 	bool repOk() const {
+		assert(offs.size() == fmap.size());
 		assert(offs.repOk());
+		assert(fmap.repOk());
 		return true;
 	}
 #endif
@@ -451,6 +454,7 @@ public:
 	 * way of breaking a tie would be fine.
 	 */
 	bool operator<(const SATuple& o) const {
+		// assume offs.size() == fmap.size()
 		if(offs.size() < o.offs.size()) {
 			return true;
 		}
@@ -460,6 +464,7 @@ public:
 		return topf < o.topf;
 	}
 	bool operator>(const SATuple& o) const {
+		// assume offs.size() == fmap.size()
 		if(offs.size() < o.offs.size()) {
 			return false;
 		}
@@ -470,17 +475,19 @@ public:
 	}
 
 	bool operator==(const SATuple& o) const {
-		return key == o.key && topf == o.topf && offs == o.offs;
+		return key == o.key && topf == o.topf && offs == o.offs && fmap == o.fmap;
 	}
 
-	void reset() { topf = OFF_MASK; offs.reset(); }
+	void reset() { topf = OFF_MASK; offs.reset(); fmap.reset();}
 
 	/**
 	 * Set the length to be at most the original length.
 	 */
 	void setLength(size_t nlen) {
+		// assume offs.size() == fmap.size()
 		assert_leq(nlen, offs.size());
 		offs.setLength(nlen);
+		fmap.setLength(nlen);
 	}
 
 	/**
@@ -500,6 +507,7 @@ public:
 	SAKey    key;  // sequence key
 	TIndexOffU topf;  // top in BWT index
 	TSlice   offs; // offsets
+	TSlice   fmap; // fmap buffer used by group_walk
 };
 
 class AlignmentCacheInterface;
@@ -622,7 +630,10 @@ private:
 				nrange++;
 				TSlice offs = TSlice(salist, salist_offs_+sav.i, sav.len);
 				offs.fill(OFF_MASK);
-				satup.init(sak, sav.topf, offs);
+				// keep them close by, as they are often accessed together
+				TSlice fmap = TSlice(salist, salist_offs_+salist_size_+sav.i, sav.len);
+				fmap.fill(OFF_MASK);
+				satup.init(sak, sav.topf, offs, fmap);
 				nelt += sav.len;
 			}
 		}
@@ -688,7 +699,7 @@ public:
 		for (uint32_t i=0; i<ncaches_; i++) {
 			AlignmentCache& cache = caches_[i];
 			cache.setSAOffset(nsas);
-			nsas += cache.saSize();
+			nsas += cache.saSize()*2; //need space for both SA and fmap
 		}
 		salists_.resizeNoCopy(nsas);
 	}
