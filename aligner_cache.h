@@ -560,7 +560,7 @@ public:
 		if(added) {
 			SAVal sav;
 			sav.init(topf, salist_size_, botf - topf);
-			salist_size_ += sav.len; // just remember how much we need for now	
+			salist_size_ += sav.len*2; // just remember how much we need for now (sa+fmap)
 			assert(sav.repOk(*this));
 			samap_.insert(sak,sav);
 		}
@@ -626,12 +626,14 @@ private:
 			assert(samap_.lookup(sak) != NULL);
 			const SAVal& sav = *(samap_.lookup(sak));
 			assert(sav.repOk(*this));
-			if(sav.len > 0) {
+			const size_t sav_len = sav.len;
+			const size_t sav_off = salist_offs_+sav.i;
+			if(sav_len > 0) {
 				nrange++;
-				TSlice offs = TSlice(salist, salist_offs_+sav.i, sav.len);
+				TSlice offs = TSlice(salist, sav_off, sav_len);
 				offs.fill(OFF_MASK);
 				// keep them close by, as they are often accessed together
-				TSlice fmap = TSlice(salist, salist_offs_+salist_size_+sav.i, sav.len);
+				TSlice fmap = TSlice(salist, sav_off+sav_len, sav_len);
 				fmap.fill(OFF_MASK);
 				satup.init(sak, sav.topf, offs, fmap);
 				nelt += sav.len;
@@ -699,7 +701,7 @@ public:
 		for (uint32_t i=0; i<ncaches_; i++) {
 			AlignmentCache& cache = caches_[i];
 			cache.setSAOffset(nsas);
-			nsas += cache.saSize()*2; //need space for both SA and fmap
+			nsas += cache.saSize();
 		}
 		salists_.resizeNoCopy(nsas);
 	}
