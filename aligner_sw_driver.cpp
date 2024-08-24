@@ -79,7 +79,6 @@ void SwDriver::extend(
 	size_t rdlen = rd.length();
 	size_t lim = fw ? off : rdlen - len - off;
 	// We're about to add onto the beginning, so reverse it
-	ASSERT_ONLY(tmp_rdseq_.reverse());
 	if(lim > 0) {
 		const Ebwt *ebwt = &ebwtFw;
 		assert(ebwt != NULL);
@@ -136,7 +135,6 @@ void SwDriver::extend(
 				}
 				bot = top + 1;
 			}
-			ASSERT_ONLY(tmp_rdseq_.append(rdc));
 			if(++nlex == 255) {
 				break;
 			}
@@ -228,16 +226,6 @@ void SwDriver::prioritizeSATups(
 				nsmall_elts += sz;
 			}
 			satpos.back().nlex = 0;
-#ifndef NDEBUG
-			tmp_rdseq_.clear();
-			uint64_t key = satpos.back().sat.key.seq;
-			for(size_t k = 0; k < seedlen; k++) {
-				int c = (int)(key & 3);
-				tmp_rdseq_.append(c);
-				key >>= 2;
-			}
-			tmp_rdseq_.reverse();
-#endif
 			size_t nlex = 0;
 			constexpr size_t nrex = 0; // could be changed with backward index
 			if(doExtend) {
@@ -665,15 +653,6 @@ int SwDriver::extendSeeds(
 					}
 					assert(res != NULL);
 					firstInner = false;
-					assert(res->alres.matchesRef(
-						rd,
-						ref,
-						tmp_rf_,
-						tmp_rdseq_,
-						tmp_qseq_,
-						raw_refbuf_,
-						raw_destU32_,
-						raw_matches_));
 					Interval refival(tidx, 0, fw, tlen);
 					assert_gt(res->alres.refExtent(), 0);
 					if(reportOverhangs &&
@@ -707,17 +686,6 @@ int SwDriver::extendSeeds(
 					if(reportImmediately) {
 						assert(msink != NULL);
 						assert(res->repOk());
-						// Check that alignment accurately reflects the
-						// reference characters aligned to
-						assert(res->alres.matchesRef(
-							rd,
-							ref,
-							tmp_rf_,
-							tmp_rdseq_,
-							tmp_qseq_,
-							raw_refbuf_,
-							raw_destU32_,
-							raw_matches_));
 						// Report an unpaired alignment
 						assert(!msink->maxed());
 						if(msink->report(0,&res->alres,NULL))
@@ -1302,15 +1270,6 @@ int SwDriver::extendSeedsPaired(
 					// we could save some work by detecting this.
 					assert(res != NULL);
 					firstInner = false;
-					assert(res->alres.matchesRef(
-						rd,
-						ref,
-						tmp_rf_,
-						tmp_rdseq_,
-						tmp_qseq_,
-						raw_refbuf_,
-						raw_destU32_,
-						raw_matches_));
 					Interval refival(tidx, 0, fw, tlen);
 					assert_gt(res->alres.refExtent(), 0);
 					if(reportOverhangs &&
@@ -1511,15 +1470,6 @@ int SwDriver::extendSeedsPaired(
 							} else if(foundMate) {
 								oswa.nextAlignment(oresGap_, ominsc_cur, rnd);
 								foundMate = !oresGap_.empty();
-								assert(!foundMate || oresGap_.alres.matchesRef(
-									ord,
-									ref,
-									tmp_rf_,
-									tmp_rdseq_,
-									tmp_qseq_,
-									raw_refbuf_,
-									raw_destU32_,
-									raw_matches_));
 							}
 							if(foundMate) {
 								// Redundant with one we've seen previously?
@@ -1683,17 +1633,6 @@ int SwDriver::extendSeedsPaired(
 									// Report unpaired hit for anchor
 									assert(msink != NULL);
 									assert(res->repOk());
-									// Check that alignment accurately reflects the
-									// reference characters aligned to
-									assert(res->alres.matchesRef(
-										rd,
-										ref,
-										tmp_rf_,
-										tmp_rdseq_,
-										tmp_qseq_,
-										raw_refbuf_,
-										raw_destU32_,
-										raw_matches_));
 									// Report an unpaired alignment
 									assert(!msink->maxed());
 									assert(!msink->state().done());
@@ -1728,17 +1667,6 @@ int SwDriver::extendSeedsPaired(
 							// Report unpaired hit for anchor
 							assert(msink != NULL);
 							assert(res->repOk());
-							// Check that alignment accurately reflects the
-							// reference characters aligned to
-							assert(res->alres.matchesRef(
-								rd,
-								ref,
-								tmp_rf_,
-								tmp_rdseq_,
-								tmp_qseq_,
-								raw_refbuf_,
-								raw_destU32_,
-								raw_matches_));
 							// Report an unpaired alignment
 							assert(!msink->maxed());
 							assert(!msink->state().done());

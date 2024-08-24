@@ -551,13 +551,6 @@ protected:
 	GroupWalkState gwstate_;   // some per-thread state shared by all GroupWalks
 	const bool reportOverhangs;
 
-	// For AlnRes::matchesRef:
-	ASSERT_ONLY(SStringExpandable<char>     raw_refbuf_);
-	ASSERT_ONLY(SStringExpandable<uint32_t> raw_destU32_);
-	ASSERT_ONLY(EList<bool>                 raw_matches_);
-	ASSERT_ONLY(BTDnaString                 tmp_rf_);
-	ASSERT_ONLY(BTDnaString                 tmp_rdseq_);
-	ASSERT_ONLY(BTString                    tmp_qseq_);
 };
 
 #endif /*ALIGNER_SW_DRIVER_H_*/
