@@ -513,8 +513,6 @@ protected:
 		const Ebwt& ebwtFw,   // Forward Bowtie index
 		TIndexOffU topf,        // top in fw index
 		TIndexOffU botf,        // bot in fw index
-		TIndexOffU topb,        // top in bw index
-		TIndexOffU botb,        // bot in bw index
 		bool fw,              // seed orientation
 		size_t off,           // seed offset from 5' end
 		size_t len,           // seed length

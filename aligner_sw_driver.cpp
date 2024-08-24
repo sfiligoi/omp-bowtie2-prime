@@ -65,8 +65,6 @@ void SwDriver::extend(
 	const Ebwt& ebwtFw,   // Forward Bowtie index
 	TIndexOffU topf,        // top in fw index
 	TIndexOffU botf,        // bot in fw index
-	TIndexOffU topb,        // top in bw index
-	TIndexOffU botb,        // bot in bw index
 	bool fw,              // seed orientation
 	size_t off,           // seed offset from 5' end
 	size_t len,           // seed length
@@ -74,7 +72,6 @@ void SwDriver::extend(
 	size_t& nlex)         // # positions we can extend to left w/o edit
 {
 	TIndexOffU t[4], b[4];
-	TIndexOffU tp[4], bp[4];
 	SideLocus tloc, bloc;
 	size_t rdlen = rd.length();
 	size_t lim = fw ? off : rdlen - len - off;
@@ -88,8 +85,6 @@ void SwDriver::extend(
 		TIndexOffU top = topf, bot = botf;
 		t[0] = t[1] = t[2] = t[3] = 0;
 		b[0] = b[1] = b[2] = b[3] = 0;
-		tp[0] = tp[1] = tp[2] = tp[3] = topb;
-		bp[0] = bp[1] = bp[2] = bp[3] = botb;
 		SideLocus tloc, bloc;
 		INIT_LOCS(top, bot, tloc, bloc, *ebwt);
 		for(size_t ii = 0; ii < lim; ii++) {
@@ -107,8 +102,7 @@ void SwDriver::extend(
 				prm.nSdFmops++;
 				t[0] = t[1] = t[2] = t[3] =
 				b[0] = b[1] = b[2] = b[3] = 0;
-				ebwt->mapBiLFEx(tloc, bloc, t, b, tp, bp);
-				SANITY_CHECK_4TUP(t, b, tp, bp);
+				ebwt->mapBiLFEx(tloc, bloc, t, b);
 				int nonz = -1;
 				bool abort = false;
 				size_t origSz = bot - top;
@@ -234,8 +228,6 @@ void SwDriver::prioritizeSATups(
 					ebwtFw,
 					satpos.back().sat.topf,
 					(TIndexOffU)(satpos.back().sat.topf + sz),
-					0,
-					(TIndexOffU)(0 + sz),
 					fw,
 					rdoff,
 					seedlen,
