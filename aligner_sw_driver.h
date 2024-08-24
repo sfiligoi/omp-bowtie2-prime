@@ -164,7 +164,6 @@ struct SATupleAndPos {
 	SeedPos pos;    // seed position that yielded the range this was taken from
 	size_t  origSz; // size of range this was taken from
 	size_t  nlex;   // # position we can extend seed hit to left w/o edit
-	size_t  nrex;   // # position we can extend seed hit to right w/o edit
 	
 	bool operator<(const SATupleAndPos& o) const {
 		if(sat < o.sat) return true;
@@ -221,7 +220,7 @@ public:
 		mass_ = 0.0f;
 		masses_.resize(saf - sai);
 		for(size_t i = sai; i < saf; i++) {
-			size_t len = salist[i].nlex + salist[i].nrex + 1; // + salist[i].sat.key.len;
+			size_t len = salist[i].nlex + 1; // + salist[i].sat.key.len;
 			double num = (double)len;
 			if(lensq) {
 				num *= num;
@@ -388,7 +387,6 @@ public:
 		const Read& rd,              // read
 		const SeedResults& sh,       // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
-		const Ebwt* ebwtBw,          // BWT'
 		const BitPairReference& ref, // Reference strings
 		int seedmms,                 // # seed mismatches allowed
 		size_t maxelt,               // max elts we'll consider
@@ -414,7 +412,6 @@ public:
 		Read& rd,                    // read to align
 		const SeedResults& sh,       // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
-		const Ebwt* ebwtBw,          // BWT'
 		const BitPairReference& ref, // Reference strings
 		SwAligner& swa,              // dynamic programming aligner
 		const Scoring& sc,           // scoring scheme
@@ -514,7 +511,6 @@ protected:
 	void extend(
 		const Read& rd,       // read
 		const Ebwt& ebwtFw,   // Forward Bowtie index
-		const Ebwt* ebwtBw,   // Backward Bowtie index
 		TIndexOffU topf,        // top in fw index
 		TIndexOffU botf,        // bot in fw index
 		TIndexOffU topb,        // top in bw index
@@ -523,8 +519,7 @@ protected:
 		size_t off,           // seed offset from 5' end
 		size_t len,           // seed length
 		PerReadMetrics& prm,  // per-read metrics
-		size_t& nlex,         // # positions we can extend to left w/o edit
-		size_t& nrex);        // # positions we can extend to right w/o edit
+		size_t& nlex);         // # positions we can extend to left w/o edit
 
 	// if range as <= nsm elts, it's "small"
 	constexpr static size_t nsm = 5;

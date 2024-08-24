@@ -63,7 +63,6 @@ using namespace std;
 void SwDriver::extend(
 	const Read& rd,       // read
 	const Ebwt& ebwtFw,   // Forward Bowtie index
-	const Ebwt* ebwtBw,   // Backward Bowtie index
 	TIndexOffU topf,        // top in fw index
 	TIndexOffU botf,        // bot in fw index
 	TIndexOffU topb,        // top in bw index
@@ -72,8 +71,7 @@ void SwDriver::extend(
 	size_t off,           // seed offset from 5' end
 	size_t len,           // seed length
 	PerReadMetrics& prm,  // per-read metrics
-	size_t& nlex,         // # positions we can extend to left w/o edit
-	size_t& nrex)         // # positions we can extend to right w/o edit
+	size_t& nlex)         // # positions we can extend to left w/o edit
 {
 	TIndexOffU t[4], b[4];
 	TIndexOffU tp[4], bp[4];
@@ -81,22 +79,6 @@ void SwDriver::extend(
 	size_t rdlen = rd.length();
 	size_t lim = fw ? off : rdlen - len - off;
 	// We're about to add onto the beginning, so reverse it
-#ifndef NDEBUG
-	if(false) {
-		// TODO: This will sometimes fail even when the extension is legitimate
-		// This is because contains() comes in from one extreme or the other,
-		// whereas we started from the inside and worked outwards.  This
-		// affects which Ns are OK and which are not OK.
-
-		// Have to do both because whether we can get through an N depends on
-		// which direction we're coming in
-//		bool fwContains = ebwtFw.contains(tmp_rdseq_);
-//		tmp_rdseq_.reverse();
-//		bool bwContains = ebwtBw != NULL && ebwtBw->contains(tmp_rdseq_);
-//		tmp_rdseq_.reverse();
-//		assert(fwContains || bwContains);
-	}
-#endif
 	ASSERT_ONLY(tmp_rdseq_.reverse());
 	if(lim > 0) {
 		const Ebwt *ebwt = &ebwtFw;
@@ -161,89 +143,7 @@ void SwDriver::extend(
 			INIT_LOCS(top, bot, tloc, bloc, *ebwt);
 		}
 	}
-	// We're about to add onto the end, so re-reverse
-	ASSERT_ONLY(tmp_rdseq_.reverse());
-	lim = fw ? rdlen - len - off : off;
-	if(lim > 0 && ebwtBw != NULL) {
-		const Ebwt *ebwt = ebwtBw;
-		assert(ebwt != NULL);
-		// Extend right using backward index
-		const BTDnaString& seq = fw ? rd.patFw : rd.patRc;
-		// See what we get by extending 
-		TIndexOffU top = topb, bot = botb;
-		t[0] = t[1] = t[2] = t[3] = 0;
-		b[0] = b[1] = b[2] = b[3] = 0;
-		tp[0] = tp[1] = tp[2] = tp[3] = topf;
-		bp[0] = bp[1] = bp[2] = bp[3] = botf;
-		INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-		for(size_t ii = 0; ii < lim; ii++) {
-			// Starting to right of seed (<off) and moving right
-			size_t i;
-			if(fw) {
-				i = ii + len + off;
-			} else {
-				i = rdlen - off + ii;
-			}
-			// Get char from read
-			int rdc = seq.get(i);
-			// See what we get by extending 
-			if(bloc.valid()) {
-				prm.nSdFmops++;
-				t[0] = t[1] = t[2] = t[3] =
-				b[0] = b[1] = b[2] = b[3] = 0;
-				ebwt->mapBiLFEx(tloc, bloc, t, b, tp, bp);
-				SANITY_CHECK_4TUP(t, b, tp, bp);
-				int nonz = -1;
-				bool abort = false;
-				size_t origSz = bot - top;
-				for(int j = 0; j < 4; j++) {
-					if(b[j] > t[j]) {
-						if(nonz >= 0) {
-							abort = true;
-							break;
-						}
-						nonz = j;
-						top = t[j]; bot = b[j];
-					}
-				}
-				assert_leq(bot - top, origSz);
-				if(abort || (nonz != rdc && rdc <= 3) || bot - top < origSz) {
-					break;
-				}
-			} else {
-				assert_eq(bot, top+1);
-				prm.nSdFmops++;
-				int c = ebwt->mapLF1(top, tloc);
-				if(c != rdc && rdc <= 3) {
-					break;
-				}
-				bot = top + 1;
-			}
-			ASSERT_ONLY(tmp_rdseq_.append(rdc));
-			if(++nrex == 255) {
-				break;
-			}
-			INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-		}
-	}
-#ifndef NDEBUG
-	if(false) {
-		// TODO: This will sometimes fail even when the extension is legitimate
-		// This is because contains() comes in from one extreme or the other,
-		// whereas we started from the inside and worked outwards.  This
-		// affects which Ns are OK and which are not OK.
-	
-		// Have to do both because whether we can get through an N depends on
-		// which direction we're coming in
-//		bool fwContains = ebwtFw.contains(tmp_rdseq_);
-//		tmp_rdseq_.reverse();
-//		bool bwContains = ebwtBw != NULL && ebwtBw->contains(tmp_rdseq_);
-//		tmp_rdseq_.reverse();
-//		assert(fwContains || bwContains);
-	}
-#endif
 	assert_lt(nlex, rdlen);
-	assert_lt(nrex, rdlen);
 	return;
 }
 
@@ -255,7 +155,6 @@ void SwDriver::prioritizeSATups(
 	const Read& read,            // read
 	const SeedResults& sh,       // seed hits to extend into full alignments
 	const Ebwt& ebwtFw,          // BWT
-	const Ebwt* ebwtBw,          // BWT
 	const BitPairReference& ref, // Reference strings
 	int seedmms,                 // # mismatches allowed in seed
 	size_t maxelt,               // max elts we'll consider
@@ -328,7 +227,7 @@ void SwDriver::prioritizeSATups(
 				nsmall++;
 				nsmall_elts += sz;
 			}
-			satpos.back().nlex = satpos.back().nrex = 0;
+			satpos.back().nlex = 0;
 #ifndef NDEBUG
 			tmp_rdseq_.clear();
 			uint64_t key = satpos.back().sat.key.seq;
@@ -339,12 +238,12 @@ void SwDriver::prioritizeSATups(
 			}
 			tmp_rdseq_.reverse();
 #endif
-			size_t nlex = 0, nrex = 0;
+			size_t nlex = 0;
+			constexpr size_t nrex = 0; // could be changed with backward index
 			if(doExtend) {
 				extend(
 					read,
 					ebwtFw,
-					ebwtBw,
 					satpos.back().sat.topf,
 					(TIndexOffU)(satpos.back().sat.topf + sz),
 					0,
@@ -353,18 +252,16 @@ void SwDriver::prioritizeSATups(
 					rdoff,
 					seedlen,
 					prm,
-					nlex,
-					nrex);
+					nlex);
 			}
 			satpos.back().nlex = nlex;
-			satpos.back().nrex = nrex;
-			if(seedmms == 0 && (nlex > 0 || nrex > 0)) {
+			if(seedmms == 0 && (nlex > 0)) {
 				assert_geq(rdoff, (fw ? nlex : nrex));
 				size_t p5 = rdoff - (fw ? nlex : nrex);
 				auto& range = fw ? seedExRangeFw_ : seedExRangeRc_;
 				range.expand();
 				range.back().off = p5;
-				range.back().len = seedlen + nlex + nrex;
+				range.back().len = seedlen + nlex;
 				range.back().sz = sz;
 			}
 		   } // not skip
@@ -503,7 +400,6 @@ int SwDriver::extendSeeds(
 	Read& rd,                    // read to align
 	const SeedResults& sh,       // seed hits to extend into full alignments
 	const Ebwt& ebwtFw,          // BWT
-	const Ebwt* ebwtBw,          // BWT'
 	const BitPairReference& ref, // Reference strings
 	SwAligner& swa,              // dynamic programming aligner
 	const Scoring& sc,           // scoring scheme

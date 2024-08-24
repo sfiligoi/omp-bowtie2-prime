@@ -2198,7 +2198,6 @@ public:
 		: ref(*multiseed_refs)
 		, sc(*multiseed_sc)
 		, ebwtFw(*multiseed_ebwtFw)
-		, ebwtBw(multiseed_ebwtBw)
 		, nofw( gNofw )
 		, norc( gNorc )
 		, extend( doExtend )
@@ -2220,7 +2219,6 @@ public:
 	const BitPairReference& ref;
 	const Scoring&          sc;
 	const Ebwt&             ebwtFw;
-	const Ebwt* const       ebwtBw;
 
 	const bool nofw;
 	const bool norc;
@@ -2298,7 +2296,7 @@ public:
  /* Work in progress: There is only one such invocation, parallelization inside */
 static void multiseedSearchWorker() {
 	assert(multiseed_ebwtFw != NULL);
-	assert(multiseedMms == 0 || multiseed_ebwtBw != NULL);
+	assert(multiseedMms == 0 && multiseed_ebwtBw == NULL);
 	AlnSink&                msink    = *multiseed_msink;
 
 	const uint16_t reads_per_batch = nthreads_multiplier;
@@ -2709,7 +2707,6 @@ static void multiseedSearchWorker() {
 							rd,            // read
 							sh,            // seed hits to extend into full alignments
 							msconsts->ebwtFw,        // BWT
-							msconsts->ebwtBw,        // BWT'
 							msconsts->ref,           // Reference strings
 							multiseedMms,       // # seed mismatches allowed
 							msconsts->mxIter,      // max rows to consider per position
@@ -2770,7 +2767,6 @@ static void multiseedSearchWorker() {
 										rd,             // read
 										sh,             // seed hits
 										msconsts->ebwtFw,         // bowtie index
-										msconsts->ebwtBw,         // rev bowtie index
 										msconsts->ref,            // packed reference strings
 										sw,                       // dynamic prog aligner
 										msconsts->sc,             // scoring scheme
