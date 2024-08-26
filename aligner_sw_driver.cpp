@@ -377,7 +377,6 @@ enum {
  * stop).  Otherwise, returns false.
  */
 int SwDriver::extendSeeds(
-	Read& rd,                    // read to align
 	const SeedResults& sh,       // seed hits to extend into full alignments
 	const Ebwt& ebwtFw,          // BWT
 	const BitPairReference& ref, // Reference strings
@@ -406,9 +405,6 @@ int SwDriver::extendSeeds(
 	assert(!reportImmediately || msink != NULL);
 	assert(!reportImmediately || !msink->maxed());
 
-	assert_geq(nceil, 0);
-	assert_leq((size_t)nceil, rd.length());
-	
 	//const bool eeMode = false;
 
 	// Reset all the counters related to streaks
@@ -416,17 +412,21 @@ int SwDriver::extendSeeds(
 	prm.nUgFail = 0;
 	prm.nDpFail = 0;
 
-	// Calculate the largest possible number of read and reference gaps
-	const size_t rdlen = rd.length();
-	TAlScore perfectScore = sc.perfectScore(rdlen);
-
 	DynProgFramer dpframe(!reportOverhangs);
 
 	RandomSource& rnd = sdrnd.get_rnd();
 
 	size_t neltLeft = 0;
-	size_t rows = rdlen;
+	const size_t rows = swa.dpRows();
+	const size_t rdlen = rows;
 	size_t eltsDone = 0;
+
+	assert_geq(nceil, 0);
+	assert_leq((size_t)nceil, rdlen);
+	
+	// Calculate the largest possible number of read and reference gaps
+	TAlScore perfectScore = sc.perfectScore(rdlen);
+
 	// cerr << "===" << endl;
 	const uint16_t gws_size = gws_.size();
 	assert_eq(gws_.size(), sdrnd.rands_.size());

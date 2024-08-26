@@ -2764,7 +2764,6 @@ static void multiseedSearchWorker() {
 
 								// Unpaired dynamic programming driver
 								int ret = msobj.sd.extendSeeds(
-										rd,             // read
 										sh,             // seed hits
 										msconsts->ebwtFw,         // bowtie index
 										msconsts->ref,            // packed reference strings

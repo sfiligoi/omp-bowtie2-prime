@@ -392,8 +392,6 @@ public:
 		return dpRows() * (rflen_);
 	}
 
-protected:
-	
 	/**
 	 * Return the number of rows that will be in the dynamic programming table.
 	 */
@@ -402,6 +400,8 @@ protected:
 		return rdlen_;
 	}
 
+protected:
+	
 #ifdef ENABLE_I16
 	/**
 	 * Align nucleotides from read 'rd' to the reference string 'rf' using

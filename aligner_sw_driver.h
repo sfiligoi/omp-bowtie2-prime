@@ -409,7 +409,6 @@ public:
 	 * policy is satisfied and we can stop).  Otherwise, returns false.
 	 */
 	int extendSeeds(
-		Read& rd,                    // read to align
 		const SeedResults& sh,       // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
 		const BitPairReference& ref, // Reference strings
