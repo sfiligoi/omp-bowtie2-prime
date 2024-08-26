@@ -297,8 +297,11 @@ SeedAligner::instantiateSeq(
 	// Fill in 'seq'
 	// If fw is false, we take characters starting at the 3' end of the
 	// reverse complement of the read.
+	const int rdlen = read.length();
+	auto& readpat = fw ? read.patFw : read.patRc;
+	int rel_depth = fw ? depth : (rdlen - depth - len);
 	for(int i = 0; i < len; i++) {
-		seq[i] = read.patFw.windowGetDna(i, fw, depth, len);
+		seq[i] = readpat.get(rel_depth + i);
 	}
 }
 
