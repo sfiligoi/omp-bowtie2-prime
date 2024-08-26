@@ -566,6 +566,8 @@ struct EEHit {
 class SeedResults {
 
 public:
+	typedef const char* PCStr;
+
 	SeedResults() :
 		hitsFw_(AL_CAT),
 		hitsRc_(AL_CAT),
@@ -641,11 +643,11 @@ public:
 	 */
 protected:
 	void resetNoOff(
-		char*              seqBuf,      // content of all the seqs, no separators
+		PCStr*             seqPBuf,     // not owned, pointers to sequence buffers
 		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
 	{
 		const size_t numOffs = numOffs_;
-		seqBuf_ = seqBuf;     // must be be at least getSeqSize()
+		seqPBuf_ = seqPBuf;   // must be be at least getSeqSize()
 		seedsBuf_ = seedsBuf; // must be be at least getSeedsSize()
 		for(size_t i = 0; i < 2*numOffs; i++) {
 			seedsBuf_[i].invalidate();
@@ -665,7 +667,7 @@ protected:
 
 public:
 
-	size_t getSeqSize() const { return 2*numOffs_*seqLen_; }
+	size_t getSeqSize() const { return 2*numOffs_; }
 
 	size_t getSeedsSize() const { return 2*numOffs_; };
 
@@ -689,10 +691,10 @@ public:
 
 	// expects prepare to have been called first
 	void reset(
-		char*              seqBuf,      // content of all the seqs, no separators
+		PCStr*             seqPBuf,     // not owned, pointers to sequence buffers
 		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
 	{
-		resetNoOff(seqBuf,seedsBuf);
+		resetNoOff(seqPBuf,seedsBuf);
 	}
 
 	
@@ -1141,20 +1143,20 @@ public:
 		}
 	}
 
+	void  set_seqs(bool fw, size_t i, const char *p) { 
+		PCStr* base = seqPBuf_;
+		if (!fw) base += numOffs_;
+		base[i] = p;
+	}
+
 	/**
 	 * Return the list of extracted seed sequences for seeds on either
 	 * the forward or reverse strand.
 	 */
-	char * seqs(bool fw, size_t i) { 
-		char * base = seqBuf_;
-		if (!fw) base += seqLen_*numOffs_;
-		return base + (i*seqLen_);
-	}
-
 	const char * seqs(bool fw, size_t i) const { 
-		const char * base = seqBuf_;
-		if (!fw) base += seqLen_*numOffs_;
-		return base + (i*seqLen_);
+		PCStr* base = seqPBuf_;
+		if (!fw) base += numOffs_;
+		return base[i];
 	}
 
 	uint32_t seqs_len() const { return seqLen_; }
@@ -1163,7 +1165,7 @@ protected:
 
 	// As seed hits and edits are added they're sorted into these
 	// containers
-	char*               seqBuf_;      // not owned, content of all the seqs, no separators
+	PCStr*              seqPBuf_;     // not owned, pointers to sequence buffers
 	InstantiatedSeed*   seedsBuf_;    // not owned, all the instantiated seeds, both fw and rc
 
 	EList<QVal>         hitsFw_;      // hits for forward read
@@ -1204,6 +1206,8 @@ protected:
 
 class MultiSeedResults {
 public:
+	typedef SeedResults::PCStr PCStr;
+
 	MultiSeedResults(
 		uint32_t n_els,            // number of seed elements
 	        const int seed_len,        // search seed length
@@ -1216,13 +1220,13 @@ public:
 	, _nofw(nofw)
 	, _norc(norc)
 	, _bufOffs(new TBufOffs[n_els])
-	, _seqBuf(NULL),   _seedsBuf(NULL)
-	, _seqBuf_size(0), _seedsBuf_size(0)
+	, _seqPBuf(NULL),   _seedsBuf(NULL)
+	, _seqPBuf_size(0), _seedsBuf_size(0)
 	{}
 
 	~MultiSeedResults() {
 		if (_seedsBuf!=NULL) delete[] _seedsBuf;
-		if (_seqBuf!=NULL) delete[] _seqBuf;
+		if (_seqPBuf!=NULL) delete[] _seqPBuf;
 		delete[] _bufOffs;
 		delete[] _srs;
 	}
@@ -1262,13 +1266,13 @@ private:
 	const bool       _nofw;                 // don't align forward read
 	const bool       _norc;                 // don't align revcomp read
 
-	// offsets into _seqBuf and _seedsBuf
+	// offsets into _seqPBuf and _seedsBuf
 	typedef std::pair<size_t,size_t> TBufOffs;
 	TBufOffs *         _bufOffs; // array of size n_sr
 	// these pointers can be updated during the life of the object
-	char*              _seqBuf;      // content of all the seqs, no separators
+	PCStr*             _seqPBuf;      // content of all the seqs, no separators
 	InstantiatedSeed*  _seedsBuf;    // all the instantiated seeds, both fw and rc
-	size_t             _seqBuf_size;
+	size_t             _seqPBuf_size;
 	size_t             _seedsBuf_size;
 };
 
@@ -1333,14 +1337,13 @@ public:
 	}
 	
 	uint32_t getBufsSize() const {return seedsearches_;}
+
 	/**
 	 * Given a read and a few coordinates that describe a substring of the
-	 * read (or its reverse complement), fill in 'seq' and 'qual' objects
-	 * with the seed sequence and qualities.
+	 * read (or its reverse complement), find the pointer to seq
 	 */
-	static void instantiateSeq(
+	static const char * instantiateSeq(
 		const Read& read, // input read
-		char        seq[], // output sequence
 		int len,          // seed length
 		int depth,        // seed's 0-based offset from 5' end
 		bool fw);         // seed's orientation
@@ -1357,8 +1360,8 @@ public:
 		SeedResults& sr);          // holds all the seed hits
 
 	static size_t instantiateSeed(
-		char*              seqBuf,      // content of all the seqs, no separators
-		InstantiatedSeed*  seedsBuf,    // all the instantiated seeds, both fw and rc
+		SeedResults::PCStr* seqPBuf,     // not owned, pointers to sequence buffers
+		InstantiatedSeed*   seedsBuf,    // all the instantiated seeds, both fw and rc
 		const Read& read,          // read to align
 		bool nofw,                 // don't align forward read
 		bool norc,                 // don't align revcomp read
