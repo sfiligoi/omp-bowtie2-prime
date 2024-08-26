@@ -507,14 +507,13 @@ public:
 
 protected:
 
-	void extend(
-		const Read& rd,       // read
+	static void extend(
+		const SeedResults& sh, // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,   // Forward Bowtie index
 		TIndexOffU topf,        // top in fw index
 		TIndexOffU botf,        // bot in fw index
 		bool fw,              // seed orientation
 		size_t off,           // seed offset from 5' end
-		size_t len,           // seed length
 		PerReadMetrics& prm,  // per-read metrics
 		size_t& nlex);         // # positions we can extend to left w/o edit
 

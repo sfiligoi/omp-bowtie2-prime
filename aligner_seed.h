@@ -1150,6 +1150,23 @@ public:
 		}
 	}
 
+	// seed offset from 5' end
+	// in the relative read buffer (Fw or Rc)
+	void get_rel_offs(bool fw, uint8_t off,
+			  const char* &buf,	// pointer to the end of the sequence
+			  uint8_t     &lim      // how many chars do I have
+			) const {
+		if (fw) {
+			buf = rdSeqFw_;
+			lim = off;
+		} else {
+			buf = rdSeqRc_;
+			lim = rdlen_ - seqLen_ - off;
+		}
+		if (lim>0) buf += (lim-1);
+	}
+
+	// Set the seed offest
 	void  set_seqs(bool fw, size_t i, uint8_t off) { 
 		uint8_t* base = seqOBuf_;
 		if (!fw) base += numOffs_;

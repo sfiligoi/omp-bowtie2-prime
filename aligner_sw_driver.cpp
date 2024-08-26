@@ -61,42 +61,35 @@ using namespace std;
  * reverse index.
  */
 void SwDriver::extend(
-	const Read& rd,       // read
-	const Ebwt& ebwtFw,   // Forward Bowtie index
-	TIndexOffU topf,        // top in fw index
-	TIndexOffU botf,        // bot in fw index
+	const SeedResults& sh, // seed hits to extend into full alignments
+	const Ebwt& ebwtFw,    // Forward Bowtie index
+	TIndexOffU topf,       // top in fw index
+	TIndexOffU botf,       // bot in fw index
 	bool fw,              // seed orientation
 	size_t off,           // seed offset from 5' end
-	size_t len,           // seed length
 	PerReadMetrics& prm,  // per-read metrics
 	size_t& nlex)         // # positions we can extend to left w/o edit
 {
 	TIndexOffU t[4], b[4];
 	SideLocus tloc, bloc;
-	size_t rdlen = rd.length();
-	size_t lim = fw ? off : rdlen - len - off;
+	uint8_t lim = 0;
+	const char *seq = NULL;
+	sh.get_rel_offs(fw,off, seq, lim);
 	// We're about to add onto the beginning, so reverse it
 	if(lim > 0) {
 		const Ebwt *ebwt = &ebwtFw;
 		assert(ebwt != NULL);
-		// Extend left using forward index
-		const BTDnaString& seq = fw ? rd.patFw : rd.patRc;
 		// See what we get by extending 
 		TIndexOffU top = topf, bot = botf;
 		t[0] = t[1] = t[2] = t[3] = 0;
 		b[0] = b[1] = b[2] = b[3] = 0;
 		SideLocus tloc, bloc;
 		INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-		for(size_t ii = 0; ii < lim; ii++) {
+		for(int16_t ii = 0; ii < lim; ii++) {
 			// Starting to left of seed (<off) and moving left
-			size_t i = 0;
-			if(fw) {
-				i = off - ii - 1;
-			} else {
-				i = rdlen - off - len - 1 - ii;
-			}
+			size_t i = lim - ii -1;
 			// Get char from read
-			int rdc = seq.get(i);
+			int rdc = seq[-ii];
 			// See what we get by extending 
 			if(bloc.valid()) {
 				prm.nSdFmops++;
@@ -135,7 +128,6 @@ void SwDriver::extend(
 			INIT_LOCS(top, bot, tloc, bloc, *ebwt);
 		}
 	}
-	assert_lt(nlex, rdlen);
 	return;
 }
 
@@ -224,13 +216,12 @@ void SwDriver::prioritizeSATups(
 			constexpr size_t nrex = 0; // could be changed with backward index
 			if(doExtend) {
 				extend(
-					read,
+					sh,
 					ebwtFw,
 					satpos.back().sat.topf,
 					(TIndexOffU)(satpos.back().sat.topf + sz),
 					fw,
 					rdoff,
-					seedlen,
 					prm,
 					nlex);
 			}

@@ -100,9 +100,13 @@ public:
 		)
 		{
 			seq = _seq;
+#ifndef NDEBUG
 			if (_seq_len>127) {printf("Unexpected seq_len %i\n",int(seq_len)); throw 1;}
+#endif
 			seq_len = _seq_len;
+#ifndef NDEBUG
 			if (abs(_seed.n_steps)>127) {printf("Unexpected n_seed_steps %i\n",int(_seed.n_steps)); throw 1;}
+#endif
 			n_seed_steps = _seed.n_steps;
 		}
 
