@@ -59,17 +59,19 @@ using namespace std;
  * offset into the read and orientation.  Also requires that we know top/bot
  * for the seed hit in both the forward and (if we want to extend to the right)
  * reverse index.
+ *
+ * Return FM Index ops used to align seeds
  */
-void SwDriver::extend(
+uint16_t SwDriver::extend(
 	const SeedResults& sh, // seed hits to extend into full alignments
 	const Ebwt& ebwtFw,    // Forward Bowtie index
 	TIndexOffU topf,       // top in fw index
 	TIndexOffU botf,       // bot in fw index
 	bool fw,              // seed orientation
 	size_t off,           // seed offset from 5' end
-	PerReadMetrics& prm,  // per-read metrics
 	size_t& nlex)         // # positions we can extend to left w/o edit
 {
+	uint16_t nSdFmops = 0;
 	TIndexOffU t[4], b[4];
 	SideLocus tloc, bloc;
 	uint8_t lim = 0;
@@ -92,7 +94,7 @@ void SwDriver::extend(
 			int rdc = seq[-ii];
 			// See what we get by extending 
 			if(bloc.valid()) {
-				prm.nSdFmops++;
+				nSdFmops++;
 				t[0] = t[1] = t[2] = t[3] =
 				b[0] = b[1] = b[2] = b[3] = 0;
 				ebwt->mapBiLFEx(tloc, bloc, t, b);
@@ -115,7 +117,7 @@ void SwDriver::extend(
 				}
 			} else {
 				assert_eq(bot, top+1);
-				prm.nSdFmops++;
+				nSdFmops++;
 				int c = ebwt->mapLF1(top, tloc);
 				if(c != rdc && rdc <= 3) {
 					break;
@@ -128,7 +130,7 @@ void SwDriver::extend(
 			INIT_LOCS(top, bot, tloc, bloc, *ebwt);
 		}
 	}
-	return;
+	return nSdFmops;
 }
 
 /**
@@ -215,14 +217,13 @@ void SwDriver::prioritizeSATups(
 			size_t nlex = 0;
 			constexpr size_t nrex = 0; // could be changed with backward index
 			if(doExtend) {
-				extend(
+				prm.nSdFmops += extend(
 					sh,
 					ebwtFw,
 					satpos.back().sat.topf,
 					(TIndexOffU)(satpos.back().sat.topf + sz),
 					fw,
 					rdoff,
-					prm,
 					nlex);
 			}
 			satpos.back().nlex = nlex;
