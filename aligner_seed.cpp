@@ -281,7 +281,7 @@ enum {
  * Given a read and a few coordinates that describe a substring of the read (or
  * its reverse complement), find the pointer to seq
  */
-const char *
+uint8_t
 SeedAligner::instantiateSeq(
 	const Read& read, // input read
 	int len,          // seed length
@@ -294,7 +294,7 @@ SeedAligner::instantiateSeq(
 	const int rdlen = read.length();
 	auto& readpat = fw ? read.patFw : read.patRc;
 	int rel_depth = fw ? depth : (rdlen - depth - len);
-	return &(readpat.get(rel_depth));
+	return rel_depth;;
 }
 
 /**
@@ -309,21 +309,23 @@ void SeedAligner::prepareSeed(
 	const Read& read,          // read to align
 	SeedResults& sr)           // holds all the seed hits
 {
-	assert_gt(read.length(), 0);
+	int rdlen = read.length();
+	assert_gt(rdlen, 0);
+	assert_lt(rdlen,256); // unsigned 8 bit
 	// Check whether read has too many Ns
 	const int len = seed_len;
 	// Calc # seeds within read interval
 	int nseeds = 1;
-	if((int)read.length() - (int)off > len) {
-		nseeds += ((int)read.length() - (int)off - len) / per;
+	if((int)rdlen - (int)off > len) {
+		nseeds += ((int)rdlen - (int)off - len) / per;
 	}
 
-	const int min_len = std::min<int>(len, (int)read.length());
-	sr.prepare(off, per, nseeds, min_len);
+	const int min_len = std::min<int>(len, (int)rdlen);
+	sr.prepare(&(read.patFw.get(0)), &(read.patRc.get(0)), rdlen, off, per, nseeds, min_len);
 }
 
 size_t SeedAligner::instantiateSeed(
-	SeedResults::PCStr* seqPBuf,     // not owned, pointers to sequence buffers
+	uint8_t*            seqOBuf,     // not owned, pointers to sequence offsets
 	InstantiatedSeed*   seedsBuf,    // all the instantiated seeds, both fw and rc
 	const Read& read,          // read to align
 	bool nofw,                 // don't align forward read
@@ -335,7 +337,7 @@ size_t SeedAligner::instantiateSeed(
 
 	const int nseeds = sr.numOffs();
 	const int min_len = sr.seqs_len();
-	sr.reset(seqPBuf, seedsBuf);
+	sr.reset(seqOBuf, seedsBuf);
 
 	const int off = sr.getOffset();
 	const int per = sr.getInterval();
@@ -352,18 +354,18 @@ size_t SeedAligner::instantiateSeed(
 			// Extract the seed sequence at this offset
 			// If fw == true, we extract the characters from i*per to
 			// i*(per-1) (exclusive).  If fw == false, 
-			const char * seq_ptr = instantiateSeq(
+			uint8_t offs = instantiateSeq(
 				read,
 				min_len,
 				depth,
 				fw);
-			sr.set_seqs(fw,i,seq_ptr);
+			sr.set_seqs(fw,i,offs);
 			// For each search strategy
 			InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			{
 				if(is.instantiateExact(
 					min_len,
-					seq_ptr))
+					sr.seqs(fw,i)))
 				{
 					// Can we fill this seed hit in from the cache?
 					insts[0]++;
@@ -402,11 +404,11 @@ size_t MultiSeedResults::instantiateSeeds(Read const * const preads[])
 		seeds_total_size+=_srs[i].getSeedsSize();
 	}
 
-	if (_seqPBuf_size<seq_total_size) {
+	if (_seqOBuf_size<seq_total_size) {
 		// need more space
-		if (_seqPBuf!=NULL) delete[] _seqPBuf;
-		_seqPBuf = new PCStr[seq_total_size];
-		_seqPBuf_size = seq_total_size;
+		if (_seqOBuf!=NULL) delete[] _seqOBuf;
+		_seqOBuf = new uint8_t[seq_total_size];
+		_seqOBuf_size = seq_total_size;
 	}
 
 	if (_seedsBuf_size<seeds_total_size) {
@@ -420,7 +422,7 @@ size_t MultiSeedResults::instantiateSeeds(Read const * const preads[])
 #pragma omp parallel for reduction(+:tries) default(shared) schedule(dynamic,8)
 	for (uint32_t i=0; i<_n_sr; i++) {
 		tries += SeedAligner::instantiateSeed(
-			_seqPBuf + _bufOffs[i].first, _seedsBuf + _bufOffs[i].second,
+			_seqOBuf + _bufOffs[i].first, _seedsBuf + _bufOffs[i].second,
 			*preads[i], _nofw, _norc,
 			_srs[i]);
 	}

@@ -2472,6 +2472,7 @@ static void multiseedSearchWorker() {
 					msinkwrap.prm.doFmString = false;
 
 					const size_t rdlen = rds[mate]->length();
+					assert_lt(rdlen,256); // we are assuming 8bit unsigned in several places
 					msinkwrap.nextRead(
 						rds[mate],
 						NULL,
@@ -2490,7 +2491,7 @@ static void multiseedSearchWorker() {
 					}
 
 					// Keep track of whether the read was filtered
-					bool filt = false;
+					bool filt = rdlen<256; // code assumes 8-bit in several places
 					if (!filt) {
 						TAlScore perfectScore = msconsts->sc.perfectScore(rdlen);
 						filt = (minsc[mate] != perfectScore);

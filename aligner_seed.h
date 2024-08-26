@@ -566,8 +566,6 @@ struct EEHit {
 class SeedResults {
 
 public:
-	typedef const char* PCStr;
-
 	SeedResults() :
 		hitsFw_(AL_CAT),
 		hitsRc_(AL_CAT),
@@ -643,11 +641,11 @@ public:
 	 */
 protected:
 	void resetNoOff(
-		PCStr*             seqPBuf,     // not owned, pointers to sequence buffers
+		uint8_t*           seqOBuf,     // not owned, pointers to sequence offsets
 		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
 	{
 		const size_t numOffs = numOffs_;
-		seqPBuf_ = seqPBuf;   // must be be at least getSeqSize()
+		seqOBuf_ = seqOBuf;   // must be be at least getSeqSize()
 		seedsBuf_ = seedsBuf; // must be be at least getSeedsSize()
 		for(size_t i = 0; i < 2*numOffs; i++) {
 			seedsBuf_[i].invalidate();
@@ -676,13 +674,19 @@ public:
 	}
 
 	void prepare(
-		const size_t off,                // offset into read to start extracting
-		const int per,                   // interval between seeds
-		size_t numOffs,   
-                const uint32_t seqLen)
+		const char* rdSeqFw,
+		const char* rdSeqRc,
+		const uint8_t rdlen,
+		const uint8_t off,                // offset into read to start extracting
+		const uint8_t per,                   // interval between seeds
+		uint8_t numOffs,   
+                const uint8_t seqLen)
 	{
 		assert_gt(numOffs, 0);
 		clearSeeds();
+		rdSeqFw_ = rdSeqFw;
+		rdSeqRc_ = rdSeqRc;
+		rdlen_ = rdlen;
 		numOffs_ = numOffs;
 		seqLen_ = seqLen;
 		off_ = off;
@@ -691,10 +695,10 @@ public:
 
 	// expects prepare to have been called first
 	void reset(
-		PCStr*             seqPBuf,     // not owned, pointers to sequence buffers
+		uint8_t*           seqOBuf,     // not owned, pointers to sequence offsets
 		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
 	{
-		resetNoOff(seqPBuf,seedsBuf);
+		resetNoOff(seqOBuf,seedsBuf);
 	}
 
 	
@@ -720,6 +724,9 @@ public:
 		numEltsFw_ = 0;
 		numRangesRc_ = 0;
 		numEltsRc_ = 0;
+		rdSeqFw_ = NULL;
+		rdSeqRc_ = NULL;
+		rdlen_ = 0;
 	}
 	
 	/**
@@ -1143,10 +1150,10 @@ public:
 		}
 	}
 
-	void  set_seqs(bool fw, size_t i, const char *p) { 
-		PCStr* base = seqPBuf_;
+	void  set_seqs(bool fw, size_t i, uint8_t off) { 
+		uint8_t* base = seqOBuf_;
 		if (!fw) base += numOffs_;
-		base[i] = p;
+		base[i] = off;
 	}
 
 	/**
@@ -1154,9 +1161,10 @@ public:
 	 * the forward or reverse strand.
 	 */
 	const char * seqs(bool fw, size_t i) const { 
-		PCStr* base = seqPBuf_;
+		const char* rdSeq = fw ? rdSeqFw_ : rdSeqRc_;
+		uint8_t* base = seqOBuf_;
 		if (!fw) base += numOffs_;
-		return base[i];
+		return rdSeq+base[i];
 	}
 
 	uint32_t seqs_len() const { return seqLen_; }
@@ -1165,7 +1173,7 @@ protected:
 
 	// As seed hits and edits are added they're sorted into these
 	// containers
-	PCStr*              seqPBuf_;     // not owned, pointers to sequence buffers
+	uint8_t*            seqOBuf_;     // not owned, pointers to sequence offsets
 	InstantiatedSeed*   seedsBuf_;    // not owned, all the instantiated seeds, both fw and rc
 
 	EList<QVal>         hitsFw_;      // hits for forward read
@@ -1196,18 +1204,19 @@ protected:
 	bool                sorted_;    // true if sort() called since last reset
 	
 	// These fields set once per read
-	size_t              numOffs_;   // # different seed offsets possible
-	uint32_t            seqLen_;    // # length of each seq
-	int		    off_;       // offset into read to start extracting
-	int		    per_;       // interval between seeds
+	const char*         rdSeqFw_;   // Pointer to read sequence, not owned
+	const char*         rdSeqRc_;   // Pointer to reversed sequence, not owned
+	uint8_t             rdlen_;     // Read sequence length
+	uint8_t             numOffs_;   // # different seed offsets possible
+	uint8_t             seqLen_;    // # length of each seq
+	uint8_t		    off_;       // offset into read to start extracting
+	uint8_t		    per_;       // interval between seeds
 	
 	EList<size_t> tmpMedian_; // temporary storage for calculating median
 };
 
 class MultiSeedResults {
 public:
-	typedef SeedResults::PCStr PCStr;
-
 	MultiSeedResults(
 		uint32_t n_els,            // number of seed elements
 	        const int seed_len,        // search seed length
@@ -1220,13 +1229,13 @@ public:
 	, _nofw(nofw)
 	, _norc(norc)
 	, _bufOffs(new TBufOffs[n_els])
-	, _seqPBuf(NULL),   _seedsBuf(NULL)
-	, _seqPBuf_size(0), _seedsBuf_size(0)
+	, _seqOBuf(NULL),   _seedsBuf(NULL)
+	, _seqOBuf_size(0), _seedsBuf_size(0)
 	{}
 
 	~MultiSeedResults() {
 		if (_seedsBuf!=NULL) delete[] _seedsBuf;
-		if (_seqPBuf!=NULL) delete[] _seqPBuf;
+		if (_seqOBuf!=NULL) delete[] _seqOBuf;
 		delete[] _bufOffs;
 		delete[] _srs;
 	}
@@ -1266,13 +1275,13 @@ private:
 	const bool       _nofw;                 // don't align forward read
 	const bool       _norc;                 // don't align revcomp read
 
-	// offsets into _seqPBuf and _seedsBuf
+	// offsets into _seqOBuf and _seedsBuf
 	typedef std::pair<size_t,size_t> TBufOffs;
 	TBufOffs *         _bufOffs; // array of size n_sr
 	// these pointers can be updated during the life of the object
-	PCStr*             _seqPBuf;      // content of all the seqs, no separators
+	uint8_t*            _seqOBuf;     // offsets of all the seqss
 	InstantiatedSeed*  _seedsBuf;    // all the instantiated seeds, both fw and rc
-	size_t             _seqPBuf_size;
+	size_t             _seqOBuf_size;
 	size_t             _seedsBuf_size;
 };
 
@@ -1340,9 +1349,9 @@ public:
 
 	/**
 	 * Given a read and a few coordinates that describe a substring of the
-	 * read (or its reverse complement), find the pointer to seq
+	 * read (or its reverse complement), find the offset to seq
 	 */
-	static const char * instantiateSeq(
+	static uint8_t instantiateSeq(
 		const Read& read, // input read
 		int len,          // seed length
 		int depth,        // seed's 0-based offset from 5' end
@@ -1360,7 +1369,7 @@ public:
 		SeedResults& sr);          // holds all the seed hits
 
 	static size_t instantiateSeed(
-		SeedResults::PCStr* seqPBuf,     // not owned, pointers to sequence buffers
+		uint8_t*            seqOBuf,     // not owned, pointers to sequence offsets
 		InstantiatedSeed*   seedsBuf,    // all the instantiated seeds, both fw and rc
 		const Read& read,          // read to align
 		bool nofw,                 // don't align forward read
