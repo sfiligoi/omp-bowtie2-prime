@@ -644,7 +644,7 @@ protected:
 		uint8_t*           seqOBuf,     // not owned, pointers to sequence offsets
 		InstantiatedSeed*  seedsBuf)    // all the instantiated seeds, both fw and rc
 	{
-		const size_t numOffs = numOffs_;
+		const uint16_t numOffs = numOffs_;
 		seqOBuf_ = seqOBuf;   // must be be at least getSeqSize()
 		seedsBuf_ = seedsBuf; // must be be at least getSeedsSize()
 		for(size_t i = 0; i < 2*numOffs; i++) {
@@ -655,7 +655,7 @@ protected:
 		hitsRc_.resize(numOffs);
 		sortedFw_.resize(numOffs);
 		sortedRc_.resize(numOffs);
-		for(size_t i = 0; i < numOffs; i++) {
+		for(uint16_t i = 0; i < numOffs; i++) {
 			sortedFw_[i] = sortedRc_[i] = false;
 			hitsFw_[i].reset();
 			hitsRc_[i].reset();
@@ -665,9 +665,9 @@ protected:
 
 public:
 
-	size_t getSeqSize() const { return 2*numOffs_; }
+	size_t getSeqSize() const { return size_t(2)*numOffs_; }
 
-	size_t getSeedsSize() const { return 2*numOffs_; };
+	size_t getSeedsSize() const { return size_t(2)*numOffs_; };
 
 	void invalidate() {
 		numOffs_ = 0;
@@ -761,7 +761,7 @@ public:
 		ssum.maxNonzRangeRc = ssum.minNonzRangeRc = 0;
 		ssum.maxNonzEltFw = ssum.minNonzEltFw = 0;
 		ssum.maxNonzEltRc = ssum.minNonzEltRc = 0;
-		for(size_t i = 0; i < numOffs_; i++) {
+		for(uint8_t i = 0; i < numOffs_; i++) {
 			if(hitsFw_[i].valid()) {
 				if(ssum.minNonzEltFw == 0 || hitsFw_[i].numElts() < ssum.minNonzEltFw) {
 					ssum.minNonzEltFw = hitsFw_[i].numElts();
@@ -840,7 +840,7 @@ public:
 	float medianHitsPerSeed() const {
 		EList<size_t>& median = const_cast<EList<size_t>&>(tmpMedian_);
 		median.clear();
-		for(size_t i = 0; i < numOffs_; i++) {
+		for(uint8_t i = 0; i < numOffs_; i++) {
 			if(hitsFw_[i].valid() && hitsFw_[i].numElts() > 0) {
 				median.push_back(hitsFw_[i].numElts());
 			}
@@ -866,7 +866,7 @@ public:
 	 */
 	double uniquenessFactor() const {
 		double result = 0.0;
-		for(size_t i = 0; i < numOffs_; i++) {
+		for(uint8_t i = 0; i < numOffs_; i++) {
 			if(hitsFw_[i].valid()) {
 				size_t nelt = hitsFw_[i].numElts();
 				result += (1.0 / (double)(nelt * nelt));
@@ -929,7 +929,7 @@ public:
 	 * Get the QVal representing all the reference hits for the given
 	 * orientation and seed offset index.
 	 */
-	const QVal& hitsAtOffIdx(bool fw, size_t seedoffidx) const {
+	const QVal& hitsAtOffIdx(bool fw, uint8_t seedoffidx) const {
 		assert_lt(seedoffidx, numOffs_);
 		assert(repOk(NULL));
 		return fw ? hitsFw_[seedoffidx] : hitsRc_[seedoffidx];
@@ -938,13 +938,13 @@ public:
 	/**
 	 * Get the Instantiated seeds for the given orientation and offset.
 	 */
-	InstantiatedSeed& instantiatedSeed(bool fw, size_t seedoffidx) {
+	InstantiatedSeed& instantiatedSeed(bool fw, uint8_t seedoffidx) {
 		assert_lt(seedoffidx, numOffs_);
 		assert(repOk(NULL));
 		return seedsBuf_[seedoffidx + (fw ? 0: numOffs_)];
 	}
 	
-	const InstantiatedSeed& instantiatedSeed(bool fw, size_t seedoffidx) const {
+	const InstantiatedSeed& instantiatedSeed(bool fw, uint8_t seedoffidx) const {
 		assert_lt(seedoffidx, numOffs_);
 		assert(repOk(NULL));
 		return seedsBuf_[seedoffidx + (fw ? 0: numOffs_)];
@@ -953,7 +953,7 @@ public:
 	/**
 	 * Return the number of different seed offsets possible.
 	 */
-	size_t numOffs() const { return numOffs_; }
+	uint8_t numOffs() const { return numOffs_; }
 
 	int getOffset() const { return off_; }
 	int getInterval() const { return per_; }
@@ -973,7 +973,7 @@ public:
 			size_t nonzs = 0;
 			for(int fw = 0; fw <= 1; fw++) {
 				const EList<QVal>& rrs = (fw ? hitsFw_ : hitsRc_);
-				for(size_t i = 0; i < numOffs_; i++) {
+				for(uint8_t i = 0; i < numOffs_; i++) {
 					if(rrs[i].valid()) {
 						if(rrs[i].numRanges() > 0) nonzs++;
 						if(ac != NULL) {

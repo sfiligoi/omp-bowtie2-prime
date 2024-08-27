@@ -87,7 +87,7 @@ public:
 
 		CacheAndSeed(
 			const char *   _seq,             // sequence of the local seed alignment cache
-			const uint32_t _seq_len,         // and its length
+			const uint8_t  _seq_len,         // and its length
 			const InstantiatedSeed& _seed    // current instantiated seed
 		)
 		: seq(NULL), seq_len(0), n_seed_steps(0)  // just set a default
@@ -95,7 +95,7 @@ public:
 
 		void reset(
 			const char *   _seq,             // sequence of the local seed alignment cache
-			const uint32_t _seq_len,         // and its length
+			const uint8_t  _seq_len,         // and its length
 			const InstantiatedSeed& _seed    // current instantiated seed
 		)
 		{
@@ -148,18 +148,27 @@ public:
 	SeedAlignerSearchParams& operator=(const SeedAlignerSearchParams& other) = default;
 
 	void reset(
-		const char *   _seq,             // sequence of the local seed alignment cache
-		const uint32_t _seq_len,         // and its length
-		const InstantiatedSeed& _seed    // current instantiated seed
+		const SeedResults* _sr,
+		const bool     _fw,
+		const uint8_t  _seedoffidx
 	)
 	{
+	  sr = _sr;
+	  fw = _fw;
+	  seedoffidx = _seedoffidx;
+
+	  const InstantiatedSeed& _seed = _sr->instantiatedSeed(_fw, _seedoffidx);
+	  const char *   _seq = _sr->seqs(_fw,_seedoffidx);
+	  const uint8_t  _seq_len = _sr->seqs_len();
 	  cs.reset(_seq,_seq_len,_seed);
 	}
 
+	const SeedResults* sr;
 	// A sub-class for historical reasons
 	CacheAndSeed cs;      // local seed alignment cache and associated instatiated seed
+	bool         fw;
+	uint8_t      seedoffidx;
 };
-
 
 class SeedAlignerSearchData {
 public:
@@ -339,7 +348,7 @@ size_t SeedAligner::instantiateSeed(
 	int insts[3];
 	insts[0] = insts[1] = insts[2] = 0;
 
-	const int nseeds = sr.numOffs();
+	const uint8_t nseeds = sr.numOffs();
 	const int min_len = sr.seqs_len();
 	sr.reset(seqOBuf, seedsBuf);
 
@@ -353,7 +362,7 @@ size_t SeedAligner::instantiateSeed(
 			continue;
 		}
 		// For each seed position
-		for(int i = 0; i < nseeds; i++) {
+		for(uint8_t i = 0; i < nseeds; i++) {
 			int depth = i * per + off;
 			// Extract the seed sequence at this offset
 			// If fw == true, we extract the characters from i*per to
@@ -442,7 +451,8 @@ uint32_t SeedAligner::computeValidInstantiatedSeeds(
 		const bool fw = (fwi == 0);
 		// For each instantiated seed
 		// start aligning and find list of seeds to search
-		for(size_t i =0; i < sr.numOffs(); i++) {
+		const uint8_t nseeds = sr.numOffs();
+		for(size_t i =0; i < nseeds; i++) {
 			const InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			if(is.isValid()) seedsearches++;
 			// else, Cache hit in an across-read cache
@@ -469,27 +479,20 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 	uint32_t seedsearches = 0;
 
 	SeedAlignerSearchParams* paramVec = paramVec_;
-	const auto seqs_len = sr.seqs_len();
 
 	// Build the support structures
 	// the order is arbirtrary
-	for(int fwi = 0; fwi < 2; fwi++) {
+	for(uint8_t fwi = 0; fwi < 2; fwi++) {
 		const bool fw = (fwi == 0);
 		// For each instantiated seed
 		// start aligning and find list of seeds to search
-		for(size_t i =0; i < sr.numOffs(); i++) {
+		const uint8_t nseeds = sr.numOffs();
+		for(uint8_t i =0; i < nseeds; i++) {
 			const InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
-			if(!is.isValid()) {
-				// Cache hit in an across-read cache
-				continue;
+			if(is.isValid()) {
+				paramVec[seedsearches].reset(&sr, fw, i);
+				seedsearches++;
 			}
-			const char *   seq = sr.seqs(fw,i);
-			{
-					assert_eq(fw, is.fw);
-					assert_eq(i, (int)is.seedoffidx);
-					paramVec[seedsearches].reset(seq, seqs_len, is);
-			}
-			seedsearches++;
 		} // for i
 	} // for fwi
 	bwops_ = 0;
@@ -513,7 +516,8 @@ void SeedAligner::searchAllSeedsFinalize(
 		const bool fw = (fwi == 0);
 		// For each instantiated seed
 		// start aligning and find list of seeds to search
-		for(size_t i =0; i < sr.numOffs(); i++) {
+		const uint8_t nseeds = sr.numOffs();
+		for(size_t i =0; i < nseeds; i++) {
 			const InstantiatedSeed& is = sr.instantiatedSeed(fw, i);
 			if(!is.isValid()) {
 				// Cache hit in an across-read cache
