@@ -392,12 +392,13 @@ struct SAVal {
 	void init(
 		TIndexOffU tf,
 		TIndexOffU ii,
-		TIndexOffU ln)
+		TIndexOffU ln,
+		uint8_t    nl)
 	{
 		topf = tf;
 		i = ii;
 		len = ln;
-		nlex = 0;
+		nlex = nl;
 	}
 
 	TIndexOffU topf;  // top in BWT
@@ -557,13 +558,14 @@ public:
 	void addOnTheFly(
 		QVal& qv,         // qval that points to the range of reference substrings
 		const SAKey& sak, // the key holding the reference substring
-		TIndexOffU topf,    // top range elt in BWT index
-		TIndexOffU botf) {   // bottom range elt in BWT index
+		TIndexOffU topf,  // top range elt in BWT index
+		TIndexOffU botf,  // bottom range elt in BWT index
+		uint8_t    nlex) {   // # positions we can extend to left w/o edit
 		qv.init(sak, botf-topf);
 		bool added = !samap_.contains(sak);
 		if(added) {
 			SAVal sav;
-			sav.init(topf, salist_size_, botf - topf);
+			sav.init(topf, salist_size_, botf - topf, nlex);
 			salist_size_ += sav.len*2; // just remember how much we need for now (sa+fmap)
 			assert(sav.repOk(*this));
 			samap_.insert(sak,sav);

@@ -177,6 +177,7 @@ public:
 	SeedAlignerSearchData()
 	: bwt()
 	, sak()
+	, nlex(0)
 	, need_reporting(false)
 	{}
 
@@ -188,6 +189,7 @@ public:
 	) {
 	  bwt.set(0,0);
 	  sak.init(seq, seq_len);
+	  nlex = 0;
 	  need_reporting = false;
 	}
 
@@ -195,6 +197,7 @@ public:
 
 	BwtTopBotFw bwt;      // The 2 BWT idxs
 	SAKey       sak;      // seed key
+	uint8_t     nlex;
 	bool need_reporting;
 };
 
@@ -529,7 +532,7 @@ void SeedAligner::searchAllSeedsFinalize(
 			if ( sdata.need_reporting ) {
 				const SAKey &sak = sdata.sak;
 				QVal  qv;
-				cache.addOnTheFly(qv,sak, sdata.bwt.topf, sdata.bwt.botf);
+				cache.addOnTheFly(qv,sak, sdata.bwt.topf, sdata.bwt.botf, sdata.nlex);
 				sr.add(qv,i,fw);
 			}
 		} // for i
@@ -589,8 +592,88 @@ void MultiSeedAligner::reserveBuffers()
 	assert_leq(_bufVec_filled,_bufVec_size);
 }
 
-void MultiSeedAligner::searchAllSeedsDoAll()
+/**
+ * Extend a seed hit out on either side.  Requires that we know the seed hit's
+ * offset into the read and orientation.  Also requires that we know top/bot
+ * for the seed hit in both the forward and (if we want to extend to the right)
+ * reverse index.
+ *
+ * Return FM Index ops used to align seeds
+ */
+uint16_t MultiSeedAligner::extend(
+	const SeedResults& sh, // seed hits to extend into full alignments
+	const Ebwt& ebwtFw,    // Forward Bowtie index
+	TIndexOffU topf,       // top in fw index
+	TIndexOffU botf,       // bot in fw index
+	bool fw,              // seed orientation
+	size_t off,           // seed offset from 5' end
+	size_t& nlex)         // # positions we can extend to left w/o edit
 {
+	uint16_t nSdFmops = 0;
+	TIndexOffU t[4], b[4];
+	SideLocus tloc, bloc;
+	uint8_t lim = 0;
+	const char *seq = NULL;
+	sh.get_rel_offs(fw,off, seq, lim);
+	// We're about to add onto the beginning, so reverse it
+	if(lim > 0) {
+		const Ebwt *ebwt = &ebwtFw;
+		assert(ebwt != NULL);
+		// See what we get by extending 
+		TIndexOffU top = topf, bot = botf;
+		t[0] = t[1] = t[2] = t[3] = 0;
+		b[0] = b[1] = b[2] = b[3] = 0;
+		SideLocus tloc, bloc;
+		INIT_LOCS(top, bot, tloc, bloc, *ebwt);
+		for(int16_t ii = 0; ii < lim; ii++) {
+			// Starting to left of seed (<off) and moving left
+			size_t i = lim - ii -1;
+			// Get char from read
+			int rdc = seq[-ii];
+			// See what we get by extending 
+			if(bloc.valid()) {
+				nSdFmops++;
+				t[0] = t[1] = t[2] = t[3] =
+				b[0] = b[1] = b[2] = b[3] = 0;
+				ebwt->mapBiLFEx(tloc, bloc, t, b);
+				int nonz = -1;
+				bool abort = false;
+				size_t origSz = bot - top;
+				for(int j = 0; j < 4; j++) {
+					if(b[j] > t[j]) {
+						if(nonz >= 0) {
+							abort = true;
+							break;
+						}
+						nonz = j;
+						top = t[j]; bot = b[j];
+					}
+				}
+				assert_leq(bot - top, origSz);
+				if(abort || (nonz != rdc && rdc <= 3) || bot - top < origSz) {
+					break;
+				}
+			} else {
+				assert_eq(bot, top+1);
+				nSdFmops++;
+				int c = ebwt->mapLF1(top, tloc);
+				if(c != rdc && rdc <= 3) {
+					break;
+				}
+				bot = top + 1;
+			}
+			if(++nlex == 255) {
+				break;
+			}
+			INIT_LOCS(top, bot, tloc, bloc, *ebwt);
+		}
+	}
+	return nSdFmops;
+}
+
+void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
+{
+	// doExtend               // do extension of seed hits?
 	const Ebwt* ebwtFw= _ebwtFw;
 	const SeedAlignerSearchParams* paramVec = _paramVec;
 	SeedAlignerSearchData*         dataVec  = _dataVec;
@@ -611,6 +694,23 @@ void MultiSeedAligner::searchAllSeedsDoAll()
 		if (end_el>total_els) end_el = total_els;
 		uint64_t bwops; // just ignore the bwops for now, keep it local
 		SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(paramVec[start_el]), &(dataVec[start_el]));
+		// TODO: integrate into searchSeedBi
+		for (size_t i=start_el; i<end_el; i++) {
+			if(dataVec[i].need_reporting && doExtend) {
+				uint32_t rdoff = paramVec[i].sr->idx2off(paramVec[i].seedoffidx);
+				size_t nlex = 0;
+				// prm.nSdFmops += 
+				extend(
+					*paramVec[i].sr,
+					*ebwtFw,
+					dataVec[i].bwt.topf,
+					dataVec[i].bwt.botf,
+					paramVec[i].fw,
+					rdoff,
+					nlex);
+				dataVec[i].nlex = nlex;
+			}
+		}
 	} // for gbatch
 #ifndef FORCE_ALL_OMP
 	); // for_each

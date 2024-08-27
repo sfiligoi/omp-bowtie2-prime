@@ -55,85 +55,6 @@
 using namespace std;
 
 /**
- * Extend a seed hit out on either side.  Requires that we know the seed hit's
- * offset into the read and orientation.  Also requires that we know top/bot
- * for the seed hit in both the forward and (if we want to extend to the right)
- * reverse index.
- *
- * Return FM Index ops used to align seeds
- */
-uint16_t SwDriver::extend(
-	const SeedResults& sh, // seed hits to extend into full alignments
-	const Ebwt& ebwtFw,    // Forward Bowtie index
-	TIndexOffU topf,       // top in fw index
-	TIndexOffU botf,       // bot in fw index
-	bool fw,              // seed orientation
-	size_t off,           // seed offset from 5' end
-	size_t& nlex)         // # positions we can extend to left w/o edit
-{
-	uint16_t nSdFmops = 0;
-	TIndexOffU t[4], b[4];
-	SideLocus tloc, bloc;
-	uint8_t lim = 0;
-	const char *seq = NULL;
-	sh.get_rel_offs(fw,off, seq, lim);
-	// We're about to add onto the beginning, so reverse it
-	if(lim > 0) {
-		const Ebwt *ebwt = &ebwtFw;
-		assert(ebwt != NULL);
-		// See what we get by extending 
-		TIndexOffU top = topf, bot = botf;
-		t[0] = t[1] = t[2] = t[3] = 0;
-		b[0] = b[1] = b[2] = b[3] = 0;
-		SideLocus tloc, bloc;
-		INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-		for(int16_t ii = 0; ii < lim; ii++) {
-			// Starting to left of seed (<off) and moving left
-			size_t i = lim - ii -1;
-			// Get char from read
-			int rdc = seq[-ii];
-			// See what we get by extending 
-			if(bloc.valid()) {
-				nSdFmops++;
-				t[0] = t[1] = t[2] = t[3] =
-				b[0] = b[1] = b[2] = b[3] = 0;
-				ebwt->mapBiLFEx(tloc, bloc, t, b);
-				int nonz = -1;
-				bool abort = false;
-				size_t origSz = bot - top;
-				for(int j = 0; j < 4; j++) {
-					if(b[j] > t[j]) {
-						if(nonz >= 0) {
-							abort = true;
-							break;
-						}
-						nonz = j;
-						top = t[j]; bot = b[j];
-					}
-				}
-				assert_leq(bot - top, origSz);
-				if(abort || (nonz != rdc && rdc <= 3) || bot - top < origSz) {
-					break;
-				}
-			} else {
-				assert_eq(bot, top+1);
-				nSdFmops++;
-				int c = ebwt->mapLF1(top, tloc);
-				if(c != rdc && rdc <= 3) {
-					break;
-				}
-				bot = top + 1;
-			}
-			if(++nlex == 255) {
-				break;
-			}
-			INIT_LOCS(top, bot, tloc, bloc, *ebwt);
-		}
-	}
-	return nSdFmops;
-}
-
-/**
  * Given seed results, set up all of our state for resolving and keeping
  * track of reference offsets for hits.
  */
@@ -144,7 +65,6 @@ void SwDriver::prioritizeSATups(
 	const BitPairReference& ref, // Reference strings
 	int seedmms,                 // # mismatches allowed in seed
 	size_t maxelt,               // max elts we'll consider
-	bool doExtend,               // do extension of seed hits?
 	bool lensq,                  // square length in weight calculation
 	bool szsq,                   // square range size in weight calculation
 	AlignmentCacheInterface ca,  // alignment cache for seed hits
@@ -213,20 +133,8 @@ void SwDriver::prioritizeSATups(
 				nsmall++;
 				nsmall_elts += sz;
 			}
-			satpos.back().sat.nlex = 0;
-			size_t nlex = 0;
+			const size_t nlex = satpos.back().sat.nlex;
 			constexpr size_t nrex = 0; // could be changed with backward index
-			if(doExtend) {
-				prm.nSdFmops += extend(
-					sh,
-					ebwtFw,
-					satpos.back().sat.topf,
-					(TIndexOffU)(satpos.back().sat.topf + sz),
-					fw,
-					rdoff,
-					nlex);
-			}
-			satpos.back().sat.nlex = nlex;
 			if(seedmms == 0 && (nlex > 0)) {
 				assert_geq(rdoff, (fw ? nlex : nrex));
 				size_t p5 = rdoff - (fw ? nlex : nrex);

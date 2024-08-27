@@ -2638,7 +2638,7 @@ static void multiseedSearchWorker() {
 
 			// Align the seeds
 			// internally parallelized
-			als.searchAllSeedsDoAll();
+			als.searchAllSeedsDoAll(msconsts->extend);
 
 		   tmr.next("searchAllSeedsDo");
 
@@ -2711,7 +2711,6 @@ static void multiseedSearchWorker() {
 							msconsts->ref,           // Reference strings
 							multiseedMms,       // # seed mismatches allowed
 							msconsts->mxIter,      // max rows to consider per position
-							msconsts->extend,      // extend out seeds
 							true,          // square extended length
 							true,          // square SA range size
 							ca,            // alignment cache for seed hits
