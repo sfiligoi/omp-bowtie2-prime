@@ -2330,6 +2330,7 @@ static void multiseedSearchWorker() {
 			gReportDiscordant, // report discordang paired-end alignments?
 			gReportMixed);     // report unpaired alignments for paired reads?
 
+		const bool allHits = rp->allHits();
 		// Note: Cannot use std:vector due to GPU compute not having access to the CPU stack
 
 		// Instantiate a mapping quality calculator
@@ -2565,9 +2566,6 @@ static void multiseedSearchWorker() {
 			   } // external while loop
 
 			   if (mate_idx[mate]!=MATE_DONE_READING) {
-					msWorkerObjs& msobj = g_msobjs[mate];
-					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-
 					mate_idx[mate] = mate; // done[mate] = false
 
 					const uint32_t roundi = irounds[mate]; // promote to 32bit due to multiplication
@@ -2621,7 +2619,6 @@ static void multiseedSearchWorker() {
 			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
 				const uint32_t mate = nb*reads_per_batch + ib;
 				if (mate_idx[mate]>=0 ) { // !done[mate]
-					msWorkerObjs& msobj = g_msobjs[mate];
 						// Fill internal structures
 						max_batches = std::max(max_batches,
 							als.prepareSearchAllSeedsOne(mate));
@@ -2668,7 +2665,7 @@ static void multiseedSearchWorker() {
 							mate_idx[mate] = MATE_DONE; // No seed hits!  Bail.
 						} else {
 							// Sort seed hits into ranks
-							sh.rankSeedHits(msobj.rnd, msinkwrap.allHits());
+							sh.rankSeedHits(msobj.rnd, allHits);
 						}
 					}
 				} // if
@@ -2694,18 +2691,14 @@ static void multiseedSearchWorker() {
 				const uint32_t mate = nb*reads_per_batch + ib;
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
-					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
 					const uint16_t interval = intervals[mate];
-					Read& rd = *rds[mate];
 					const SeedResults& sh = psrs->getSR(mate);
 					AlignmentCacheInterface ca = als.getCacheInterface(mate); // copy OK, just a few references
 
 					// sdrnd is thread wise, but rnd is read specific
 					sdrnd.reset(msobj.rnd);
 
-					const bool all = msinkwrap.allHits();
 					msobj.sd.prioritizeSATups(
-							rd,            // read
 							sh,            // seed hits to extend into full alignments
 							msconsts->ebwtFw,        // BWT
 							msconsts->ref,           // Reference strings
@@ -2714,9 +2707,8 @@ static void multiseedSearchWorker() {
 							true,          // square extended length
 							true,          // square SA range size
 							ca,            // alignment cache for seed hits
-							sdrnd,           // pseudo-random generator
-							msinkwrap.prm,           // per-read metrics
-							all);          // report all hits?
+							sdrnd,         // pseudo-random generator
+							allHits);      // report all hits?
 				} // if mate done
 			   } // for ib
 			} // for nb

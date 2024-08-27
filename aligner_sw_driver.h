@@ -383,7 +383,6 @@ public:
 	 * track of reference offsets for hits.
 	 */
 	void prioritizeSATups(
-		const Read& rd,              // read
 		const SeedResults& sh,       // seed hits to extend into full alignments
 		const Ebwt& ebwtFw,          // BWT
 		const BitPairReference& ref, // Reference strings
@@ -393,7 +392,6 @@ public:
 		bool szsq,                   // square SA range size
 		AlignmentCacheInterface ca,  // alignment cache for seed hits
 		SwDriverRands& sdrnd,        // pseudo-random generator object
-		PerReadMetrics& prm,         // per-read metrics
 		bool all);                   // report all hits?
 
 	/**

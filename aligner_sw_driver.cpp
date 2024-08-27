@@ -59,7 +59,6 @@ using namespace std;
  * track of reference offsets for hits.
  */
 void SwDriver::prioritizeSATups(
-	const Read& read,            // read
 	const SeedResults& sh,       // seed hits to extend into full alignments
 	const Ebwt& ebwtFw,          // BWT
 	const BitPairReference& ref, // Reference strings
@@ -69,7 +68,6 @@ void SwDriver::prioritizeSATups(
 	bool szsq,                   // square range size in weight calculation
 	AlignmentCacheInterface ca,  // alignment cache for seed hits
 	SwDriverRands& sdrnd,        // pseudo-random source object
-	PerReadMetrics& prm,         // per-read metrics
 	bool all)                    // report all hits?
 {
 	RandomSource& rnd = sdrnd.get_rnd();
