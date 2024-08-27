@@ -356,7 +356,7 @@ typedef QKey SAKey;
  */
 struct SAVal {
 
-	SAVal() : topf(), i(), len(OFF_MASK) { }
+	SAVal() : topf(0), i(0), len(OFF_MASK), nlex(0) { }
 
 	/**
 	 * True -> my key is equal to the given key.
@@ -397,11 +397,13 @@ struct SAVal {
 		topf = tf;
 		i = ii;
 		len = ln;
+		nlex = 0;
 	}
 
 	TIndexOffU topf;  // top in BWT
-	TIndexOffU i;     // idx of first elt in salist
-	TIndexOffU len;   // length of range
+	TIndexOffU i;       // idx of first elt in salist
+	TIndexOffU len;      // length of range
+	uint8_t nlex;     // # positions we can extend to left w/o edit
 };
 
 /**
@@ -416,12 +418,12 @@ public:
 
 	SATuple() { reset(); };
 
-	SATuple(SAKey k, TIndexOffU tf, TSlice& o, TSlice& m) {
-		init(k, tf, o, m);
+	SATuple(SAKey k, TIndexOffU tf, uint8_t nl, TSlice& o, TSlice& m) {
+		init(k, tf, nl, o, m);
 	}
 
-	void init(SAKey k, TIndexOffU tf, TSlice& o, TSlice& m) {
-		key = k; topf = tf; offs = o; fmap = m;
+	void init(SAKey k, TIndexOffU tf, uint8_t nl, TSlice& o, TSlice& m) {
+		key = k; nlex = nl; topf = tf; offs = o; fmap = m;
 	}
 
 	/**
@@ -429,6 +431,7 @@ public:
 	 */
 	void init(const SATuple& src, size_t first, size_t last) {
 		key = src.key;
+		nlex = src.nlex;
 		topf = (TIndexOffU)(src.topf + first);
 		offs.init(src.offs, first, last);
 		fmap.init(src.fmap, first, last);
@@ -505,6 +508,7 @@ public:
 
 	// bot/length of SA range equals offs.size()
 	SAKey    key;  // sequence key
+	uint8_t  nlex;     // # positions we can extend to left w/o edit
 	TIndexOffU topf;  // top in BWT index
 	TSlice   offs; // offsets
 	TSlice   fmap; // fmap buffer used by group_walk
@@ -635,7 +639,7 @@ private:
 				// keep them close by, as they are often accessed together
 				TSlice fmap = TSlice(salist, sav_off+sav_len, sav_len);
 				fmap.fill(OFF_MASK);
-				satup.init(sak, sav.topf, offs, fmap);
+				satup.init(sak, sav.topf, sav.nlex, offs, fmap);
 				nelt += sav.len;
 			}
 		}

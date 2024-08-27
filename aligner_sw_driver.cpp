@@ -213,7 +213,7 @@ void SwDriver::prioritizeSATups(
 				nsmall++;
 				nsmall_elts += sz;
 			}
-			satpos.back().nlex = 0;
+			satpos.back().sat.nlex = 0;
 			size_t nlex = 0;
 			constexpr size_t nrex = 0; // could be changed with backward index
 			if(doExtend) {
@@ -226,7 +226,7 @@ void SwDriver::prioritizeSATups(
 					rdoff,
 					nlex);
 			}
-			satpos.back().nlex = nlex;
+			satpos.back().sat.nlex = nlex;
 			if(seedmms == 0 && (nlex > 0)) {
 				assert_geq(rdoff, (fw ? nlex : nrex));
 				size_t p5 = rdoff - (fw ? nlex : nrex);
@@ -326,7 +326,8 @@ void SwDriver::prioritizeSATups(
 		o.init(satpos2_[ri].sat.offs, r, r+1);
 		TSlice m;
 		m.init(satpos2_[ri].sat.fmap, r, r+1);
-		sat.init(satpos2_[ri].sat.key, (TIndexOffU)(satpos2_[ri].sat.topf + r), o, m);
+		// nlex not used going forward, just set to 0
+		sat.init(satpos2_[ri].sat.key, (TIndexOffU)(satpos2_[ri].sat.topf + r), 0, o, m);
 		satpos_.expand();
 		satpos_.back().sat = sat;
 		satpos_.back().origSz = satpos2_[ri].origSz;

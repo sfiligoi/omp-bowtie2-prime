@@ -163,7 +163,6 @@ struct SATupleAndPos {
 	SATuple sat;    // result for this seed hit
 	SeedPos pos;    // seed position that yielded the range this was taken from
 	size_t  origSz; // size of range this was taken from
-	size_t  nlex;   // # position we can extend seed hit to left w/o edit
 	
 	bool operator<(const SATupleAndPos& o) const {
 		if(sat < o.sat) return true;
@@ -220,7 +219,7 @@ public:
 		mass_ = 0.0f;
 		masses_.resize(saf - sai);
 		for(size_t i = sai; i < saf; i++) {
-			size_t len = salist[i].nlex + 1; // + salist[i].sat.key.len;
+			size_t len = salist[i].sat.nlex + 1; // + salist[i].sat.key.len;
 			double num = (double)len;
 			if(lensq) {
 				num *= num;
