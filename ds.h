@@ -1320,7 +1320,7 @@ public:
 		if(this->list_ == NULL) lazyInit();
 		assert_leq(idx, this->cur_);
 		if(this->cur_ == this->sz_) expandCopy(this->sz_+1);
-		insert_noalloc(el,idx);
+		this->insert_noalloc(el,idx);
 	}
 
 	/**
@@ -1330,8 +1330,8 @@ public:
 		if(this->list_ == NULL) lazyInit();
 		assert_lt(idx, this->cur_);
 		if(l.cur_ == 0) return;
-		if(this->cur_ + l.cur_ > sz_) expandCopy(this->cur_ + l.cur_);
-		insert_noalloc(l,idx);
+		if(this->cur_ + l.cur_ > this->sz_) expandCopy(this->cur_ + l.cur_);
+		this->insert_noalloc(l,idx);
 	}
 
 	/**

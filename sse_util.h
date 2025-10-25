@@ -68,7 +68,7 @@ public:
 	 * equal 'newsz'.
 	 */
 	inline void reserveExact(size_t newsz) {
-		assert_le(newsz, sz_);
+		assert_leq(newsz, sz_);
 	}
 
 	/**
@@ -81,7 +81,7 @@ public:
 	 * and set cur_ to requested sz.
 	 */
 	void resize(size_t sz) {
-		assert_le(sz, sz_);
+		assert_leq(sz, sz_);
 		cur_ = sz;
 	}
 	
@@ -156,7 +156,7 @@ public:
 	/**
 	 * Return memory category.
 	 */
-	int cat() const { return cat_; }
+	int cat() const {return this->cat_; }
 
 private:
 
