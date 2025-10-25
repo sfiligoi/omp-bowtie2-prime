@@ -681,8 +681,14 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 	// do the searches in batches
 	const uint64_t total_els  = _bufVec_filled;
 	const uint32_t total_batches = (total_els+(ibatch_size-1))/ibatch_size; // round up
+
+	//fprintf(stderr, "total_els: %i total_els: %i ibatch_size: %i\n", int(ibatch_size), int(total_els), int(ibatch_size));
 #ifdef FORCE_ALL_OMP
+#ifdef OMPGPU
+#pragma omp target teams distribute parallel for
+#else
 #pragma omp parallel for
+#endif
 	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
 #else
 	std::for_each_n(std::execution::par_unseq,

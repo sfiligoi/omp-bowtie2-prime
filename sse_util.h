@@ -153,11 +153,6 @@ public:
 	 */
 	const SSERegI *ptr() const { return list_; }
 
-	/**
-	 * Return memory category.
-	 */
-	int cat() const {return this->cat_; }
-
 private:
 
 	SSERegI  list_[sz_];  // list ptr, aligned version of what new[] returns
