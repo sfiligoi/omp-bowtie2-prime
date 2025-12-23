@@ -64,6 +64,11 @@
 #include "outq.h"
 #include "bt2_search.h"
 
+// TODO: Quick hack
+#include <random>
+typedef std::mt19937 TRAND;
+static TRAND myRandomGenerator;
+
 using namespace std;
 
 static int FNAME_SIZE;
@@ -2291,6 +2296,13 @@ static void encSeedToStr(uint64_t enc, uint8_t len, char *buf) {
 	}
 }
 
+static uint64_t getRnd64() {
+	uint64_t t = myRandomGenerator();
+	t = t << 32;
+        t += myRandomGenerator();
+	return t;
+}
+
 
 /**
  * Called once per thread.  Sets up per-thread pointers to the shared global
@@ -2317,6 +2329,8 @@ static void multiseedSearchWorker() {
 	assert_eq(num_parallel_tasks,nthreads);
 
 	constexpr bool paired = false;
+
+        myRandomGenerator.seed(0);
 
 	BTAllocator worker_alloc;
 #ifdef USE_CUSTOM_ALLOCS
@@ -2417,7 +2431,8 @@ static void multiseedSearchWorker() {
                 std::vector< std::unique_ptr<PatternSourceReadAhead> > g_psrah(num_parallel_tasks);
 		std::vector<PatternSourcePerThread*> ps(num_parallel_tasks);
 
-		uint64_t currSeedEnc = 2863593509304189493ul; // TODO: Quick hack
+		//uint64_t currSeedEnc = 2863593509304189493ul; // TODO: Quick hack
+		uint64_t currSeedEnc = getRnd64(); // TODO: Quick hack
 
 		uint64_t logCnts[32];
 		for (int i=0; i<32; i++) logCnts[i] = 0;
@@ -2425,7 +2440,7 @@ static void multiseedSearchWorker() {
                 uint64_t repcnt = 0;
 		bool keepGoing = true;
 		//while (keepGoing) { // will exit with a break
-		for (uint64_t gloopi=0; gloopi<100000; gloopi++) {  // TODO: Quick hack
+		for (uint64_t gloopi=0; gloopi<1000000; gloopi++) {  // TODO: Quick hack
                    repcnt++;
 
 		   // reset counters after warmup
@@ -2456,7 +2471,9 @@ static void multiseedSearchWorker() {
 			  }
 			}
 			//currSeedEnc += batch_parallel_tasks*nthreads_multiplier;
-			currSeedEnc += batch_parallel_tasks*(nthreads_multiplier*3) + 17; // TODO: Quick hack
+			//currSeedEnc += batch_parallel_tasks*(nthreads_multiplier*3) + 17; // TODO: Quick hack
+			//currSeedEnc += batch_parallel_tasks*nthreads_multiplier + myRandomGenerator(); // TODO: Quick hack
+			currSeedEnc = getRnd64();
 			//fprintf(stderr, "End currSeedEnc: %lu\n",currSeedEnc);
 
 		   }
