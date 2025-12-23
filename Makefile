@@ -35,14 +35,14 @@ BOWTIE_SHARED_MEM :=
 # Recommended g++ flags
 # CPU-only
 CXX := g++
-CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -g
+CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP
 
 #
 # Recommended amdclang++ flags
 #CXX := amdclang++
 
 # CPU-only
-#CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -g
+#CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP
 #
 # GPU-enabled
 #CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
@@ -372,7 +372,8 @@ bowtie2-align-s-sanitized bowtie2-align-s: bowtie2-align.cpp $(SEARCH_CPPS) $(SH
 		$(SHARED_CPPS) $(SEARCH_CPPS_MAIN) \
 		$(LDFLAGS) $(LDLIBS)
 
-bowtie2-align-l-sanitized bowtie2-align-l: bowtie2-align.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
+#bowtie2-align-l-sanitized bowtie2-align-l: bowtie2-align.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
+bowtie2-align-l-sanitized bowtie2-align-l: bowtie2-count.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
 	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXXFLAGS) \
 		$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX $(NOASSERT_FLAGS) -Wall \
 		$(CPPFLAGS) \

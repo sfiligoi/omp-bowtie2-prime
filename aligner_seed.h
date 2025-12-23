@@ -1544,6 +1544,56 @@ private:
 
 };
 	
+class MultiSeedAlignerSimple {
+
+public:
+	MultiSeedAlignerSimple(
+		const Ebwt*       ebwtFw); // forward index (BWT)
+
+	~MultiSeedAlignerSimple();
+
+	// prevent accidental copies
+	MultiSeedAlignerSimple(const MultiSeedAlignerSimple& o) = delete;
+	MultiSeedAlignerSimple& operator=(const MultiSeedAlignerSimple& o) = delete;
+
+	// Allocate buffers of fixed size
+	void reserveBuffersFixed(size_t bufVec_size);
+
+	void clearSearchSeeds() {
+		_bufVec_filled=0;
+	}
+
+	void addSearchSeed(
+			const char *   seq,             // sequence of the local seed alignment cache
+			const uint8_t  seq_len          // and its length
+		       	);
+
+	// Align the Seeds
+	// Assumes all prepareSearchAllSeeds were already called
+	void searchAllSeedsDoAll();
+
+	size_t filled() const {_bufVec_filled;}
+
+	ssize_t getSearchSeedSize(size_t idx);
+
+private:
+	const Ebwt*              _ebwtFw; // forward index (BWT)
+
+	CacheAndSeed*            _seedVec;       // array of _bufVec_size
+	SeedAlignerSearchData*   _dataVec;       // array of _bufVec_size
+
+	size_t                   _bufVec_size;    // allocated size
+	size_t                   _bufVec_filled;  // filled elements, may be smaller than allocated
+
+	/**
+ 	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.
+ 	*       2 is too small for prefetch to be fully effective, 4 seems already OK, 
+ 	*       and 32 is too big (cache trashing).
+ 	**/
+	static constexpr uint8_t ibatch_size = 8;
+
+};
+	
 #define INIT_LOCS(top, bot, tloc, bloc, e) { \
 	if(bot - top == 1) { \
 		tloc.initFromRow(top, (e).eh(), (e).ebwt()); \

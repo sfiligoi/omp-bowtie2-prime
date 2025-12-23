@@ -713,6 +713,81 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 
 }
 
+// ========================================================================
+
+MultiSeedAlignerSimple::MultiSeedAlignerSimple(
+		const Ebwt*       ebwtFw) // forward index (BWT)
+ 	: _ebwtFw(ebwtFw)
+	,  _seedVec(NULL), _dataVec(NULL)
+	, _bufVec_size(0), _bufVec_filled(0)
+{}
+
+MultiSeedAlignerSimple::~MultiSeedAlignerSimple() {
+	if (_dataVec!=NULL) delete[] _dataVec;
+	if (_seedVec!=NULL) delete[] _seedVec;
+}
+
+
+// just make sure the buffers are large enough
+void MultiSeedAlignerSimple::reserveBuffersFixed(size_t buf_total_size) {
+	if (_bufVec_size<buf_total_size) {
+		// need bigger buffers
+		if (_dataVec!=NULL) delete[] _dataVec;
+		if (_seedVec!=NULL) delete[] _seedVec;
+		_seedVec = new CacheAndSeed[buf_total_size];
+		_dataVec = new SeedAlignerSearchData[buf_total_size];
+		_bufVec_size = buf_total_size;
+	}
+}
+
+void MultiSeedAlignerSimple::addSearchSeed(
+			const char *   seq,             // sequence of the local seed alignment cache
+			const uint8_t  seq_len          // and its length
+		       	) {
+		// assert(_bufVec_filled<_bufVec_size)
+		_seedVec[_bufVec_filled].reset(seq, seq_len);
+		_bufVec_filled++;
+}
+ssize_t MultiSeedAlignerSimple::getSearchSeedSize(size_t idx) {
+	auto & d = _dataVec[idx];
+	return d.need_reporting ? (d.bwt.botf - d.bwt.topf) : -1;
+}
+
+void MultiSeedAlignerSimple::searchAllSeedsDoAll()
+{
+	const Ebwt* ebwtFw= _ebwtFw;
+	const CacheAndSeed*            seedVec  = _seedVec;
+	SeedAlignerSearchData*         dataVec  = _dataVec;
+
+	// do the searches in batches
+	const uint64_t total_els  = _bufVec_filled;
+	const uint32_t total_batches = (total_els+(ibatch_size-1))/ibatch_size; // round up
+
+	//fprintf(stderr, "total_els: %i total_els: %i ibatch_size: %i\n", int(ibatch_size), int(total_els), int(ibatch_size));
+#ifdef FORCE_ALL_OMP
+#ifdef OMPGPU
+#pragma omp target teams distribute parallel for
+#else
+#pragma omp parallel for
+#endif
+	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
+#else
+	std::for_each_n(std::execution::par_unseq,
+		thrust::counting_iterator(0), total_batches,
+		[ebwtFw,seedVec,dataVec,total_els](uint32_t gbatch) mutable {
+#endif
+		const size_t start_el = gbatch*ibatch_size;
+		size_t end_el = start_el+ibatch_size;
+		if (end_el>total_els) end_el = total_els;
+		uint64_t bwops; // just ignore the bwops for now, keep it local
+		SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(seedVec[start_el]), &(dataVec[start_el]));
+	} // for gbatch
+#ifndef FORCE_ALL_OMP
+	); // for_each
+#endif
+
+}
+
 
 /**
  * Get tloc, bloc ready for the next step.  If the new range is under
