@@ -101,6 +101,7 @@ public:
 	}
 
 	void set_reporting() { need_reporting = true; }
+	void cond_set_reporting(size_t max_size) { if (bwt.size()<=max_size) need_reporting = true; /* else leve it false */ }
 
 	BwtTopBotFw bwt;      // The 2 BWT idxs
 	SAKey       sak;      // seed key
@@ -631,7 +632,7 @@ uint16_t MultiSeedAligner::extend(
 	return nSdFmops;
 }
 
-void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
+void MultiSeedAligner::searchAllSeedsDoAll(const size_t ncut, const bool doExtend)
 {
 	// doExtend               // do extension of seed hits?
 	const Ebwt* ebwtFw= _ebwtFw;
@@ -659,7 +660,7 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 		size_t end_el = start_el+ibatch_size;
 		if (end_el>total_els) end_el = total_els;
 		uint64_t bwops; // just ignore the bwops for now, keep it local
-		SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(dataVec[start_el]));
+		SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, ncut, end_el-start_el, &(dataVec[start_el]));
 		// TODO: integrate into searchSeedBi
 		for (size_t i=start_el; i<end_el; i++) {
 			if(dataVec[i].need_reporting && doExtend) {
@@ -781,7 +782,8 @@ template<uint8_t SS_SIZE>
 void
 SeedAligner::searchSeedBi(
                         const Ebwt* ebwt,       // forward index (BWT)
-                        uint64_t& bwops_,         // Burrows-Wheeler operations
+                        uint64_t& bwops_,       // Burrows-Wheeler operations
+			const size_t ncut,      // max seed result size (larger is lower quality
                         const uint8_t nparams,
 			SeedAlignerSearchData dataVec[])
 {
@@ -814,7 +816,7 @@ SeedAligner::searchSeedBi(
 		if(done) {
 		        if(sstate.step == (int)sdata.n_seed_steps()) {
                 		// Finished aligning seed
-				sdata.set_reporting();
+				sdata.cond_set_reporting(ncut);
 			}
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
@@ -891,7 +893,7 @@ SeedAligner::searchSeedBi(
 		}
 		sdata.bwt.set(wstate.t[c], wstate.b[c]);
 		if(sstate.step == n_seed_steps) {
-			sdata.set_reporting();
+			sdata.cond_set_reporting(ncut);
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
 			if (n<nleft) idxs[n] = idxs[nleft];
