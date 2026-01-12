@@ -56,9 +56,6 @@
 #include "btypes.h"
 #include "threadpool.h"
 
-#ifdef POPCNT_CAPABILITY
-#include "processor_support.h"
-#endif
 
 #ifndef ASM_PREFETCH
 #define force_prefetch(PTR) __builtin_prefetch(PTR)
@@ -483,39 +480,15 @@ struct SideLocus {
 	int32_t _by;            // byte within side (not adjusted for bw sides)
 	int32_t _bp;            // bitpair within byte (not adjusted for bw sides)
 };
-#ifdef POPCNT_CAPABILITY   // wrapping of "struct"
-struct USE_POPCNT_GENERIC {
-#endif
-// Use this standard bit-bashing population count
-	inline static int pop64(uint64_t x) {
-		// Lots of cache misses on following lines (>10K)
-		x = x - ((x >> 1) & 0x5555555555555555llu);
-		x = (x & 0x3333333333333333llu) + ((x >> 2) & 0x3333333333333333llu);
-		x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0Fllu;
-		x = x + (x >> 8);
-		x = x + (x >> 16);
-		x = x + (x >> 32);
-		return (int)(x & 0x3Fllu);
-	}
-#ifdef POPCNT_CAPABILITY  // wrapping a "struct"
-};
-#endif
 
-#ifdef POPCNT_CAPABILITY
-struct USE_POPCNT_INSTRUCTION {
-	inline static int pop64(uint64_t x) {
-		return __builtin_popcountll(x);
-	}
-};
-#endif
+inline static int pop64(uint64_t x) {
+	return __builtin_popcountll(x);
+}
 
 /**
  * Tricky-bit-bashing bitpair counting for given two-bit value (0-3)
  * within a 64-bit argument.
  */
-#ifdef POPCNT_CAPABILITY
-template<typename Operation>
-#endif
 inline static int countInU64(int c, uint64_t dw) {
 	constexpr uint64_t c_table[4] = {
 	0xffffffffffffffff,
@@ -529,11 +502,7 @@ inline static int countInU64(int c, uint64_t dw) {
 	uint64_t x1 = (x0 >> 1);
 	uint64_t x2 = x1 & (0x5555555555555555);
 	uint64_t x3 = x0 & x2;
-#ifdef POPCNT_CAPABILITY
-	uint64_t tmp = Operation().pop64(x3);
-#else
 	uint64_t tmp = pop64(x3);
-#endif
 	return (int) tmp;
 }
 
@@ -600,10 +569,6 @@ public:
 	{
 		std::memcpy(_cCntLUT_4,cCntLUT_4,4*4*256);
 		assert(!useMm || !useShmem);
-#ifdef POPCNT_CAPABILITY
-		ProcessorSupport ps;
-		_usePOPCNTinstruction = ps.POPCNTenabled();
-#endif
 		packed_ = false;
 		_useMm = useMm;
 		useShmem_ = useShmem;
@@ -674,10 +639,6 @@ public:
 		refparams.reverse == REF_READ_REVERSE)
 	{
 		std::memcpy(_cCntLUT_4,cCntLUT_4,4*4*256);
-#ifdef POPCNT_CAPABILITY
-		ProcessorSupport ps;
-		_usePOPCNTinstruction = ps.POPCNTenabled();
-#endif
 		_in1Str = file + ".1." + gEbwt_ext + ".tmp";
 		_in2Str = file + ".2." + gEbwt_ext + ".tmp";
 		packed_ = packed;
@@ -1273,9 +1234,6 @@ public:
 	bool        sanityCheck() const  { return _sanity; }
 	EList<string>& refnames()        { return _refnames; }
 	bool        fw() const           { return fw_; }
-#ifdef POPCNT_CAPABILITY
-	bool _usePOPCNTinstruction;
-#endif
 
 	/**
 	 * Returns true iff the index contains the given string (exactly).  The
@@ -2011,22 +1969,10 @@ public:
 		TIndexOffU cCnt = 0;
 		const uint8_t *side = l.side(this->ebwt());
 		int i = 0;
-#ifdef POPCNT_CAPABILITY
-		if ( _usePOPCNTinstruction) {
-			for(; i + 7 < l._by; i += 8) {
-				cCnt += countInU64<USE_POPCNT_INSTRUCTION>(c, *(uint64_t*)&side[i]);
-			}
-		}
-		else {
-			for(; i + 7 < l._by; i += 8) {
-				cCnt += countInU64<USE_POPCNT_GENERIC>(c, *(uint64_t*)&side[i]);
-			}
-		}
-#else
+		// Assume popcnt processor support
 		for(; i + 7 < l._by; i += 8) {
 			cCnt += countInU64(c, *(uint64_t*)&side[i]);
 		}
-#endif
 		// Count occurences of c in the rest of the side (using LUT)
 		for(; i < l._by; i++) {
 			cCnt += _cCntLUT_4[0][c][side[i]];
@@ -2044,9 +1990,6 @@ public:
 	 *
 	 * Function gets 2.32% in profile
 	 */
-#ifdef POPCNT_CAPABILITY
-	template<typename Operation>
-#endif
 	inline static void countInU64Ex(uint64_t dw, TIndexOffU* arrs) {
 		constexpr uint64_t c_table[4] = {
 			0xffffffffffffffff,
@@ -2059,11 +2002,7 @@ public:
 		uint64_t x1 = (x0 >> 1);
 		uint64_t x2 = x1 & (0x5555555555555555llu);
 		uint64_t x3 = x0 & x2;
-#ifdef POPCNT_CAPABILITY
-		uint64_t tmp = Operation().pop64(x3);
-#else
 		uint64_t tmp = pop64(x3);
-#endif
 		arrs[0] += (uint32_t) tmp;
 
 		c0 = c_table[1];
@@ -2071,11 +2010,7 @@ public:
 		x1 = (x0 >> 1);
 		x2 = x1 & (0x5555555555555555llu);
 		x3 = x0 & x2;
-#ifdef POPCNT_CAPABILITY
-		tmp = Operation().pop64(x3);
-#else
 		tmp = pop64(x3);
-#endif
 		arrs[1] += (uint32_t) tmp;
 
 		c0 = c_table[2];
@@ -2083,11 +2018,7 @@ public:
 		x1 = (x0 >> 1);
 		x2 = x1 & (0x5555555555555555llu);
 		x3 = x0 & x2;
-#ifdef POPCNT_CAPABILITY
-		tmp = Operation().pop64(x3);
-#else
 		tmp = pop64(x3);
-#endif
 		arrs[2] += (uint32_t) tmp;
 
 		c0 = c_table[3];
@@ -2095,11 +2026,7 @@ public:
 		x1 = (x0 >> 1);
 		x2 = x1 & (0x5555555555555555llu);
 		x3 = x0 & x2;
-#ifdef POPCNT_CAPABILITY
-		tmp = Operation().pop64(x3);
-#else
 		tmp = pop64(x3);
-#endif
 		arrs[3] += (uint32_t) tmp;
 	}
 
@@ -2126,22 +2053,10 @@ public:
 		// functions should be vectorized/SSE-ized in case that helps.
 		const uint8_t *side = l.side(this->ebwt());
 
-#ifdef POPCNT_CAPABILITY
-		if (_usePOPCNTinstruction) {
-			for(; i+7 < l._by; i += 8) {
-				countInU64Ex<USE_POPCNT_INSTRUCTION>(*(uint64_t*)&side[i], arrs);
-			}
-		}
-		else {
-			for(; i+7 < l._by; i += 8) {
-				countInU64Ex<USE_POPCNT_GENERIC>(*(uint64_t*)&side[i], arrs);
-			}
-		}
-#else
+		// Assume popcnt intrinsic capability
 		for(; i+7 < l._by; i += 8) {
 			countInU64Ex(*(uint64_t*)&side[i], arrs);
 		}
-#endif
 		// Count occurences of nucleotides in the rest of the side (using LUT)
 		// Many cache misses on following lines (~20K)
 		for(; i < l._by; i++) {
