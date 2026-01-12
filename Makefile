@@ -45,7 +45,7 @@ CXX := amdclang++
 CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2
 #
 # GPU-enabled
-#CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
+#CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2 -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
 
 #
 # NVIDIA HPC SDK flags options
