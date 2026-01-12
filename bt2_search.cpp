@@ -82,6 +82,7 @@ static string origString; // reference text, or filename(s)
 static int seed;          // srandom() seed
 static int timing;        // whether to report basic timing data
 static bool allHits;      // for multihits, report just one
+static bool deterministicSeeds;      // for low quality seeds, enable subsampling
 static bool showVersion;  // just print version and quit?
 static int ipause;        // pause before maching?
 static int gTrim5;        // amount to trim from 5' end
@@ -96,6 +97,8 @@ static int nthreads_multiplier;      // Argument, nthreads = OMP*nthreads_multip
 static int thread_ceiling;// maximum number of threads user wants bowtie to use
 static int outType;       // style of output
 static bool noRefNames;   // true -> print reference indexes; not names
+static uint32_t lowseeds; // size of seed range above which a seed is considered low quality, and thus discarded (0 disables the cut)
+static uint32_t lowseedsDivider; // how much should I divide the lowseeds parameter by, if 0 use abs value
 static uint32_t khits;    // number of hits per read; >1 is much slower
 static uint32_t mhits;    // don't report any hits if there are > mhits
 static int partitionSz;   // output a partitioning key in first field
@@ -277,6 +280,7 @@ static void resetOptions() {
 	seed		    = 0;	// srandom() seed
 	timing		    = 0;	// whether to report basic timing data
 	allHits		    = false;	// for multihits, report just one
+	deterministicSeeds  = false;    // for low quality seeds, enable subsampling
 	showVersion	    = false;	// just print version and quit?
 	ipause		    = 0;	// pause before maching?
 	gTrim5		    = 0;	// amount to trim from 5' end
@@ -292,6 +296,8 @@ static void resetOptions() {
 	FNAME_SIZE	    = 4096;
 	outType		    = OUTPUT_SAM;	// style of output
 	noRefNames	    = false;	// true -> print reference indexes; not names
+	lowseeds	    = 0;	// size of seed range above which a seed is considered low quality, and thus discarded (0 disables the cut)
+	lowseedsDivider	    = 0;	// how much should I divide the lowseeds parameter by, if 0 use the abs value
 	khits		    = 1;	// number of hits per read; >1 is much slower
 	mhits		    = 50;	// stop after finding this many alignments+1
 	partitionSz	    = 0;	// output a partitioning key in first field
@@ -443,7 +449,7 @@ static void resetOptions() {
 #endif
 }
 
-static const char *short_options = "bfF:qbzhcu:rv:s:aP:t3:5:w:p:k:M:1:2:I:X:CQ:N:i:L:U:x:S:g:O:D:R:";
+static const char *short_options = "bfF:qbzhcu:rv:s:adP:t3:5:w:p:k:l:M:1:2:I:X:CQ:N:i:L:U:x:S:g:O:D:R:";
 
 static struct option long_options[] = {
 	{(char*)"verbose",                     no_argument,        0,                   ARG_VERBOSE},
@@ -476,6 +482,7 @@ static struct option long_options[] = {
 	{(char*)"help",                        no_argument,        0,                   'h'},
 	{(char*)"threads",                     required_argument,  0,                   'p'},
 	{(char*)"khits",                       required_argument,  0,                   'k'},
+	{(char*)"lowseeds",                    required_argument,  0,                   'l'},
 	{(char*)"minins",                      required_argument,  0,                   'I'},
 	{(char*)"maxins",                      required_argument,  0,                   'X'},
 	{(char*)"quals",                       required_argument,  0,                   'Q'},
@@ -593,6 +600,8 @@ static struct option long_options[] = {
 	{(char*)"no-exact-upfront",            no_argument,        0,                   ARG_EXACT_UPFRONT_NO},
 	{(char*)"no-1mm-upfront",              no_argument,        0,                   ARG_1MM_UPFRONT_NO},
 	{(char*)"1mm-minlen",                  required_argument,  0,                   ARG_1MM_MINLEN},
+	{(char*)"deterministic-seeds",         no_argument,        0,                   'd'},
+	{(char*)"no-deterministic-seeds",      no_argument,        0,                   ARG_DET_SEEDS_NO},
 	{(char*)"seed-off",                    required_argument,  0,                   'O'},
 	{(char*)"seed-boost",                  required_argument,  0,                   ARG_SEED_BOOST_THRESH},
 	{(char*)"read-times",                  no_argument,        0,                   ARG_READ_TIMES},
@@ -791,11 +800,15 @@ static void printUsage(ostream& out) {
 	    << "   OR" << endl
 	    << "  -k <int>           report up to <int> alns per read; MAPQ not meaningful" << endl
 	    << "   OR" << endl
-	    << "  -a/--all           report all alignments; very slow, MAPQ not meaningful" << endl
+	    << "  -a/--all           report all alignments; very slow without -l, MAPQ not meaningful" << endl
 	    << endl
 	    << " Effort:" << endl
+	    << "  -l/--lowseeds <n>  ignore any low quality seeds with ranges over threshold" << endl
+	    << "                     (0=no cut, if percentage, mili or nano, relative to idx size)" << endl
 	    << "  -D <int>           give up extending after <int> failed extends in a row (15)" << endl
 	    << "  -R <int>           for reads w/ repetitive seeds, try <int> sets of seeds (2)" << endl
+	    << "  -d/--deterministic-seeds" << endl
+	    << "                     Consider all seeds in order (no subsampling, best with -a)" << endl
 	    << endl
 	    << " Paired-end:" << endl
 	    << "  -I/--minins <int>  minimum fragment length (0)" << endl
@@ -916,6 +929,19 @@ T parse(const char *s) {
 	T tmp;
 	stringstream ss(s);
 	ss >> tmp;
+	return tmp;
+}
+
+/**
+ * Parse a T string 'str',
+ * provide first char after the parse (\0 if all string consumed)
+ */
+template<typename T>
+T parse(const char *s, char &remainder) {
+	T tmp;
+	stringstream ss(s);
+	ss >> tmp;
+	ss >> remainder;
 	return tmp;
 }
 
@@ -1249,6 +1275,30 @@ static void parseOption(int next_option, const char *arg) {
 		saw_k = true;
 		break;
 	}
+	case 'l': {
+		char remainder = 0;
+		lowseedsDivider = 0;
+		lowseeds = parse<size_t>(arg, remainder);
+		if (remainder=='%') {
+			// User requested percentage of DB
+			lowseedsDivider = 100;
+		} else if (remainder=='m') {
+			// User requested mili of DB
+			lowseedsDivider = 1000;
+		} else if (remainder=='n') {
+			// User requested nano of DB
+			lowseedsDivider = 1000000;
+		} else if (remainder==0) {
+			// We got an absolute value
+                        lowseedsDivider = 0;
+		} else {
+			cerr << "Warning: -l argument had training chars "
+			     << "that were not parsed" << endl;
+		}
+		break;
+	}
+	case 'd': deterministicSeeds = true; break;
+	case ARG_DET_SEEDS_NO: deterministicSeeds = false; break;
 	case ARG_VERBOSE: gVerbose = 1; break;
 	case ARG_STARTVERBOSE: startVerbose = true; break;
 	case ARG_QUIET: gQuiet = true; break;
@@ -1684,6 +1734,18 @@ static void parseOptions(int argc, const char **argv) {
 	} else {
 		assert_gt(mhits, 0);
 		msample = true;
+	}
+	if (deterministicSeeds ) {
+		/* doExactUpFront and  do1mmUpFront were deprecated, mhits cannot be nz
+		if ( doExactUpFront || do1mmUpFront || (mhits!=0) ) {
+			cerr << "Warning: -d cannot be used with --exact-upfront, --1mm-upfront or -m." << endl;
+			throw 1;
+		}
+		*/
+		if ( !allHits ) {
+			cerr << "Error: -d can only be used with -a." << endl;
+			throw 1;
+		}
 	}
 	if (format == UNKNOWN)
 		set_format(format, FASTQ);
@@ -2307,6 +2369,12 @@ static void multiseedSearchWorker() {
 
 	constexpr bool paired = false;
 
+	const size_t lowseeds_ncut = (lowseeds>0) ?
+			((lowseedsDivider!=0) ? ((msink.num_refnames() * lowseeds + (lowseedsDivider-1))/lowseedsDivider) // round up, avoid 0
+					      : lowseeds
+			) :
+			std::numeric_limits<size_t>::max(); // never filter by size
+
 	BTAllocator worker_alloc;
 #ifdef USE_CUSTOM_ALLOCS
 	BTPerThreadAllocators mate_allocs(num_parallel_tasks);
@@ -2636,7 +2704,7 @@ static void multiseedSearchWorker() {
 
 			// Align the seeds
 			// internally parallelized
-			als.searchAllSeedsDoAll(msconsts->extend);
+			als.searchAllSeedsDoAll(lowseeds_ncut, msconsts->extend);
 
 		   tmr.next("searchAllSeedsDo");
 
@@ -2899,6 +2967,12 @@ static void multiseedSearchWorkerPaired(const size_t num_parallel_tasks) {
 	const Scoring&          sc       = *multiseed_sc;
 	const BitPairReference& ref      = *multiseed_refs;
 	AlnSink&                msink    = *multiseed_msink;
+
+	const size_t lowseeds_ncut = (lowseeds>0) ?
+			((lowseedsDivider!=0) ? ((msink.num_refnames() * lowseeds + (lowseedsDivider-1))/lowseedsDivider) // round up, avoid 0
+					      : lowseeds
+			) :
+			std::numeric_limits<size_t>::max(); // never filter by size
 
 	{
 		// Sinks: these are so that we can print tables encoding counts for

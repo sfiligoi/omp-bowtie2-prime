@@ -1415,6 +1415,7 @@ public:
 	static void searchSeedBi(
 		        const Ebwt* ebwt,         // forward index (BWT)
         		uint64_t& bwops_,         // Burrows-Wheeler operations
+			const size_t ncut,        // max seed result size (larger is lower quality
 			const uint8_t nparams,    // must be leq SS_SIZE
 			SeedAlignerSearchData         dataVec[]);
 
@@ -1481,7 +1482,7 @@ public:
 
 	// Align the Seeds
 	// Assumes all prepareSearchAllSeeds were already called
-	void searchAllSeedsDoAll(bool doExtend);
+	void searchAllSeedsDoAll(const size_t ncut, const bool doExtend);
 
 	// return False if No seed alignment
 	template <class ASW>
