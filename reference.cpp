@@ -100,19 +100,11 @@ BitPairReference::BitPairReference(
 	// Read endianness sentinel, set 'swap'
 	uint32_t one;
 	bool swap = false;
-	one = readU<int32_t>(f3, swap);
-	if(one != 1) {
-		if(useMm_) {
-			cerr << "Error: Can't use memory-mapped files when the index is the opposite endianness" << endl;
-			throw 1;
-		}
-		assert_eq(0x1000000, one);
-		swap = true; // have to endian swap U32s
-	}
+	one = readU<int32_t>(f3);
 	
 	// Read # records
 	TIndexOffU sz;
-	sz = readU<TIndexOffU>(f3, swap);
+	sz = readU<TIndexOffU>(f3);
 	if(sz == 0) {
 		cerr << "Error: number of reference records is 0 in " << s3.c_str() << endl;
 		throw 1;
@@ -256,20 +248,12 @@ BitPairReference::BitPairReference(
 	}
 	
 	// Populate byteToU32_
-	bool big = currentlyBigEndian();
 	for(int i = 0; i < 256; i++) {
 		uint32_t word = 0;
-		if(big) {
-			word |= ((i >> 0) & 3) << 24;
-			word |= ((i >> 2) & 3) << 16;
-			word |= ((i >> 4) & 3) << 8;
-			word |= ((i >> 6) & 3) << 0;
-		} else {
-			word |= ((i >> 0) & 3) << 0;
-			word |= ((i >> 2) & 3) << 8;
-			word |= ((i >> 4) & 3) << 16;
-			word |= ((i >> 6) & 3) << 24;
-		}
+		word |= ((i >> 0) & 3) << 24;
+		word |= ((i >> 2) & 3) << 16;
+		word |= ((i >> 4) & 3) << 8;
+		word |= ((i >> 6) & 3) << 0;
 		byteToU32_[i] = word;
 	}
 	
@@ -597,7 +581,6 @@ pair<size_t, size_t>
 BitPairReference::szsFromFasta(
 	EList<FileBuf*>& is,
 	const string& outfile,
-	bool bigEndian,
 	const RefReadInParams& refparams,
 	EList<RefRecord>& szs,
 	bool sanity)
@@ -620,7 +603,7 @@ BitPairReference::szsFromFasta(
 		// Read in the sizes of all the unambiguous stretches of the genome
 		// into a vector of RefRecords.  The input streams are reset once
 		// it's done.
-		writeU<int32_t>(fout3, 1, bigEndian); // endianness sentinel
+		writeU<int32_t>(fout3, 1); // endianness sentinel
 		bool color = parms.color;
 		if(color) {
 			parms.color = false;
@@ -630,9 +613,9 @@ BitPairReference::szsFromFasta(
 			ASSERT_ONLY(std::pair<size_t, size_t> sztot2 =)
 			fastaRefReadSizes(is, szs, parms, &bpout, numSeqs);
 			parms.color = true;
-			writeU<TIndexOffU>(fout3, (TIndexOffU)szs.size(), bigEndian); // write # records
+			writeU<TIndexOffU>(fout3, (TIndexOffU)szs.size()); // write # records
 			for(size_t i = 0; i < szs.size(); i++) {
-				szs[i].write(fout3, bigEndian);
+				szs[i].write(fout3);
 			}
 			szs.clear();
 			// Now read in the colorspace size records; these are
@@ -644,8 +627,8 @@ BitPairReference::szsFromFasta(
 		} else {
 			TIndexOff numSeqs = 0;
 			sztot = fastaRefReadSizes(is, szs, parms, &bpout, numSeqs);
-			writeU<TIndexOffU>(fout3, (TIndexOffU)szs.size(), bigEndian); // write # records
-			for(size_t i = 0; i < szs.size(); i++) szs[i].write(fout3, bigEndian);
+			writeU<TIndexOffU>(fout3, (TIndexOffU)szs.size()); // write # records
+			for(size_t i = 0; i < szs.size(); i++) szs[i].write(fout3);
 		}
 		if(sztot.first == 0) {
 			cerr << "Error: No unambiguous stretches of characters in the input.  Aborting..." << endl;

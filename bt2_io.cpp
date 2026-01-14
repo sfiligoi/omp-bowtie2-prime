@@ -128,50 +128,34 @@ void Ebwt::readIntoMemory(
 		logTime(cerr);
 	}
 
-	// Read endianness hints from both streams
 	uint64_t bytesRead = 0;
-	_switchEndian = false;
-	uint32_t one = readU<uint32_t>(_in1, _switchEndian); // 1st word of primary stream
+	uint32_t one = readU<uint32_t>(_in1); // 1st word of primary stream
 	bytesRead += 4;
 	if(loadSASamp) {
 #ifndef NDEBUG
-		assert_eq(one, readU<uint32_t>(_in2, _switchEndian)); // should match!
+		assert_eq(one, readU<uint32_t>(_in2)); // should match!
 #else
-		readU<uint32_t>(_in2, _switchEndian);
+		readU<uint32_t>(_in2);
 #endif
-	}
-	if(one != 1) {
-		assert_eq((1u<<24), one);
-		assert_eq(1, endianSwapU32(one));
-		_switchEndian = true;
-	}
-
-	// Can't switch endianness and use memory-mapped files; in order to
-	// support this, someone has to modify the file to switch
-	// endiannesses appropriately, and we can't do this inside Bowtie
-	// or we might be setting up a race condition with other processes.
-	if(_switchEndian && _useMm) {
-		cerr << "Error: Can't use memory-mapped files when the index is the opposite endianness" << endl;
-		throw 1;
 	}
 
 	// Reads header entries one by one from primary stream
-	TIndexOffU len          = readU<TIndexOffU>(_in1, _switchEndian);
+	TIndexOffU len          = readU<TIndexOffU>(_in1);
 	bytesRead += OFF_SIZE;
-	int32_t  lineRate     = readI<int32_t>(_in1, _switchEndian);
+	int32_t  lineRate     = readI<int32_t>(_in1);
 	bytesRead += 4;
-	/*int32_t  linesPerSide =*/ readI<int32_t>(_in1, _switchEndian);
+	/*int32_t  linesPerSide =*/ readI<int32_t>(_in1);
 	bytesRead += 4;
-	int32_t  offRate      = readI<int32_t>(_in1, _switchEndian);
+	int32_t  offRate      = readI<int32_t>(_in1);
 	bytesRead += 4;
 	// TODO: add isaRate to the actual file format (right now, the
 	// user has to tell us whether there's an ISA sample and what the
 	// sampling rate is.
-	int32_t  ftabChars    = readI<int32_t>(_in1, _switchEndian);
+	int32_t  ftabChars    = readI<int32_t>(_in1);
 	bytesRead += 4;
 	// chunkRate was deprecated in an earlier version of Bowtie; now
 	// we use it to hold flags.
-	int32_t flags = readI<int32_t>(_in1, _switchEndian);
+	int32_t flags = readI<int32_t>(_in1);
 	bool entireRev = false;
 	if(flags < 0 && (((-flags) & EBWT_COLOR) != 0)) {
 		if(color != -1 && !color) {
@@ -238,7 +222,7 @@ void Ebwt::readIntoMemory(
 	}
 
 	// Read nPat from primary stream
-	this->_nPat = readI<TIndexOffU>(_in1, _switchEndian);
+	this->_nPat = readI<TIndexOffU>(_in1);
 	bytesRead += OFF_SIZE;
 	_plen.reset();
 	// Read plen from primary stream
@@ -255,16 +239,10 @@ void Ebwt::readIntoMemory(
 				logTime(cerr);
 			}
 			_plen.init(new TIndexOffU[_nPat], _nPat, true);
-			if(_switchEndian) {
-				for(TIndexOffU i = 0; i < this->_nPat; i++) {
-					plen()[i] = readU<TIndexOffU>(_in1, _switchEndian);
-				}
-			} else {
-				size_t r = MM_READ(_in1, (void*)(plen()), _nPat*OFF_SIZE);
-				if(r != (size_t)(_nPat*OFF_SIZE)) {
-					cerr << "Error reading _plen[] array: " << r << ", " << _nPat*OFF_SIZE << endl;
-					throw 1;
-				}
+			size_t r = MM_READ(_in1, (void*)(plen()), _nPat*OFF_SIZE);
+			if(r != (size_t)(_nPat*OFF_SIZE)) {
+				cerr << "Error reading _plen[] array: " << r << ", " << _nPat*OFF_SIZE << endl;
+				throw 1;
 			}
 		} catch(bad_alloc& e) {
 			cerr << "Out of memory allocating plen[] in Ebwt::read()"
@@ -281,7 +259,7 @@ void Ebwt::readIntoMemory(
 	// (i.e. everything up to and including join()).
 	if(justHeader) goto done;
 
-	this->_nFrag = readU<TIndexOffU>(_in1, _switchEndian);
+	this->_nFrag = readU<TIndexOffU>(_in1);
 	bytesRead += OFF_SIZE;
 	if(_verbose || startVerbose) {
 		cerr << "Reading rstarts (" << this->_nFrag*3 << "): ";
@@ -298,20 +276,10 @@ void Ebwt::readIntoMemory(
 #endif
 		} else {
 			_rstarts.init(new TIndexOffU[_nFrag*3], _nFrag*3, true);
-			if(_switchEndian) {
-				for(TIndexOffU i = 0; i < this->_nFrag*3; i += 3) {
-					// fragment starting position in joined reference
-					// string, text id, and fragment offset within text
-					this->rstarts()[i]   = readU<TIndexOffU>(_in1, _switchEndian);
-					this->rstarts()[i+1] = readU<TIndexOffU>(_in1, _switchEndian);
-					this->rstarts()[i+2] = readU<TIndexOffU>(_in1, _switchEndian);
-				}
-			} else {
-				size_t r = MM_READ(_in1, (void *)rstarts(), this->_nFrag*OFF_SIZE*3);
-				if(r != (size_t)(this->_nFrag*OFF_SIZE*3)) {
-					cerr << "Error reading _rstarts[] array: " << r << ", " << (this->_nFrag*OFF_SIZE*3) << endl;
-					throw 1;
-				}
+			size_t r = MM_READ(_in1, (void *)rstarts(), this->_nFrag*OFF_SIZE*3);
+			if(r != (size_t)(this->_nFrag*OFF_SIZE*3)) {
+				cerr << "Error reading _rstarts[] array: " << r << ", " << (this->_nFrag*OFF_SIZE*3) << endl;
+				throw 1;
 			}
 		}
 	} else {
@@ -385,7 +353,7 @@ void Ebwt::readIntoMemory(
 	}
 
 	// Read zOff from primary stream
-	_zOff = readU<TIndexOffU>(_in1, _switchEndian);
+	_zOff = readU<TIndexOffU>(_in1);
 	bytesRead += OFF_SIZE;
 	assert_lt(_zOff, len);
 
@@ -402,7 +370,7 @@ void Ebwt::readIntoMemory(
 		} else {
 			_fchr.init(new TIndexOffU[5], 5, true);
 			for(int i = 0; i < 5; i++) {
-				this->fchr()[i] = readU<TIndexOffU>(_in1, _switchEndian);
+				this->fchr()[i] = readU<TIndexOffU>(_in1);
 				assert_leq(this->fchr()[i], len);
 				assert(i <= 0 || this->fchr()[i] >= this->fchr()[i-1]);
 			}
@@ -427,15 +395,10 @@ void Ebwt::readIntoMemory(
 #endif
 			} else {
 				_ftab.init(new TIndexOffU[eh->_ftabLen], eh->_ftabLen, true);
-				if(_switchEndian) {
-					for(TIndexOffU i = 0; i < eh->_ftabLen; i++)
-						this->ftab()[i] = readU<TIndexOffU>(_in1, _switchEndian);
-				} else {
-					size_t r = MM_READ(_in1, (void *)ftab(), eh->_ftabLen*OFF_SIZE);
-					if(r != (size_t)(eh->_ftabLen*OFF_SIZE)) {
-						cerr << "Error reading _ftab[] array: " << r << ", " << (eh->_ftabLen*OFF_SIZE) << endl;
-						throw 1;
-					}
+				size_t r = MM_READ(_in1, (void *)ftab(), eh->_ftabLen*OFF_SIZE);
+				if(r != (size_t)(eh->_ftabLen*OFF_SIZE)) {
+					cerr << "Error reading _ftab[] array: " << r << ", " << (eh->_ftabLen*OFF_SIZE) << endl;
+					throw 1;
 				}
 			}
 			// Read etab from primary stream
@@ -456,16 +419,11 @@ void Ebwt::readIntoMemory(
 				fseeko(_in1, eh->_eftabLen*OFF_SIZE, SEEK_CUR);
 #endif
 			} else {
-				_eftab.init(new TIndexOffU[eh->_eftabLen], eh->_eftabLen, true);
-				if(_switchEndian) {
-					for(TIndexOffU i = 0; i < eh->_eftabLen; i++)
-						this->eftab()[i] = readU<TIndexOffU>(_in1, _switchEndian);
-				} else {
-					size_t r = MM_READ(_in1, (void *)this->eftab(), eh->_eftabLen*OFF_SIZE);
-					if(r != (size_t)(eh->_eftabLen*OFF_SIZE)) {
-						cerr << "Error reading _eftab[] array: " << r << ", " << (eh->_eftabLen*OFF_SIZE) << endl;
-						throw 1;
-					}
+			_eftab.init(new TIndexOffU[eh->_eftabLen], eh->_eftabLen, true);
+				size_t r = MM_READ(_in1, (void *)this->eftab(), eh->_eftabLen*OFF_SIZE);
+				if(r != (size_t)(eh->_eftabLen*OFF_SIZE)) {
+					cerr << "Error reading _eftab[] array: " << r << ", " << (eh->_eftabLen*OFF_SIZE) << endl;
+					throw 1;
 				}
 			}
 			for(TIndexOffU i = 0; i < eh->_eftabLen; i++) {
@@ -542,7 +500,7 @@ void Ebwt::readIntoMemory(
 		if(_overrideOffRate < 32) {
 			if(shmemLeader) {
 				// Allocate offs (big allocation)
-				if(_switchEndian || offRateDiff > 0) {
+				if(offRateDiff > 0) {
 					assert(!_useMm);
 					const TIndexOffU blockMaxSz = (2 * 1024 * 1024); // 2 MB block size
 					const TIndexOffU blockMaxSzU = (blockMaxSz >> (OFF_SIZE/4 + 1)); // # U32s per block
@@ -564,9 +522,6 @@ void Ebwt::readIntoMemory(
 						for(TIndexOffU j = 0; j < block; j += (1 << offRateDiff)) {
 							assert_lt(idx, offsLenSampled);
 							this->offs()[idx] = ((TIndexOffU*)buf)[j];
-							if(_switchEndian) {
-								this->offs()[idx] = endianSwapU(this->offs()[idx]);
-							}
 							idx++;
 						}
 					}
@@ -643,22 +598,17 @@ readEbwtRefnames(FILE* fin, EList<string>& refnames) {
 	assert(fin != NULL);
 	assert_eq(ftello(fin), 0);
 
-	// Read endianness hints from both streams
-	bool _switchEndian = false;
-	uint32_t one = readU<uint32_t>(fin, _switchEndian); // 1st word of primary stream
-	if(one != 1) {
-		assert_eq((1u<<24), one);
-		_switchEndian = true;
-	}
+	uint32_t one = readU<uint32_t>(fin); // 1st word of primary stream
+	assert_neq((1u<<24), one);
 
 	// Reads header entries one by one from primary stream
-	TIndexOffU len          = readU<TIndexOffU>(fin, _switchEndian);
-	int32_t  lineRate     = readI<int32_t>(fin, _switchEndian);
-	/*int32_t  linesPerSide =*/ readI<int32_t>(fin, _switchEndian);
-	int32_t  offRate      = readI<int32_t>(fin, _switchEndian);
-	int32_t  ftabChars    = readI<int32_t>(fin, _switchEndian);
+	TIndexOffU len          = readU<TIndexOffU>(fin);
+	int32_t  lineRate     = readI<int32_t>(fin);
+	/*int32_t  linesPerSide =*/ readI<int32_t>(fin);
+	int32_t  offRate      = readI<int32_t>(fin);
+	int32_t  ftabChars    = readI<int32_t>(fin);
 	// BTL: chunkRate is now deprecated
-	int32_t flags = readI<int32_t>(fin, _switchEndian);
+	int32_t flags = readI<int32_t>(fin);
 	bool color = false;
 	bool entireReverse = false;
 	if(flags < 0) {
@@ -669,18 +619,18 @@ readEbwtRefnames(FILE* fin, EList<string>& refnames) {
 	// Create a new EbwtParams from the entries read from primary stream
 	EbwtParams eh(len, lineRate, offRate, ftabChars, color, entireReverse);
 
-	TIndexOffU nPat = readI<TIndexOffU>(fin, _switchEndian); // nPat
+	TIndexOffU nPat = readI<TIndexOffU>(fin); // nPat
 	fseeko(fin, nPat*OFF_SIZE, SEEK_CUR);
 
 	// Skip rstarts
-	TIndexOffU nFrag = readU<TIndexOffU>(fin, _switchEndian);
+	TIndexOffU nFrag = readU<TIndexOffU>(fin);
 	fseeko(fin, nFrag*OFF_SIZE*3, SEEK_CUR);
 
 	// Skip ebwt
 	fseeko(fin, eh._ebwtTotLen, SEEK_CUR);
 
 	// Skip zOff from primary stream
-	readU<TIndexOffU>(fin, _switchEndian);
+	readU<TIndexOffU>(fin);
 
 	// Skip fchr
 	fseeko(fin, 5 * OFF_SIZE, SEEK_CUR);
@@ -746,19 +696,13 @@ int32_t Ebwt::readFlags(const string& instr) {
 	}
 	assert(in.is_open());
 	assert(in.good());
-	bool _switchEndian = false;
-	uint32_t one = readU<uint32_t>(in, _switchEndian); // 1st word of primary stream
-	if(one != 1) {
-		assert_eq((1u<<24), one);
-		assert_eq(1, endianSwapU32(one));
-		_switchEndian = true;
-	}
-	readU<TIndexOffU>(in, _switchEndian);
-	readI<int32_t>(in, _switchEndian);
-	readI<int32_t>(in, _switchEndian);
-	readI<int32_t>(in, _switchEndian);
-	readI<int32_t>(in, _switchEndian);
-	int32_t flags = readI<int32_t>(in, _switchEndian);
+	uint32_t one = readU<uint32_t>(in); // 1st word of primary stream
+	readU<TIndexOffU>(in);
+	readI<int32_t>(in);
+	readI<int32_t>(in);
+	readI<int32_t>(in);
+	readI<int32_t>(in);
+	int32_t flags = readI<int32_t>(in);
 	return flags;
 }
 
@@ -810,17 +754,17 @@ void Ebwt::writeFromMemory(bool justHeader,
 	// When building an Ebwt, these header parameters are known
 	// "up-front", i.e., they can be written to disk immediately,
 	// before we join() or buildToDisk()
-	writeI<int32_t>(out1, 1, _switchEndian); // endian hint for priamry stream
-	writeI<int32_t>(out2, 1, _switchEndian); // endian hint for secondary stream
-	writeU<TIndexOffU>(out1, eh._len,          _switchEndian); // length of string (and bwt and suffix array)
-	writeI<int32_t>(out1, eh._lineRate,     _switchEndian); // 2^lineRate = size in bytes of 1 line
-	writeI<int32_t>(out1, 2,                _switchEndian); // not used
-	writeI<int32_t>(out1, eh._offRate,      _switchEndian); // every 2^offRate chars is "marked"
-	writeI<int32_t>(out1, eh._ftabChars,    _switchEndian); // number of 2-bit chars used to address ftab
+	writeI<int32_t>(out1, 1);
+	writeI<int32_t>(out2, 1);
+	writeU<TIndexOffU>(out1, eh._len); // length of string (and bwt and suffix array)
+	writeI<int32_t>(out1, eh._lineRate); // 2^lineRate = size in bytes of 1 line
+	writeI<int32_t>(out1, 2); // not used
+	writeI<int32_t>(out1, eh._offRate); // every 2^offRate chars is "marked"
+	writeI<int32_t>(out1, eh._ftabChars); // number of 2-bit chars used to address ftab
 	int32_t flags = 1;
 	if(eh._color) flags |= EBWT_COLOR;
 	if(eh._entireReverse) flags |= EBWT_ENTIRE_REV;
-	writeI<int32_t>(out1, -flags, _switchEndian); // BTL: chunkRate is now deprecated
+	writeI<int32_t>(out1, -flags); // BTL: chunkRate is now deprecated
 
 	if(!justHeader) {
 		assert(rstarts() != NULL);
@@ -831,13 +775,13 @@ void Ebwt::writeFromMemory(bool justHeader,
 		// These Ebwt parameters are known after the inputs strings have
 		// been joined() but before they have been built().  These can
 		// written to the disk next and then discarded from memory.
-		writeU<TIndexOffU>(out1, this->_nPat,      _switchEndian);
+		writeU<TIndexOffU>(out1, this->_nPat);
 		for(TIndexOffU i = 0; i < this->_nPat; i++)
-			writeU<TIndexOffU>(out1, this->plen()[i], _switchEndian);
+			writeU<TIndexOffU>(out1, this->plen()[i]);
 		assert_geq(this->_nFrag, this->_nPat);
-		writeU<TIndexOffU>(out1, this->_nFrag, _switchEndian);
+		writeU<TIndexOffU>(out1, this->_nFrag);
 		for(TIndexOffU i = 0; i < this->_nFrag*3; i++)
-			writeU<TIndexOffU>(out1, this->rstarts()[i], _switchEndian);
+			writeU<TIndexOffU>(out1, this->rstarts()[i]);
 
 		// These Ebwt parameters are discovered only as the Ebwt is being
 		// built (in buildToDisk()).  Of these, only 'offs' and 'ebwt' are
@@ -845,21 +789,21 @@ void Ebwt::writeFromMemory(bool justHeader,
 		// discarded from memory as it is built; 'offs' is similarly
 		// written to the secondary file and discarded.
 		out1.write((const char *)this->ebwt(), eh._ebwtTotLen);
-		writeU<TIndexOffU>(out1, this->zOff(), _switchEndian);
+		writeU<TIndexOffU>(out1, this->zOff());
 		TIndexOffU offsLen = eh._offsLen;
 		for(TIndexOffU i = 0; i < offsLen; i++)
-			writeU<TIndexOffU>(out2, this->offs()[i], _switchEndian);
+			writeU<TIndexOffU>(out2, this->offs()[i]);
 
 		// 'fchr', 'ftab' and 'eftab' are not fully determined until the
 		// loop is finished, so they are written to the primary file after
 		// all of 'ebwt' has already been written and only then discarded
 		// from memory.
 		for(int i = 0; i < 5; i++)
-			writeU<TIndexOffU>(out1, this->fchr()[i], _switchEndian);
+			writeU<TIndexOffU>(out1, this->fchr()[i]);
 		for(TIndexOffU i = 0; i < eh._ftabLen; i++)
-			writeU<TIndexOffU>(out1, this->ftab()[i], _switchEndian);
+			writeU<TIndexOffU>(out1, this->ftab()[i]);
 		for(TIndexOffU i = 0; i < eh._eftabLen; i++)
-			writeU<TIndexOffU>(out1, this->eftab()[i], _switchEndian);
+			writeU<TIndexOffU>(out1, this->eftab()[i]);
 	}
 }
 
@@ -950,9 +894,9 @@ void Ebwt::szsToDisk(const EList<RefRecord>& szs, ostream& os, int reverse) {
 			assert_leq(off + szs[i].len, plen()[seqm1]);
 			fwoff = plen()[seqm1] - (off + szs[i].len);
 		}
-		writeU<TIndexOffU>(os, totlen, _switchEndian); // offset from beginning of joined string
-		writeU<TIndexOffU>(os, seqm1,  _switchEndian); // sequence id
-		writeU<TIndexOffU>(os, fwoff,  _switchEndian); // offset into sequence
+		writeU<TIndexOffU>(os, totlen); // offset from beginning of joined string
+		writeU<TIndexOffU>(os, seqm1); // sequence id
+		writeU<TIndexOffU>(os, fwoff); // offset into sequence
 		totlen += szs[i].len;
 		off += szs[i].len;
 	}

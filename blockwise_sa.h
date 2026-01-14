@@ -277,7 +277,6 @@ public:
 		_dc(EBWTB_CAT),
 		_built(false),
 		_base_fname(base_fname),
-		_bigEndian(currentlyBigEndian()),
 		_done(NULL)
 		{ _randomSrc.init(__seed); reset(); }
 
@@ -349,10 +348,10 @@ public:
 						cerr << "Could not open file for reading a suffix array: \"" << fname << "\"" << endl;
 						throw 1;
 					}
-					size_t numSAs = readU<TIndexOffU>(sa_file, false /* do not endian swap */);
+					size_t numSAs = readU<TIndexOffU>(sa_file);
 					this->_itrBucket.resizeExact(numSAs);
 					for(size_t i = 0; i < numSAs; i++) {
-						this->_itrBucket[i] = readU<TIndexOffU>(sa_file, false);
+						this->_itrBucket[i] = readU<TIndexOffU>(sa_file);
 					}
 					sa_file.close();
 					std::remove(fname.c_str());
@@ -409,9 +408,9 @@ public:
 					throw 1;
 				}
 				const EList<TIndexOffU>& bucket = sa->_itrBuckets[tid];
-				writeU<TIndexOffU>(sa_file, (TIndexOffU)bucket.size(), sa->_bigEndian);
+				writeU<TIndexOffU>(sa_file, (TIndexOffU)bucket.size());
 				for(size_t i = 0; i < bucket.size(); i++) {
-					writeU<TIndexOffU>(sa_file, bucket[i], sa->_bigEndian);
+					writeU<TIndexOffU>(sa_file, bucket[i]);
 				}
 				sa_file.close();
 				sa->_itrBuckets[tid].clear();
@@ -501,7 +500,6 @@ private:
 
 	MUTEX_T                 _mutex;       /// synchronization of output message
 	string                  _base_fname;  /// base file name for storing SA blocks
-	bool                    _bigEndian;   /// bigEndian?
 	EList<std::thread*> _threads;     /// thread list
 	EList<pair<KarkkainenBlockwiseSA*, int> > _tparams;
 	ELList<TIndexOffU>      _itrBuckets;  /// buckets

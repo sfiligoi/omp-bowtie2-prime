@@ -31,7 +31,6 @@
 #include "filebuf.h"
 #include "word_io.h"
 #include "ds.h"
-#include "endian_swap.h"
 
 using namespace std;
 
@@ -82,18 +81,16 @@ struct RefRecord {
 			cerr << "Error reading RefRecord offset from FILE" << endl;
 			throw 1;
 		}
-		if(swap) off = endianSwapU(off);
 		if(!fread(&len, OFF_SIZE, 1, in)) {
 			cerr << "Error reading RefRecord offset from FILE" << endl;
 			throw 1;
 		}
-		if(swap) len = endianSwapU(len);
 		first = fgetc(in) ? true : false;
 	}
 
-	void write(std::ostream& out, bool be) {
-		writeU<TIndexOffU>(out, off, be);
-		writeU<TIndexOffU>(out, len, be);
+	void write(std::ostream& out) {
+		writeU<TIndexOffU>(out, off);
+		writeU<TIndexOffU>(out, len);
 		out.put(first ? 1 : 0);
 	}
 

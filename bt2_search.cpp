@@ -40,7 +40,6 @@
 
 #include "alphabet.h"
 #include "assert_helpers.h"
-#include "endian_swap.h"
 #include "bt2_idx.h"
 #include "formats.h"
 #include "sequence_io.h"
@@ -4494,7 +4493,6 @@ int bowtie(int argc, const char **argv) {
 					cout << "  " << qualities[i].c_str() << endl;
 				}
 				cout << "Output file: \"" << outfile.c_str() << "\"" << endl;
-				cout << "Local endianness: " << (currentlyBigEndian()? "big":"little") << endl;
 				cout << "Sanity checking: " << (sanityCheck? "enabled":"disabled") << endl;
 #ifdef NDEBUG
 				cout << "Assertions: disabled" << endl;

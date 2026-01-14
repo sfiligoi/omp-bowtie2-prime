@@ -28,7 +28,6 @@
 #include <sys/mman.h>
 #include <sys/shm.h>
 #endif
-#include "endian_swap.h"
 #include "ref_read.h"
 #include "sequence_io.h"
 #include "mm.h"
@@ -157,7 +156,6 @@ public:
 	szsFromFasta(
 		EList<FileBuf*>& is,
 		const string& outfile,
-		bool bigEndian,
 		const RefReadInParams& refparams,
 		EList<RefRecord>& szs,
 		bool sanity);

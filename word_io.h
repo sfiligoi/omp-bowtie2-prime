@@ -29,34 +29,12 @@
 #include "btypes.h"
 
 /**
- * Write a 32/64 bit unsigned to an output stream being careful to
- * re-endianize if caller-requested endianness differs from current
- * host.
- */
-template <typename T>
-static inline void writeU(std::ostream& out, T x, bool toBigEndian) {
-	T y = endianizeU<T>(x, toBigEndian);
-	out.write((const char*)&y, sizeof(T));
-}
-
-/**
  * Write a 32/64 bit unsigned to an output stream using the native
  * endianness.
  */
 template <typename T>
 static inline void writeU(std::ostream& out, T x) {
 	out.write((const char*)&x, sizeof(T));
-}
-
-/**
- * Write a 32/64 bit signed int to an output stream being careful to
- * re-endianize if caller-requested endianness differs from current
- * host.
- */
-template <typename T>
-static inline void writeI(std::ostream& out, T x, bool toBigEndian) {
-	T y = endianizeI<T>(x, toBigEndian);
-	out.write((const char*)&y, sizeof(T));
 }
 
 /**
@@ -102,6 +80,15 @@ static inline T readU(std::istream& in, bool swap) {
 }
 
 
+template <typename T>
+static inline T readU(std::istream& in) {
+	T x;
+	in.read((char *)&x, sizeof(T));
+	assert_eq(sizeof(T), in.gcount());
+	return x;
+}
+
+
 /**
  * Read a 32/64 bit unsigned from a FILE*, optionally inverting
  * endianness.
@@ -137,6 +124,15 @@ static inline T readU(FILE* in, bool swap) {
 		return x;
 	}
 }
+template <typename T>
+static inline T readU(FILE* in) {
+	T x;
+	if(fread((void *)&x, sizeof(T), 1, in) != 1) {
+		perror("readU");
+		exit(1);
+	}
+	return x;
+}
 
 
 /**
@@ -170,6 +166,13 @@ static inline T readI(std::istream& in, bool swap) {
 	} else {
 		return x;
 	}
+}
+template <typename T>
+static inline T readI(std::istream& in) {
+	T x;
+	in.read((char *)&x, sizeof(T));
+	assert_eq(sizeof(T), in.gcount());
+	return x;
 }
 
 
@@ -208,6 +211,16 @@ static inline T readI(FILE* in, bool swap) {
 		return x;
 	}
 }
+template <typename T>
+static inline T readI(FILE* in) {
+	T x;
+	if(fread((void *)&x, sizeof(T), 1, in) != 1) {
+		perror("readI");
+		exit(1);
+	}
+	return x;
+}
+
 
 
 #endif /*WORD_IO_H_*/

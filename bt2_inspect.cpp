@@ -26,7 +26,6 @@
 #include <stdexcept>
 
 #include "assert_helpers.h"
-#include "endian_swap.h"
 #include "bt2_idx.h"
 #include "reference.h"
 #include "ds.h"
@@ -480,7 +479,6 @@ int main(int argc, char **argv) {
 		if(verbose) {
 			cout << "Input ebwt file: \"" << ebwtFile.c_str() << "\"" << endl;
 			cout << "Output file: \"" << outfile.c_str() << "\"" << endl;
-			cout << "Local endianness: " << (currentlyBigEndian()? "big":"little") << endl;
 #ifdef NDEBUG
 			cout << "Assertions: disabled" << endl;
 #else
