@@ -24,7 +24,6 @@
 #include <cassert>
 #include <getopt.h>
 #include "assert_helpers.h"
-#include "endian_swap.h"
 #include "bt2_idx.h"
 #include "formats.h"
 #include "sequence_io.h"
@@ -59,7 +58,6 @@ static int32_t lineRate;
 static int32_t linesPerSide;
 static int32_t offRate;
 static int32_t ftabChars;
-static int  bigEndian;
 static bool nsToAs;    // convert Ns to As
 static bool doSaFile;  // make a file with just the suffix array in it
 static bool doBwtFile; // make a file with just the BWT string in it
@@ -88,7 +86,6 @@ static void resetOptions() {
 	linesPerSide = 1;  // 1 64-byte line on a side
 	offRate      = 4;  // sample 1 out of 16 SA elts
 	ftabChars    = 10; // 10 chars in initial lookup table
-	bigEndian    = 0;  // little endian
 	nsToAs       = false; // convert reference Ns to As prior to indexing
 	doSaFile     = false; // make a file with just the suffix array in it
 	doBwtFile    = false; // make a file with just the BWT string in it
@@ -161,9 +158,6 @@ static void printUsage(ostream& out) {
 	    << "    -o/--offrate <int>      SA is sampled every 2^<int> BWT chars (default: 5)" << endl
 	    << "    -t/--ftabchars <int>    # of chars consumed in initial lookup (default: 10)" << endl
 	    << "    --threads <int>         # of threads" << endl
-	    //<< "    --ntoa                  convert Ns in reference to As" << endl
-	    //<< "    --big --little          endianness (default: little, this host: "
-	    //<< (currentlyBigEndian()? "big":"little") << ")" << endl
 	    << "    --seed <int>            seed for random number generator" << endl
 	    << "    -q/--quiet              verbose output (for debugging)" << endl
 	    << "    --h/--help              print this message and quit" << endl
@@ -184,8 +178,6 @@ static struct option long_options[] = {
 	{(char*)"quiet",        no_argument,       0,            'q'},
 	{(char*)"sanity",       no_argument,       0,            's'},
 	{(char*)"packed",       no_argument,       0,            'p'},
-	{(char*)"little",       no_argument,       &bigEndian,   0},
-	{(char*)"big",          no_argument,       &bigEndian,   1},
 	{(char*)"bmax",         required_argument, 0,            ARG_BMAX},
 	{(char*)"bmaxmultsqrt", required_argument, 0,            ARG_BMAX_MULT},
 	{(char*)"bmaxdivn",     required_argument, 0,            ARG_BMAX_DIV},
@@ -462,9 +454,9 @@ static void driver(
 		if(!reverse && (writeRef || justRef)) {
 			filesWritten.push_back(outfile + ".3." + gEbwt_ext);
 			filesWritten.push_back(outfile + ".4." + gEbwt_ext);
-			sztot = BitPairReference::szsFromFasta(is, outfile, bigEndian, refparams, szs, sanityCheck);
+			sztot = BitPairReference::szsFromFasta(is, outfile, refparams, szs, sanityCheck);
 		} else {
-			sztot = BitPairReference::szsFromFasta(is, string(), bigEndian, refparams, szs, sanityCheck);
+			sztot = BitPairReference::szsFromFasta(is, string(), refparams, szs, sanityCheck);
 		}
 	}
 	if(justRef) return;
@@ -641,9 +633,6 @@ int bowtie_build(int argc, const char **argv) {
 				cout << "  Max bucket size, len divisor: " << bmaxDivN << endl;
 			}
 			cout << "  Difference-cover sample period: " << dcv << endl;
-			cout << "  Endianness: " << (bigEndian? "big":"little") << endl
-				 << "  Actual local endianness: " << (currentlyBigEndian()? "big":"little") << endl
-				 << "  Sanity checking: " << (sanityCheck? "enabled":"disabled") << endl;
 #ifdef NDEBUG
 			cout << "  Assertions: disabled" << endl;
 #else

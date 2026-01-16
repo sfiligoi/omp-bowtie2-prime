@@ -40,7 +40,6 @@
 #include "assert_helpers.h"
 #include "bitpack.h"
 #include "blockwise_sa.h"
-#include "endian_swap.h"
 #include "word_io.h"
 #include "random_source.h"
 #include "ref_read.h"
@@ -521,7 +520,6 @@ class EbwtSearchParams;
 class Ebwt {
 public:
 #define Ebwt_INITS					\
-	_switchEndian(false),				\
 		_overrideOffRate(overrideOffRate),	\
 		_verbose(verbose),			\
 		_passMemExc(passMemExc),		\
@@ -788,7 +786,6 @@ public:
 		bool packed,
 		int color,
 		int reverse,
-		bool bigEndian,
 		int32_t lineRate,
 		int32_t offRate,
 		int32_t ftabChars,
@@ -810,7 +807,6 @@ public:
 				packed,
 				color,
 				reverse,
-				bigEndian,
 				lineRate,
 				offRate,
 				ftabChars,
@@ -837,7 +833,6 @@ public:
 		bool packed,
 		int color,
 		int reverse,
-		bool bigEndian,
 		int32_t lineRate,
 		int32_t offRate,
 		int32_t ftabChars,
@@ -871,7 +866,7 @@ public:
 			// characters in one of the input sequences.
 			EList<RefRecord> szs(EBWT_CAT);
 			std::pair<TIndexOffU, TIndexOffU> sztot;
-			sztot = BitPairReference::szsFromFasta(is, file, bigEndian, refparams, szs, sanity);
+			sztot = BitPairReference::szsFromFasta(is, file, refparams, szs, sanity);
 			// Construct Ebwt from input strings and parameters
 			Ebwt *ebwtFw = new Ebwt(
 				TStr(),
@@ -899,7 +894,7 @@ public:
 				sanity);      // verify results and internal consistency
 			refparams.reverse = reverse;
 			szs.clear();
-			sztot = BitPairReference::szsFromFasta(is, file, bigEndian, refparams, szs, sanity);
+			sztot = BitPairReference::szsFromFasta(is, file, refparams, szs, sanity);
 			// Construct Ebwt from input strings and parameters
 			Ebwt *ebwtBw = new Ebwt(
 				TStr(),
@@ -1808,11 +1803,11 @@ public:
 		// Now factor in the occ[] count at the side break
 		const uint8_t *acgt8 = side + _eh._sideBwtSz;
 		const TIndexOffU *acgt = reinterpret_cast<const TIndexOffU*>(acgt8);
-		assert_leq(endianizeU<TIndexOffU>(acgt[0], _switchEndian), this->_eh._numSides * this->_eh._sideBwtLen); // b/c it's used as padding
-		assert_leq(endianizeU<TIndexOffU>(acgt[1], _switchEndian), this->_eh._len);
-		assert_leq(endianizeU<TIndexOffU>(acgt[2], _switchEndian), this->_eh._len);
-		assert_leq(endianizeU<TIndexOffU>(acgt[3], _switchEndian), this->_eh._len);
-		ret = endianizeU<TIndexOffU>(acgt[c], _switchEndian) + cCnt + this->fchr()[c];
+		assert_leq(acgt[0], this->_eh._numSides * this->_eh._sideBwtLen); // b/c it's used as padding
+		assert_leq(acgt[1], this->_eh._len);
+		assert_leq(acgt[2], this->_eh._len);
+		assert_leq(acgt[3], this->_eh._len);
+		ret = acgt[c] + cCnt + this->fchr()[c];
 #ifndef NDEBUG
 		assert_leq(ret, this->fchr()[c+1]); // can't have jumpded into next char's section
 		if(c == 0) {
@@ -1858,18 +1853,18 @@ public:
 			}
 			// Now factor in the occ[] count at the side break
 			const TIndexOffU *acgt = reinterpret_cast<const TIndexOffU*>(side + _eh._sideBwtSz);
-			assert_leq(endianizeU<TIndexOffU>(acgt[0], _switchEndian), this->fchr()[1] + this->_eh.sideBwtLen());
-			assert_leq(endianizeU<TIndexOffU>(acgt[1], _switchEndian), this->fchr()[2]-this->fchr()[1]);
-			assert_leq(endianizeU<TIndexOffU>(acgt[2], _switchEndian), this->fchr()[3]-this->fchr()[2]);
-			assert_leq(endianizeU<TIndexOffU>(acgt[3], _switchEndian), this->fchr()[4]-this->fchr()[3]);
-			assert_leq(endianizeU<TIndexOffU>(acgt[0], _switchEndian), this->_eh._len + this->_eh.sideBwtLen());
-			assert_leq(endianizeU<TIndexOffU>(acgt[1], _switchEndian), this->_eh._len);
-			assert_leq(endianizeU<TIndexOffU>(acgt[2], _switchEndian), this->_eh._len);
-			assert_leq(endianizeU<TIndexOffU>(acgt[3], _switchEndian), this->_eh._len);
-			cntsUpto[0] += (endianizeU<TIndexOffU>(acgt[0], _switchEndian) + this->fchr()[0]);
-			cntsUpto[1] += (endianizeU<TIndexOffU>(acgt[1], _switchEndian) + this->fchr()[1]);
-			cntsUpto[2] += (endianizeU<TIndexOffU>(acgt[2], _switchEndian) + this->fchr()[2]);
-			cntsUpto[3] += (endianizeU<TIndexOffU>(acgt[3], _switchEndian) + this->fchr()[3]);
+			assert_leq(acgt[0], this->fchr()[1] + this->_eh.sideBwtLen());
+			assert_leq(acgt[1], this->fchr()[2]-this->fchr()[1]);
+			assert_leq(acgt[2], this->fchr()[3]-this->fchr()[2]);
+			assert_leq(acgt[3], this->fchr()[4]-this->fchr()[3]);
+			assert_leq(acgt[0], this->_eh._len + this->_eh.sideBwtLen());
+			assert_leq(acgt[1], this->_eh._len);
+			assert_leq(acgt[2], this->_eh._len);
+			assert_leq(acgt[3], this->_eh._len);
+			cntsUpto[0] += (acgt[0] + this->fchr()[0]);
+			cntsUpto[1] += (acgt[1] + this->fchr()[1]);
+			cntsUpto[2] += (acgt[2] + this->fchr()[2]);
+			cntsUpto[3] += (acgt[3] + this->fchr()[3]);
 			masks[0].resize(num);
 			masks[1].resize(num);
 			masks[2].resize(num);
@@ -1935,18 +1930,18 @@ public:
 		const uint8_t *side = l.side(this->ebwt());
 		const uint8_t *acgt16 = side + this->_eh._sideSz - OFF_SIZE*4;
 		const TIndexOffU *acgt = reinterpret_cast<const TIndexOffU*>(acgt16);
-		assert_leq(endianizeU<TIndexOffU>(acgt[0], _switchEndian), this->fchr()[1] + this->_eh.sideBwtLen());
-		assert_leq(endianizeU<TIndexOffU>(acgt[1], _switchEndian), this->fchr()[2]-this->fchr()[1]);
-		assert_leq(endianizeU<TIndexOffU>(acgt[2], _switchEndian), this->fchr()[3]-this->fchr()[2]);
-		assert_leq(endianizeU<TIndexOffU>(acgt[3], _switchEndian), this->fchr()[4]-this->fchr()[3]);
-		assert_leq(endianizeU<TIndexOffU>(acgt[0], _switchEndian), this->_eh._len + this->_eh.sideBwtLen());
-		assert_leq(endianizeU<TIndexOffU>(acgt[1], _switchEndian), this->_eh._len);
-		assert_leq(endianizeU<TIndexOffU>(acgt[2], _switchEndian), this->_eh._len);
-		assert_leq(endianizeU<TIndexOffU>(acgt[3], _switchEndian), this->_eh._len);
-		arrs[0] += (endianizeU<TIndexOffU>(acgt[0], _switchEndian) + this->fchr()[0]);
-		arrs[1] += (endianizeU<TIndexOffU>(acgt[1], _switchEndian) + this->fchr()[1]);
-		arrs[2] += (endianizeU<TIndexOffU>(acgt[2], _switchEndian) + this->fchr()[2]);
-		arrs[3] += (endianizeU<TIndexOffU>(acgt[3], _switchEndian) + this->fchr()[3]);
+		assert_leq(acgt[0], this->fchr()[1] + this->_eh.sideBwtLen());
+		assert_leq(acgt[1], this->fchr()[2]-this->fchr()[1]);
+		assert_leq(acgt[2], this->fchr()[3]-this->fchr()[2]);
+		assert_leq(acgt[3], this->fchr()[4]-this->fchr()[3]);
+		assert_leq(acgt[0], this->_eh._len + this->_eh.sideBwtLen());
+		assert_leq(acgt[1], this->_eh._len);
+		assert_leq(acgt[2], this->_eh._len);
+		assert_leq(acgt[3], this->_eh._len);
+		arrs[0] += (acgt[0] + this->fchr()[0]);
+		arrs[1] += (acgt[1] + this->fchr()[1]);
+		arrs[2] += (acgt[2] + this->fchr()[2]);
+		arrs[3] += (acgt[3] + this->fchr()[3]);
 		WITHIN_FCHR(arrs);
 	}
 
@@ -2533,7 +2528,6 @@ public:
 	}
 #endif
 
-	bool       _switchEndian;
 	int32_t    _overrideOffRate;
 	bool       _verbose;
 	bool       _passMemExc;
@@ -2591,7 +2585,6 @@ public:
 	static const int      default_offRate = 5;
 	static const int      default_offRatePlus = 0;
 	static const int      default_ftabChars = 10;
-	static const bool     default_bigEndian = false;
 
 private:
 
@@ -2747,7 +2740,7 @@ void Ebwt::joinToDisk(
 	assert_gt(this->_nPat, 0);
 	// assert_geq(this->_nFrag, this->_nPat);
 	_rstarts.reset();
-	writeU<TIndexOffU>(out1, this->_nPat, _switchEndian);
+	writeU<TIndexOffU>(out1, this->_nPat);
 	// Allocate plen[]
 	try {
 		this->_plen.init(new TIndexOffU[this->_nPat], this->_nPat);
@@ -2761,7 +2754,7 @@ void Ebwt::joinToDisk(
 	for(TIndexOffU i = 0; i < szs.size(); i++) {
 		if(szs[i].first) {
 			if(npat >= 0) {
-				writeU<TIndexOffU>(out1, this->plen()[npat], _switchEndian);
+				writeU<TIndexOffU>(out1, this->plen()[npat]);
 			}
 			this->plen()[++npat] = (szs[i].len + szs[i].off);
 		} else {
@@ -2769,9 +2762,9 @@ void Ebwt::joinToDisk(
 		}
 	}
 	assert_eq((TIndexOffU)npat, this->_nPat-1);
-	writeU<TIndexOffU>(out1, this->plen()[npat], _switchEndian);
+	writeU<TIndexOffU>(out1, this->plen()[npat]);
 	// Write the number of fragments
-	writeU<TIndexOffU>(out1, this->_nFrag, _switchEndian);
+	writeU<TIndexOffU>(out1, this->_nFrag);
 	TIndexOffU seqsRead = 0;
 	ASSERT_ONLY(TIndexOffU szsi = 0);
 	ASSERT_ONLY(TIndexOffU entsWritten = 0);
@@ -2946,13 +2939,13 @@ void Ebwt::buildToDisk(
 	// array, including $
 	if(saOut != NULL) {
 		// Write length word
-		writeU<TIndexOffU>(*saOut, len+1, _switchEndian);
+		writeU<TIndexOffU>(*saOut, len+1);
 	}
 
 	// First integer in the BWT output file is the length of BWT(T), including $
 	if(bwtOut != NULL) {
 		// Write length word
-		writeU<TIndexOffU>(*bwtOut, len+1, _switchEndian);
+		writeU<TIndexOffU>(*bwtOut, len+1);
 	}
 	while(side < ebwtTotSz) {
 		// Sanity-check our cursor into the side buffer
@@ -2975,7 +2968,7 @@ void Ebwt::buildToDisk(
 					TIndexOffU saElt = sa.nextSuffix();
 					// Write it to the optional suffix-array output file
 					if(saOut != NULL) {
-						writeU<TIndexOffU>(*saOut, saElt, _switchEndian);
+						writeU<TIndexOffU>(*saOut, saElt);
 					}
 					// TODO: what exactly to write to the BWT output file?  How to
 					// represent $?  How to pack nucleotides into bytes/words?
@@ -3037,7 +3030,7 @@ void Ebwt::buildToDisk(
 						assert_lt((si >> eh._offRate), eh._offsLen);
 						// Write offsets directly to the secondary output
 						// stream, thereby avoiding keeping them in memory
-						writeU<TIndexOffU>(out2, saElt, _switchEndian);
+						writeU<TIndexOffU>(out2, saElt);
 					}
 				} else {
 					// Strayed off the end of the SA, now we're just
@@ -3091,15 +3084,15 @@ void Ebwt::buildToDisk(
 			side += sideSz;
 			assert_leq(side, eh._ebwtTotSz);
 #ifdef BOWTIE_64BIT_INDEX
-			cpptr[(sideSz >> 3)-4] = endianizeU<TIndexOffU>(occSave[0], _switchEndian);
-			cpptr[(sideSz >> 3)-3] = endianizeU<TIndexOffU>(occSave[1], _switchEndian);
-			cpptr[(sideSz >> 3)-2] = endianizeU<TIndexOffU>(occSave[2], _switchEndian);
-			cpptr[(sideSz >> 3)-1] = endianizeU<TIndexOffU>(occSave[3], _switchEndian);
+			cpptr[(sideSz >> 3)-4] = occSave[0];
+			cpptr[(sideSz >> 3)-3] = occSave[1];
+			cpptr[(sideSz >> 3)-2] = occSave[2];
+			cpptr[(sideSz >> 3)-1] = occSave[3];
 #else
-			cpptr[(sideSz >> 2)-4] = endianizeU<TIndexOffU>(occSave[0], _switchEndian);
-			cpptr[(sideSz >> 2)-3] = endianizeU<TIndexOffU>(occSave[1], _switchEndian);
-			cpptr[(sideSz >> 2)-2] = endianizeU<TIndexOffU>(occSave[2], _switchEndian);
-			cpptr[(sideSz >> 2)-1] = endianizeU<TIndexOffU>(occSave[3], _switchEndian);
+			cpptr[(sideSz >> 2)-4] = occSave[0];
+			cpptr[(sideSz >> 2)-3] = occSave[1];
+			cpptr[(sideSz >> 2)-2] = occSave[2];
+			cpptr[(sideSz >> 2)-1] = occSave[3];
 #endif
 			occSave[0] = occ[0];
 			occSave[1] = occ[1];
@@ -3125,7 +3118,7 @@ void Ebwt::buildToDisk(
 	//
 	// Write zOff to primary stream
 	//
-	writeU<TIndexOffU>(out1, zOff, _switchEndian);
+	writeU<TIndexOffU>(out1, zOff);
 
 	//
 	// Finish building fchr
@@ -3146,7 +3139,7 @@ void Ebwt::buildToDisk(
 	}
 	// Write fchr to primary file
 	for(int i = 0; i < 5; i++) {
-		writeU<TIndexOffU>(out1, fchr[i], _switchEndian);
+		writeU<TIndexOffU>(out1, fchr[i]);
 	}
 
 	//
@@ -3189,11 +3182,11 @@ void Ebwt::buildToDisk(
 	assert_eq(Ebwt::ftabHi(ftab.ptr(), eftab.ptr(), len, ftabLen, eftabLen, ftabLen-1), len+1);
 	// Write ftab to primary file
 	for(TIndexOffU i = 0; i < ftabLen; i++) {
-		writeU<TIndexOffU>(out1, ftab[i], _switchEndian);
+		writeU<TIndexOffU>(out1, ftab[i]);
 	}
 	// Write eftab to primary file
 	for(TIndexOffU i = 0; i < eftabLen; i++) {
-		writeU<TIndexOffU>(out1, eftab[i], _switchEndian);
+		writeU<TIndexOffU>(out1, eftab[i]);
 	}
 
 	// Note: if you'd like to sanity-check the Ebwt, you'll have to
