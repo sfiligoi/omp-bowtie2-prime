@@ -21,9 +21,14 @@
 #include <string.h>
 #include "reference.h"
 #include "mem_ids.h"
-#include "endian_swap.h"
 
 using namespace std;
+
+
+static inline bool currentlyBigEndian() {
+	static uint8_t endianCheck[] = {1, 0, 0, 0};
+	return *((uint32_t*)endianCheck) != 1;
+}
 
 /**
  * Load from .3.gEbwt_ext/.4.gEbwt_ext Bowtie index files.
