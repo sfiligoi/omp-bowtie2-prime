@@ -21,6 +21,7 @@
 #include <string.h>
 #include "reference.h"
 #include "mem_ids.h"
+#include "endian_swap.h"
 
 using namespace std;
 
@@ -97,10 +98,13 @@ BitPairReference::BitPairReference(
 	}
 #endif
 	
-	// Read endianness sentinel, set 'swap'
 	uint32_t one;
-	bool swap = false;
 	one = readU<int32_t>(f3);
+	if(one != 1) {
+		cerr << "Error: Memory-mapped files in little Endian" << endl;
+		throw 1;
+	}
+
 	
 	// Read # records
 	TIndexOffU sz;
@@ -130,7 +134,7 @@ BitPairReference::BitPairReference(
 	TIndexOffU cumlen = 0;
 	// For each unambiguous stretch...
 	for(TIndexOffU i = 0; i < sz; i++) {
-		recs_.push_back(RefRecord(f3, swap));
+		recs_.push_back(RefRecord(f3));
 		if(recs_.back().first) {
 			// This is the first record for this reference sequence (and the
 			// last record for the one before)
@@ -248,20 +252,16 @@ BitPairReference::BitPairReference(
 	}
 	
 	// Populate byteToU32_
-	bool big = currentlyBigEndian();
 	for(int i = 0; i < 256; i++) {
 		uint32_t word = 0;
-		if(big) {
-			word |= ((i >> 0) & 3) << 24;
-			word |= ((i >> 2) & 3) << 16;
-			word |= ((i >> 4) & 3) << 8;
-			word |= ((i >> 6) & 3) << 0;
-		} else {
-			word |= ((i >> 0) & 3) << 0;
-			word |= ((i >> 2) & 3) << 8;
-			word |= ((i >> 4) & 3) << 16;
-			word |= ((i >> 6) & 3) << 24;
+		if (currentlyBigEndian() ){
+			cerr << "Error: System expected to be little Endian" << endl;
+			throw 1;
 		}
+		word |= ((i >> 0) & 3) << 0;
+		word |= ((i >> 2) & 3) << 8;
+		word |= ((i >> 4) & 3) << 16;
+		word |= ((i >> 6) & 3) << 24;
 		byteToU32_[i] = word;
 	}
 	

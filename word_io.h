@@ -25,7 +25,6 @@
 #include <iostream>
 #include <fstream>
 #include "assert_helpers.h"
-#include "endian_swap.h"
 #include "btypes.h"
 
 /**
@@ -61,23 +60,6 @@ static inline void writeI(std::ostream& out, T x) {
 //		return x;
 //	}
 //}
-template <typename T>
-static inline T readU(std::istream& in, bool swap) {
-	T x;
-	in.read((char *)&x, sizeof(T));
-	assert_eq(sizeof(T), in.gcount());
-	if(swap) {
-		if(sizeof(T) == 4) {
-			return endianSwapU32(x);
-		} else if(sizeof(T) == 8) {
-			return endianSwapU64(x);
-		} else {
-			assert(false);
-		}
-	} else {
-		return x;
-	}
-}
 
 
 template <typename T>
@@ -106,25 +88,6 @@ static inline T readU(std::istream& in) {
 //	}
 //}
 template <typename T>
-static inline T readU(FILE* in, bool swap) {
-	T x;
-	if(fread((void *)&x, sizeof(T), 1, in) != 1) {
-		perror("readU");
-		exit(1);
-	}
-	if(swap) {
-		if(sizeof(T) == 4) {
-			return endianSwapU32(x);
-		} else if(sizeof(T) == 8) {
-			return endianSwapU64(x);
-		} else {
-			assert(false);
-		}
-	} else {
-		return x;
-	}
-}
-template <typename T>
 static inline T readU(FILE* in) {
 	T x;
 	if(fread((void *)&x, sizeof(T), 1, in) != 1) {
@@ -151,23 +114,6 @@ static inline T readU(FILE* in) {
 //	}
 //}
 template <typename T>
-static inline T readI(std::istream& in, bool swap) {
-	T x;
-	in.read((char *)&x, sizeof(T));
-	assert_eq(sizeof(T), in.gcount());
-	if(swap) {
-		if(sizeof(T) == 4) {
-			return endianSwapI32(x);
-		} else if(sizeof(T) == 8) {
-			return endianSwapI64(x);
-		} else {
-			assert(false);
-		}
-	} else {
-		return x;
-	}
-}
-template <typename T>
 static inline T readI(std::istream& in) {
 	T x;
 	in.read((char *)&x, sizeof(T));
@@ -192,25 +138,6 @@ static inline T readI(std::istream& in) {
 //		return x;
 //	}
 //}
-template <typename T>
-static inline T readI(FILE* in, bool swap) {
-	T x;
-	if(fread((void *)&x, sizeof(T), 1, in) != 1) {
-		perror("readI");
-		exit(1);
-	}
-	if(swap) {
-		if(sizeof(T) == 4) {
-			return endianSwapI32(x);
-		} else if(sizeof(T) == 8) {
-			return endianSwapI64(x);
-		} else {
-			assert(false);
-		}
-	} else {
-		return x;
-	}
-}
 template <typename T>
 static inline T readI(FILE* in) {
 	T x;

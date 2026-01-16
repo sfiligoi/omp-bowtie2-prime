@@ -740,7 +740,6 @@ readEntireReverse(const string& instr) {
  *
  * @param out1 output stream to primary file
  * @param out2 output stream to secondary file
- * @param be   write in big endian?
  */
 void Ebwt::writeFromMemory(bool justHeader,
                            ostream& out1,

@@ -75,7 +75,7 @@ struct RefRecord {
 		off(_off), len(_len), first(_first)
 	{ }
 
-	RefRecord(FILE *in, bool swap) {
+	RefRecord(FILE *in) {
 		assert(in != NULL);
 		if(!fread(&off, OFF_SIZE, 1, in)) {
 			cerr << "Error reading RefRecord offset from FILE" << endl;
