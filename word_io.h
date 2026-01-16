@@ -46,20 +46,8 @@ static inline void writeI(std::ostream& out, T x) {
 }
 
 /**
- * Read a 32/64 bit unsigned from an input stream, inverting endianness
- * if necessary.
+ * Read a 32/64 bit unsigned from an input stream
  */
-//template <typename T>
-//static inline T readU(std::istream& in, bool swap) {
-//	T x;
-//	in.read((char *)&x, OFF_SIZE);
-//	assert_eq(OFF_SIZE, in.gcount());
-//	if(swap) {
-//		return endianSwapU(x);
-//	} else {
-//		return x;
-//	}
-//}
 
 
 template <typename T>
@@ -72,21 +60,8 @@ static inline T readU(std::istream& in) {
 
 
 /**
- * Read a 32/64 bit unsigned from a FILE*, optionally inverting
- * endianness.
+ * Read a 32/64 bit unsigned from a FILE*
  */
-//template <typename T>
-//static inline T readU(FILE* in, bool swap) {
-//	T x;
-//	if(fread((void *)&x, 1, OFF_SIZE, in) != OFF_SIZE) {
-//		assert(false);
-//	}
-//	if(swap) {
-//		return endianSwapU(x);
-//	} else {
-//		return x;
-//	}
-//}
 template <typename T>
 static inline T readU(FILE* in) {
 	T x;
@@ -99,20 +74,8 @@ static inline T readU(FILE* in) {
 
 
 /**
- * Read a 32/64 bit signed from an input stream, inverting endianness
- * if necessary.
+ * Read a 32/64 bit signed from an input stream
  */
-//template <typename T>
-//static inline T readI(std::istream& in, bool swap) {
-//	T x;
-//	in.read((char *)&x, OFF_SIZE);
-//	assert_eq(OFF_SIZE, in.gcount());
-//	if(swap) {
-//		return endianSwapI(x);
-//	} else {
-//		return x;
-//	}
-//}
 template <typename T>
 static inline T readI(std::istream& in) {
 	T x;
@@ -123,21 +86,8 @@ static inline T readI(std::istream& in) {
 
 
 /**
- * Read a 32/64 bit unsigned from a FILE*, optionally inverting
- * endianness.
+ * Read a 32/64 bit unsigned from a FILE*
  */
-//template <typename T>
-//static inline T readI(FILE* in, bool swap) {
-//	T x;
-//	if(fread((void *)&x, 1, OFF_SIZE, in) != OFF_SIZE) {
-//		assert(false);
-//	}
-//	if(swap) {
-//		return endianSwapI(x);
-//	} else {
-//		return x;
-//	}
-//}
 template <typename T>
 static inline T readI(FILE* in) {
 	T x;
