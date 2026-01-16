@@ -48,8 +48,6 @@ static inline void writeI(std::ostream& out, T x) {
 /**
  * Read a 32/64 bit unsigned from an input stream
  */
-
-
 template <typename T>
 static inline T readU(std::istream& in) {
 	T x;
@@ -71,15 +69,6 @@ static inline T readU(std::istream& in) {
 /**
  * Read a 32/64 bit unsigned from a FILE*
  */
-template <typename T>
-static inline T readU(FILE* in) {
-	T x;
-	if(fread((void *)&x, sizeof(T), 1, in) != 1) {
-		perror("readU");
-		exit(1);
-	}
-	return x;
-}
 template <typename T>
 static inline T readU(FILE* in) {
 	T x;
@@ -101,27 +90,11 @@ static inline T readI(std::istream& in) {
 	assert_eq(sizeof(T), in.gcount());
 	return x;
 }
-template <typename T>
-static inline T readI(std::istream& in) {
-	T x;
-	in.read((char *)&x, sizeof(T));
-	assert_eq(sizeof(T), in.gcount());
-	return x;
-}
 
 
 /**
  * Read a 32/64 bit unsigned from a FILE*
  */
-template <typename T>
-static inline T readI(FILE* in) {
-	T x;
-	if(fread((void *)&x, sizeof(T), 1, in) != 1) {
-		perror("readI");
-		exit(1);
-	}
-	return x;
-}
 template <typename T>
 static inline T readI(FILE* in) {
 	T x;
