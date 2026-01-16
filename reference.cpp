@@ -21,7 +21,6 @@
 #include <string.h>
 #include "reference.h"
 #include "mem_ids.h"
-#include "endian_swap.h"
 
 using namespace std;
 
