@@ -106,7 +106,7 @@ BitPairReference::BitPairReference(
 	uint32_t one;
 	one = readU<int32_t>(f3);
 	if(one != 1) {
-		cerr << "Error: Memory-mapped files in little Endian" << endl;
+		cerr << "Error: Memory-mapped files in wrong endian" << endl;
 		throw 1;
 	}
 
@@ -260,7 +260,7 @@ BitPairReference::BitPairReference(
 	for(int i = 0; i < 256; i++) {
 		uint32_t word = 0;
 		if (currentlyBigEndian() ){
-			cerr << "Error: System expected to be little Endian" << endl;
+			cerr << "Error: System is wrong Endian" << endl;
 			throw 1;
 		}
 		word |= ((i >> 0) & 3) << 0;

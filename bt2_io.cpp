@@ -129,7 +129,7 @@ void Ebwt::readIntoMemory(
 	}
 
 	uint64_t bytesRead = 0;
-	uint32_t one = readU<uint32_t>(_in1); // 1st word of primary stream
+	uint32_t one = readU<uint32_t>(_in1); // 1st word of primary stream (endianness hint)
 	bytesRead += 4;
 	if(loadSASamp) {
 #ifndef NDEBUG
@@ -138,6 +138,9 @@ void Ebwt::readIntoMemory(
 		readU<uint32_t>(_in2);
 #endif
 	}
+	assert_eq(1, one);
+
+
 
 	// Reads header entries one by one from primary stream
 	TIndexOffU len          = readU<TIndexOffU>(_in1);
@@ -600,6 +603,9 @@ readEbwtRefnames(FILE* fin, EList<string>& refnames) {
 
 	uint32_t one = readU<uint32_t>(fin); // 1st word of primary stream
 	assert_neq((1u<<24), one);
+	if (one != 1){
+		std::cerr << "file marked with wrong endian" << std::endl;
+	}
 
 	// Reads header entries one by one from primary stream
 	TIndexOffU len          = readU<TIndexOffU>(fin);
@@ -697,6 +703,12 @@ int32_t Ebwt::readFlags(const string& instr) {
 	assert(in.is_open());
 	assert(in.good());
 	uint32_t one = readU<uint32_t>(in); // 1st word of primary stream
+	if(one != 1) {
+		assert_eq((1u<<24), one);
+		std::cerr << "Read of wrong endian" << std::endl;
+	}
+	assert_eq(1, one);
+
 	readU<TIndexOffU>(in);
 	readI<int32_t>(in);
 	readI<int32_t>(in);
@@ -753,8 +765,10 @@ void Ebwt::writeFromMemory(bool justHeader,
 	// When building an Ebwt, these header parameters are known
 	// "up-front", i.e., they can be written to disk immediately,
 	// before we join() or buildToDisk()
-	writeI<int32_t>(out1, 1);
+
+	writeI<int32_t>(out1, 1); // 1st word hints endianess
 	writeI<int32_t>(out2, 1);
+
 	writeU<TIndexOffU>(out1, eh._len); // length of string (and bwt and suffix array)
 	writeI<int32_t>(out1, eh._lineRate); // 2^lineRate = size in bytes of 1 line
 	writeI<int32_t>(out1, 2); // not used
