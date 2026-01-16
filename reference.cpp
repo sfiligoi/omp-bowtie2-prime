@@ -248,12 +248,20 @@ BitPairReference::BitPairReference(
 	}
 	
 	// Populate byteToU32_
+	bool big = currentlyBigEndian();
 	for(int i = 0; i < 256; i++) {
 		uint32_t word = 0;
-		word |= ((i >> 0) & 3) << 24;
-		word |= ((i >> 2) & 3) << 16;
-		word |= ((i >> 4) & 3) << 8;
-		word |= ((i >> 6) & 3) << 0;
+		if(big) {
+			word |= ((i >> 0) & 3) << 24;
+			word |= ((i >> 2) & 3) << 16;
+			word |= ((i >> 4) & 3) << 8;
+			word |= ((i >> 6) & 3) << 0;
+		} else {
+			word |= ((i >> 0) & 3) << 0;
+			word |= ((i >> 2) & 3) << 8;
+			word |= ((i >> 4) & 3) << 16;
+			word |= ((i >> 6) & 3) << 24;
+		}
 		byteToU32_[i] = word;
 	}
 	
