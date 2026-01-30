@@ -289,10 +289,6 @@ int SwDriver::extendSeeds(
 	int nceil,                   // maximum # Ns permitted in reference portion
 	size_t maxhalf,  	         // max width in either direction for DP tables
 	size_t maxIters,             // stop after this many seed-extend loop iters
-	size_t maxUg,                // stop after this many ungaps
-	size_t maxDp,                // stop after this many dps
-	size_t maxUgStreak,          // stop after streak of this many ungap fails
-	size_t maxDpStreak,          // stop after streak of this many dp fails
 	bool doExtend,               // do seed extension
 	bool enable8,                // use 8-bit SSE where possible
 	int tighten,                 // -M score tightening mode
@@ -365,12 +361,6 @@ int SwDriver::extendSeeds(
 				//riter++;
 				if(minsc == perfectScore) {
 					return EXTEND_PERFECT_SCORE;
-				}
-				if(prm.nExDps >= maxDp || prm.nMateDps >= maxDp) {
-					return EXTEND_EXCEEDED_HARD_LIMIT;
-				}
-				if(prm.nExUgs >= maxUg || prm.nMateUgs >= maxUg) {
-					return EXTEND_EXCEEDED_HARD_LIMIT;
 				}
 				if(prm.nExIters >= maxIters) {
 					return EXTEND_EXCEEDED_HARD_LIMIT;
@@ -510,9 +500,6 @@ int SwDriver::extendSeeds(
 					if(!found) {
 						prm.nExDpFails++;
 						prm.nDpFail++;
-						if(prm.nDpFail >= maxDpStreak) {
-							return EXTEND_EXCEEDED_SOFT_LIMIT;
-						}
 						if(bestCell > std::numeric_limits<TAlScore>::min() && bestCell > prm.bestLtMinscMate1) {
 							prm.bestLtMinscMate1 = bestCell;
 						}

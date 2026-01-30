@@ -417,10 +417,6 @@ public:
 		int nceil,                   // maximum # Ns permitted in ref portion
 		size_t maxhalf,              // maximum width on one side of DP table
 		size_t maxIters,             // stop after this many seed-extend loop iters
-		size_t maxUg,                // max # ungapped extends
-		size_t maxDp,                // max # DPs
-		size_t maxUgStreak,          // stop after streak of this many ungap fails
-		size_t maxDpStreak,          // stop after streak of this many dp fails
 		bool doExtend,               // do seed extension
 		bool enable8,                // use 8-bit SSE where possible
 		int tighten,                 // -M score tightening mode

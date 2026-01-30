@@ -2294,13 +2294,10 @@ public:
 		, doTighten( tighten)
 		, maxHalf( maxhalf )
 		, allMode( allHits )
-		, mxKHMul( (khits > 1) ? (khits-1) : 0 )
-		, streak( allMode ? std::numeric_limits<size_t>::max() : (maxDpStreak + mxKHMul * maxStreakIncr ))
-		, mxDp(   allMode ? std::numeric_limits<size_t>::max() : (maxDp       + mxKHMul * maxItersIncr  ))
-		, mxUg(   allMode ? std::numeric_limits<size_t>::max() : (maxUg       + mxKHMul * maxItersIncr  ))
 		// TODO: mxIter should be MAXINT for allMode
-		, mxIter( allMode ? ALN_MAX_ITER  : (maxIters    + mxKHMul * maxItersIncr  ))
+		, mxIter( allMode ? ALN_MAX_ITER  : 1) // Was: (maxIters    + mxKHMul * maxItersIncr  ))
 	{
+		assert(allMode);
 		if (mxIter>ALN_MAX_ITER) {
 			cerr << "FATAL: mxIter too big" << endl;
 			throw 1;
@@ -2321,10 +2318,6 @@ public:
 
 	// Calculate streak length
 	const bool   allMode;
-	const size_t mxKHMul;
-	const size_t streak;
-	const size_t mxDp;
-	const size_t mxUg;
 	const size_t mxIter;
 };
 
@@ -2626,8 +2619,9 @@ static void multiseedSearchWorker() {
 					exhaustive[mate] = false;
 					msobj.rnd.init(rds[mate]->seed);
 
-					msinkwrap.prm.maxDPFails = msconsts->streak;
-					assert_gt(msconsts->streak, 0);
+					// irrelevant when allHits==true
+					//msinkwrap.prm.maxDPFails = msconsts->streak;
+					//assert_gt(msconsts->streak, 0);
 
 					// Whether we're done with mate
 					// done[mate] = !filt;
@@ -2866,10 +2860,6 @@ static void multiseedSearchWorker() {
 										nceil[mate],    // N ceil for anchor
 										msconsts->maxHalf,        // max width on one DP side
 										msconsts->mxIter,         // max extend loop iters
-										msconsts->mxUg,           // max # ungapped extends
-										msconsts->mxDp,           // max # DPs
-										msconsts->streak,         // stop after streak of this many end-to-end fails
-										msconsts->streak,         // stop after streak of this many ungap fails
 										msconsts->extend,       // extend seed hits
 										msconsts->doEnable8,        // use 8-bit SSE where possible
 										msconsts->doTighten,        // -M score tightening mode
