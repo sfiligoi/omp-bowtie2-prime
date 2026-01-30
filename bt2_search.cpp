@@ -81,7 +81,9 @@ static string origString; // reference text, or filename(s)
 static int seed;          // srandom() seed
 static int timing;        // whether to report basic timing data
 static bool allHits;      // for multihits, report just one
-static bool deterministicSeeds;      // for low quality seeds, enable subsampling
+static bool legacy_deterministicSeeds;      // for low quality seeds, enable subsampling - assumed to be true during compute
+static bool legacy_doExactUpFront;   // do exact search up front if seeds seem good enough - assumed to be false during compute
+static bool legacy_do1mmUpFront;     // do 1mm search up front if seeds seem good enough - assumed to be false during compute
 static bool showVersion;  // just print version and quit?
 static int ipause;        // pause before maching?
 static int gTrim5;        // amount to trim from 5' end
@@ -279,7 +281,9 @@ static void resetOptions() {
 	seed		    = 0;	// srandom() seed
 	timing		    = 0;	// whether to report basic timing data
 	allHits		    = false;	// for multihits, report just one
-	deterministicSeeds  = false;    // for low quality seeds, enable subsampling
+	legacy_deterministicSeeds  = false;    // for low quality seeds, enable subsampling - keep original bt2 default
+	legacy_doExactUpFront	   = true;	// do exact search up front if seeds seem good enough  - keep original bt2 default
+	legacy_do1mmUpFront	   = true;	// do 1mm search up front if seeds seem good enough - keep original bt2 default
 	showVersion	    = false;	// just print version and quit?
 	ipause		    = 0;	// pause before maching?
 	gTrim5		    = 0;	// amount to trim from 5' end
@@ -1252,15 +1256,14 @@ static void parseOption(int next_option, const char *arg) {
 		break;
 	}
 	case 'a': {
-		cerr << "WARNING: allHits not supported" << endl;
-		//msample = false;
-		//allHits = true;
-		//mhits = 0; // disable -M
-		//if(saw_M || saw_k) {
-		//	cerr << "Warning: -M, -k and -a are mutually exclusive. "
-		//	     << "-a will override" << endl;
-		//}
-		//saw_a = true;
+		msample = false;
+		allHits = true;
+		mhits = 0; // disable -M
+		if(saw_M || saw_k) {
+			cerr << "Warning: -M, -k and -a are mutually exclusive. "
+			     << "-a will override" << endl;
+		}
+		saw_a = true;
 		break;
 	}
 	case 'k': {
@@ -1296,8 +1299,30 @@ static void parseOption(int next_option, const char *arg) {
 		}
 		break;
 	}
-	case 'd': deterministicSeeds = true; break;
-	case ARG_DET_SEEDS_NO: deterministicSeeds = false; break;
+	case 'd': legacy_deterministicSeeds = true; break;
+	case ARG_DET_SEEDS_NO: {
+		cerr << "WARNING: no-deterministic-seeds not supported" << endl;
+		legacy_deterministicSeeds = false;
+		break;
+        }
+	case ARG_EXACT_UPFRONT: { 
+		cerr << "WARNING: exact-upfront not supported" << endl;
+		legacy_doExactUpFront = true;
+		break;
+	}
+	case ARG_1MM_UPFRONT: {
+		cerr << "WARNING: 1mm-upfront not supported" << endl;
+		legacy_do1mmUpFront = true;
+		break;
+	}
+	case ARG_EXACT_UPFRONT_NO: {
+		legacy_doExactUpFront = false;
+		break;
+	}
+	case ARG_1MM_UPFRONT_NO: {
+		legacy_do1mmUpFront = false;
+		break;
+	}
 	case ARG_VERBOSE: gVerbose = 1; break;
 	case ARG_STARTVERBOSE: startVerbose = true; break;
 	case ARG_QUIET: gQuiet = true; break;
@@ -1419,35 +1444,29 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_IGNORE_QUALS: ignoreQuals = true; break;
 	case ARG_MAPQ_V: mapqv = parse<int>(arg); break;
 	case ARG_TIGHTEN: tighten = parse<int>(arg); break;
-	case ARG_EXACT_UPFRONT:    /* noop */ break;
-	case ARG_1MM_UPFRONT:      /* noop */ break;
-	case ARG_EXACT_UPFRONT_NO:
-		break; // the default now
-	case ARG_1MM_UPFRONT_NO:
-		break; // the default now
 	case ARG_1MM_MINLEN:       do1mmMinLen = parse<size_t>(arg); break;
 	case ARG_NOISY_HPOLY: noisyHpolymer = true; break;
 	case 'x': bt2index = arg; break;
 	case ARG_PRESET_VERY_FAST_LOCAL:
-		cerr << "WARNING: localAlign not supported" << endl; 
+		cerr << "WARNING: localAlign not supported, ignoring" << endl; 
 		break;
 	case ARG_PRESET_VERY_FAST: {
 		presetList.push_back("very-fast%LOCAL%"); break;
 	}
 	case ARG_PRESET_FAST_LOCAL:
-		cerr << "WARNING: localAlign not supported" << endl; 
+		cerr << "WARNING: localAlign not supported, ignoring" << endl; 
 		break;
 	case ARG_PRESET_FAST: {
 		presetList.push_back("fast%LOCAL%"); break;
 	}
 	case ARG_PRESET_SENSITIVE_LOCAL:
-		cerr << "WARNING: localAlign not supported" << endl; 
+		cerr << "WARNING: localAlign not supported, ignorning" << endl; 
 		break;
 	case ARG_PRESET_SENSITIVE: {
 		presetList.push_back("sensitive%LOCAL%"); break;
 	}
 	case ARG_PRESET_VERY_SENSITIVE_LOCAL:
-		cerr << "WARNING: localAlign not supported" << endl; 
+		cerr << "WARNING: localAlign not supported, ignoring" << endl; 
 		break;
 	case ARG_PRESET_VERY_SENSITIVE: {
 		presetList.push_back("very-sensitive%LOCAL%"); break;
@@ -1734,18 +1753,27 @@ static void parseOptions(int argc, const char **argv) {
 		assert_gt(mhits, 0);
 		msample = true;
 	}
-	if (deterministicSeeds ) {
+	if (legacy_doExactUpFront || legacy_do1mmUpFront) {
+		cerr << "Warning: Exact and 1MM upfront not supported, automatically turning them off." << endl;
+		legacy_doExactUpFront = false;
+		legacy_do1mmUpFront = false;
+	}
+	if (legacy_deterministicSeeds ) {
 		/* doExactUpFront and  do1mmUpFront were deprecated, mhits cannot be nz
 		if ( doExactUpFront || do1mmUpFront || (mhits!=0) ) {
-			cerr << "Warning: -d cannot be used with --exact-upfront, --1mm-upfront or -m." << endl;
+			cerr << "Error: -d cannot be used with --exact-upfront, --1mm-upfront or -m." << endl;
 			throw 1;
 		}
 		*/
-		if ( !allHits ) {
-			cerr << "Error: -d can only be used with -a." << endl;
-			throw 1;
-		}
+	} else {
+		cerr << "Warning: non-deterministic mode not supported, defaulting to deterministic mode." << endl;
+		legacy_deterministicSeeds = true;
 	}
+	if ( !allHits ) {
+		cerr << "Error: -d can only be used with -a." << endl;
+		throw 1;
+	}
+
 	if (format == UNKNOWN)
 		set_format(format, FASTQ);
 	if(mates1.size() != mates2.size()) {
