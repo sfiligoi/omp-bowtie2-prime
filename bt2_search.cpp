@@ -2293,11 +2293,13 @@ public:
 		, doEnable8( enable8 )
 		, doTighten( tighten)
 		, maxHalf( maxhalf )
+		, allMode( allHits )
 		, mxKHMul( (khits > 1) ? (khits-1) : 0 )
-		, streak( maxDpStreak + mxKHMul * maxStreakIncr )
-		, mxDp(   maxDp       + mxKHMul * maxItersIncr  )
-		, mxUg(   maxUg       + mxKHMul * maxItersIncr  )
-		, mxIter( maxIters    + mxKHMul * maxItersIncr  )
+		, streak( allMode ? std::numeric_limits<size_t>::max() : (maxDpStreak + mxKHMul * maxStreakIncr ))
+		, mxDp(   allMode ? std::numeric_limits<size_t>::max() : (maxDp       + mxKHMul * maxItersIncr  ))
+		, mxUg(   allMode ? std::numeric_limits<size_t>::max() : (maxUg       + mxKHMul * maxItersIncr  ))
+		// TODO: mxIter should be MAXINT for allMode
+		, mxIter( allMode ? ALN_MAX_ITER  : (maxIters    + mxKHMul * maxItersIncr  ))
 	{
 		if (mxIter>ALN_MAX_ITER) {
 			cerr << "FATAL: mxIter too big" << endl;
@@ -2318,6 +2320,7 @@ public:
 	const size_t maxHalf;
 
 	// Calculate streak length
+	const bool   allMode;
 	const size_t mxKHMul;
 	const size_t streak;
 	const size_t mxDp;
@@ -2419,7 +2422,7 @@ static void multiseedSearchWorker() {
 		// Instantiate an object for holding reporting-related parameters.
 		// Use new to make it GPU-accessible
 		ReportingParams* rp= new ReportingParams(
-			khits,             // -k
+			(allHits ? std::numeric_limits<THitInt>::max() : khits), // -k
 			mhits,             // -m/-M
 			0,                 // penalty gap (not used now)
 			msample,           // true -> -M was specified, otherwise assume -m

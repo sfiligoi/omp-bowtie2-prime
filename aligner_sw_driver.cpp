@@ -157,6 +157,7 @@ void SwDriver::prioritizeSATups(
 	sdrnd.ensure(min(maxelt, nelt));
 	size_t nlarge_elts = nelt - nsmall_elts;
 	if(maxelt < nelt) {
+		fprintf(stderr, "Warning: nelt>maxelt (%i>%i)\n",int(nelt),int(maxelt));
 		size_t diff = nelt - maxelt;
 		if(diff >= nlarge_elts) {
 			nlarge_elts = 0;
