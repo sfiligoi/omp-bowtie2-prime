@@ -88,8 +88,10 @@ public:
 	, need_reporting(false)
 	{}
 
+	__host__
 	SeedAlignerSearchData& operator=(const SeedAlignerSearchData& other) = default;
 
+	__host__
 	void reset(
 		const char *   _seq,            // sequence of the local seed alignment cache
 		const uint8_t _seq_len          // and its length
@@ -100,6 +102,7 @@ public:
 	  need_reporting = false;
 	}
 
+	__host__
 	void set_reporting() { need_reporting = true; }
 
 	BwtTopBotFw bwt;      // The 2 BWT idxs
@@ -109,19 +112,23 @@ public:
 
 
 	// Since we only suport exact matches, use -n_steps
+	__host__
 	constexpr int seed_step_min() const {return -n_seed_steps();}
 
 	// Maximum number of positions that the aligner may advance before
 	// its first step.  This lets the aligner know whether it can use
 	// the ftab or not.
+	__host__
 	constexpr int maxjump() const {return n_seed_steps();}
 
+	__host__
 	constexpr int8_t n_seed_steps() const { return sak.len; }               // steps in the current instantiated seed
 
 	// 
 	// sak stores values and not in the struct directly
 	// Thus c needs to be computed with bit operations
 	// 
+	__host__
 	uint8_t get_c(int off) const {
 		uint8_t c = (sak.seq >> (2 * (sak.len-1 - off))) & 0x03;
 		return c;
@@ -162,12 +169,14 @@ public:
 class SeedAlignerSearchState {
 public:
 
+	__host__
 	SeedAlignerSearchState()
 	: tloc()
 	, bloc()
 	, step(0)
 	{}
 
+	__host__
 	void reset() {
 		tloc.invalidate();
 		bloc.invalidate();
@@ -643,6 +652,19 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 	const uint32_t total_batches = (total_els+(ibatch_size-1))/ibatch_size; // round up
 
 	//fprintf(stderr, "total_els: %i total_els: %i ibatch_size: %i\n", int(ibatch_size), int(total_els), int(ibatch_size));
+	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
+		//[ebwtFw,paramVec,dataVec,total_els](uint32_t gbatch) mutable {
+		const size_t start_el = gbatch*ibatch_size;
+		size_t end_el = start_el+ibatch_size;
+		if (end_el>total_els) end_el = total_els;
+		uint64_t bwops; // just ignore the bwops for now, keep it local
+		uint8_t nleft = end_el-start_el;
+		uint8_t idxs[ibatch_size];
+    SeedAlignerSearchState sstateVec[ibatch_size];
+		SeedAligner::searchSeedBi1<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		SeedAligner::searchSeedBi2<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+	} // for gbatch
+
 #ifdef FORCE_ALL_OMP
 #ifdef OMPGPU
 #pragma omp target teams distribute parallel for
@@ -658,8 +680,6 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 		const size_t start_el = gbatch*ibatch_size;
 		size_t end_el = start_el+ibatch_size;
 		if (end_el>total_els) end_el = total_els;
-		uint64_t bwops; // just ignore the bwops for now, keep it local
-		SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(dataVec[start_el]));
 		// TODO: integrate into searchSeedBi
 		for (size_t i=start_el; i<end_el; i++) {
 			if(dataVec[i].need_reporting && doExtend) {
@@ -770,19 +790,14 @@ inline bool startSearchSeedBi(
 	return false;
 }
 
-/**
- * Given a seed, search.  Assumes zone 0 = no backtracking.
- *
- * Return a list of Seed hits.
- * 1. Edits
- * 2. Bidirectional BWT range(s) on either end
- */
 template<uint8_t SS_SIZE>
 void
-SeedAligner::searchSeedBi(
+SeedAligner::searchSeedBi1(
                         const Ebwt* ebwt,       // forward index (BWT)
                         uint64_t& bwops_,         // Burrows-Wheeler operations
-                        const uint8_t nparams,
+                        uint8_t& nleft,
+                        uint8_t* idxs, // indexes into sstateVec
+                        SeedAlignerSearchState sstateVec[],
 			SeedAlignerSearchData dataVec[])
 {
 	const EbwtParams& ep = ebwt->eh();
@@ -791,12 +806,12 @@ SeedAligner::searchSeedBi(
 	const TIndexOffU * const eftab = ebwt->eftab();
 	const TIndexOffU * const fchr =  ebwt->fchr();
 
-	uint8_t idxs[SS_SIZE]; // indexes into sstateVec
+	//uint8_t idxs[SS_SIZE]; // indexes into sstateVec
 
-	SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
-	assert(nparams<=SS_SIZE);
+	//SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
+	assert(nleft<=SS_SIZE);
 
-	uint8_t nleft = nparams; // will keep track of how many are not done yet
+	//uint8_t nleft = nparams; // will keep track of how many are not done yet
 
 	{
 	   uint8_t n=0;
@@ -823,6 +838,39 @@ SeedAligner::searchSeedBi(
 		}
 	    }
 	}
+
+
+	return;
+}
+/**
+ * Given a seed, search.  Assumes zone 0 = no backtracking.
+ *
+ * Return a list of Seed hits.
+ * 1. Edits
+ * 2. Bidirectional BWT range(s) on either end
+ */
+template<uint8_t SS_SIZE>
+void
+SeedAligner::searchSeedBi2(
+                        const Ebwt* ebwt,       // forward index (BWT)
+                        uint64_t& bwops_,         // Burrows-Wheeler operations
+                        uint8_t& nleft,
+                        uint8_t* idxs, // indexes into sstateVec
+                        SeedAlignerSearchState sstateVec[],
+			SeedAlignerSearchData dataVec[])
+{
+	const EbwtParams& ep = ebwt->eh();
+	const uint8_t* const ebwtPtr = ebwt->ebwt();
+	const TIndexOffU * const ftab = ebwt->ftab();
+	const TIndexOffU * const eftab = ebwt->eftab();
+	const TIndexOffU * const fchr =  ebwt->fchr();
+
+	//uint8_t idxs[SS_SIZE]; // indexes into sstateVec
+
+	//SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
+	assert(nleft<=SS_SIZE);
+
+	//uint8_t nleft = nparams; // will keep track of how many are not done yet
 
 
 	while (nleft>0) {
