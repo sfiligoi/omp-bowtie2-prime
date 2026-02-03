@@ -520,7 +520,7 @@ int SwDriver::extendSeeds(
 						if(swa.done()) {
 							break;
 						}
-						swa.nextAlignment(resGap_, minsc, rnd);
+						swa.nextAlignment(resGap_, minsc);
 						found = !resGap_.empty();
 						if(!found) {
 							break;
