@@ -917,8 +917,7 @@ public:
 	void init(
 		const Ebwt& ebwtFw,         // forward Bowtie index for walking left
 		const BitPairReference& ref,// bitpair-encoded reference
-		SARangeWithOffs<T>& sa,     // SA range with offsets
-		RandomSource& rnd)          // pseudo-random generator for sampling rows
+		SARangeWithOffs<T>& sa)     // SA range with offsets
 	{
 		reset();
 #ifndef NDEBUG

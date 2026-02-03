@@ -187,8 +187,7 @@ void SwDriver::prioritizeSATups(
 		gws_.back().init(
 			ebwtFw, // forward Bowtie index
 			ref,    // reference sequences
-			sa,     // SA tuples: ref hit, salist range
-			rnd);   // pseudo-random generator
+			sa);     // SA tuples: ref hit, salist range
 		assert(gws_.back().initialized());
 		rand_ns_.push_back(satpos_.back().sat.size());
 		nelt_added += satpos_.back().sat.size();
@@ -249,8 +248,7 @@ void SwDriver::prioritizeSATups(
 		gws_.back().init(
 			ebwtFw, // forward Bowtie index
 			ref,    // reference sequences
-			sa,     // SA tuples: ref hit, salist range
-			rnd);   // pseudo-random generator
+			sa);     // SA tuples: ref hit, salist range
 		assert(gws_.back().initialized());
 		// Initialize random selector
 		rand_ns_.push_back(1);
