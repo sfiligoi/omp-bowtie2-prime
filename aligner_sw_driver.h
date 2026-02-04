@@ -92,7 +92,7 @@
 
 // Hardcode for now. May want to pass in Makefile
 // The chosen values are appropriate for the default SHOTGUN paramers
-#define ALN_MAX_ITER 800
+#define ALN_MAX_ITER 1600
 
 
 struct SeedPos {
@@ -505,12 +505,9 @@ protected:
 	size_t nelt_;  // set by prioritizeSATups
 
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos_;  // holds SATuple, SeedPos pairs
-	DList<SATupleAndPos, ALN_MAX_ITER> satpos2_; // holds SATuple, SeedPos pairs
-	DList<GroupWalk2S<TSlice>, ALN_MAX_ITER > gws_;   // list of GroupWalks; no particular order
+	DList<GroupWalk2S<TSlice>, 1 > gws_;   // list of GroupWalks; only one used at a time
 	RowSampler               rowsamp_;     // row sampler
 	
-	DList<uint32_t, ALN_MAX_ITER> rand_ns_;  // How big are the random number ranges
-
 	// Ranges that we've extended through when extending seed hits
 	EList<ExtendRange> seedExRangeFw_;
 	EList<ExtendRange> seedExRangeRc_;

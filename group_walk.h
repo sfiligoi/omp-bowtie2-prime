@@ -88,8 +88,9 @@
 #include "reference.h"
 #include "mem_ids.h"
 
-// We need 4+1, but keep it even
-#define TStateVSize ((int)6)
+// We need it to be larger that largest range
+// TODO: Probably should be dynamic
+#define TStateVSize ((int)2048)
 
 /**
  * Encapsulate an SA range and an associated list of slots where the resolved
