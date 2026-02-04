@@ -63,7 +63,6 @@ void SwDriver::prioritizeSATups(
 	const Ebwt& ebwtFw,          // BWT
 	const BitPairReference& ref, // Reference strings
 	int seedmms,                 // # mismatches allowed in seed
-	size_t maxelt,               // max elts we'll consider
 	bool lensq,                  // square length in weight calculation
 	bool szsq,                   // square range size in weight calculation
 	AlignmentCacheInterface ca,  // alignment cache for seed hits
@@ -105,10 +104,14 @@ void SwDriver::prioritizeSATups(
 		   if(!skip) {
 			// Check satups not already in satpos
 			const uint32_t sp_sz = satpos_.size();
-			if(ALN_MAX_ITER < sp_sz) fprintf(stderr, "Warning: sp_sz>ALN_MAX_ITER (%i>%i)\n",int(sp_sz),int(ALN_MAX_ITER));
-			for (uint32_t k = 0; k < sp_sz; k++) {
+			if(ALN_MAX_ITER <= sp_sz) {
+				fprintf(stderr, "Warning: sp_sz=>ALN_MAX_ITER (%i=>%i), ignoring hit\n",int(sp_sz),int(ALN_MAX_ITER));
+				skip = true;
+			} else {
+			  for (uint32_t k = 0; k < sp_sz; k++) {
 				// We are relying on fmap being uquique in each satpos
 				skip |= satpos_[k].sat.fmap == satup.fmap;
+			  }
 			}
 		   }
 		   if(skip) {
@@ -137,28 +140,10 @@ void SwDriver::prioritizeSATups(
 		   } // not skip
 		} // setup valid
 	} // for i
-	if(ALN_MAX_ITER < nrange) fprintf(stderr, "Warning: nrange>ALN_MAX_ITER (%i>%i)\n",int(nrange),int(ALN_MAX_ITER));
+	if(ALN_MAX_ITER < nrange) fprintf(stderr, "Internal logic error: nrange>ALN_MAX_ITER (%i>%i)\n",int(nrange),int(ALN_MAX_ITER));
 	assert_eq(nrange, satpos_.size());
 	satpos_.sort();
-	size_t nelt_added = 0;
-	// We may not want to keep all of the ranges
-	// so check if we hit max before we run of them
-	size_t sp_el = 0;
-	for(sp_el = 0; (sp_el < nrange) && (nelt_added < maxelt); sp_el++) {
-		const SATupleAndPos& satpos = satpos_[sp_el];
-		nelt_added += satpos.sat.size();
-#ifndef NDEBUG
-		for(size_t k = 0; k < sp_el; k++) {
-			assert(!(satpos_[k] == satpos_[sp_el]));
-		}
-#endif
-	}
-	if (sp_el < nrange) {
-		// did not use all elements, truncate
-		satpos_.resize(sp_el);
-	}
-
-	nelt_ = nelt_added;
+	nelt_ = nelt;
 	return;
 }
 
@@ -190,7 +175,6 @@ int SwDriver::extendSeeds(
 	TAlScore& minsc,             // minimum score for anchor
 	int nceil,                   // maximum # Ns permitted in reference portion
 	size_t maxhalf,  	         // max width in either direction for DP tables
-	size_t maxIters,             // stop after this many seed-extend loop iters
 	bool doExtend,               // do seed extension
 	bool enable8,                // use 8-bit SSE where possible
 	int tighten,                 // -M score tightening mode
@@ -273,9 +257,6 @@ int SwDriver::extendSeeds(
 				//riter++;
 				if(minsc == perfectScore) {
 					return EXTEND_PERFECT_SCORE;
-				}
-				if(prm.nExIters >= maxIters) {
-					return EXTEND_EXCEEDED_HARD_LIMIT;
 				}
 				prm.nExIters++;
 				// Resolve next element offset

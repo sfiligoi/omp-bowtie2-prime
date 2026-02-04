@@ -387,7 +387,6 @@ public:
 		const Ebwt& ebwtFw,          // BWT
 		const BitPairReference& ref, // Reference strings
 		int seedmms,                 // # seed mismatches allowed
-		size_t maxelt,               // max elts we'll consider
 		bool lensq,                  // square extended length
 		bool szsq,                   // square SA range size
 		AlignmentCacheInterface ca,  // alignment cache for seed hits
@@ -416,7 +415,6 @@ public:
 		TAlScore& minsc,             // minimum score for anchor
 		int nceil,                   // maximum # Ns permitted in ref portion
 		size_t maxhalf,              // maximum width on one side of DP table
-		size_t maxIters,             // stop after this many seed-extend loop iters
 		bool doExtend,               // do seed extension
 		bool enable8,                // use 8-bit SSE where possible
 		int tighten,                 // -M score tightening mode

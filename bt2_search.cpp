@@ -2293,15 +2293,8 @@ public:
 		, doEnable8( enable8 )
 		, doTighten( tighten)
 		, maxHalf( maxhalf )
-		, allMode( allHits )
-		// TODO: mxIter should be MAXINT for allMode
-		, mxIter( allMode ? ALN_MAX_ITER  : 1) // Was: (maxIters    + mxKHMul * maxItersIncr  ))
 	{
-		assert(allMode);
-		if (mxIter>ALN_MAX_ITER) {
-			cerr << "FATAL: mxIter too big" << endl;
-			throw 1;
-		}
+		assert(allHits); // was allMode == allHits
 	}
 
 	const BitPairReference& ref;
@@ -2316,9 +2309,7 @@ public:
 	const int  doTighten; 
 	const size_t maxHalf;
 
-	// Calculate streak length
-	const bool   allMode;
-	const size_t mxIter;
+	constexpr static bool   allMode = true;
 };
 
 #include <iostream>
@@ -2795,7 +2786,6 @@ static void multiseedSearchWorker() {
 							msconsts->ebwtFw,        // BWT
 							msconsts->ref,           // Reference strings
 							multiseedMms,       // # seed mismatches allowed
-							msconsts->mxIter,      // max rows to consider per position
 							true,          // square extended length
 							true,          // square SA range size
 							ca,            // alignment cache for seed hits
@@ -2859,7 +2849,6 @@ static void multiseedSearchWorker() {
 										minsc[mate],    // minimum score for valid
 										nceil[mate],    // N ceil for anchor
 										msconsts->maxHalf,        // max width on one DP side
-										msconsts->mxIter,         // max extend loop iters
 										msconsts->extend,       // extend seed hits
 										msconsts->doEnable8,        // use 8-bit SSE where possible
 										msconsts->doTighten,        // -M score tightening mode
