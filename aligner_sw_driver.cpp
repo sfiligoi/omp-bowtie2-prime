@@ -169,15 +169,14 @@ int SwDriver::extendSeeds(
 	const BitPairReference& ref, // Reference strings
 	SwAligner& swa,              // dynamic programming aligner
 	const Scoring& sc,           // scoring scheme
-	int seedmms,                 // # mismatches allowed in seed
-	int seedlen,                 // length of seed
-	int seedival,                // interval between seeds
-	TAlScore& minsc,             // minimum score for anchor
-	int nceil,                   // maximum # Ns permitted in reference portion
-	size_t maxhalf,  	         // max width in either direction for DP tables
-	bool doExtend,               // do seed extension
-	bool enable8,                // use 8-bit SSE where possible
-	int tighten,                 // -M score tightening mode
+	const int seedmms,           // # mismatches allowed in seed
+	const int seedlen,           // length of seed
+	const int seedival,          // interval between seeds
+	const TAlScore minsc,        // minimum score for anchor
+	const int nceil,             // maximum # Ns permitted in reference portion
+	const size_t maxhalf,  	     // max width in either direction for DP tables
+	const bool doExtend,         // do seed extension
+	const bool enable8,          // use 8-bit SSE where possible
 	SwDriverRands& sdrnd,        // pseudo-random source object
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
@@ -207,6 +206,13 @@ int SwDriver::extendSeeds(
 	
 	// Calculate the largest possible number of read and reference gaps
 	TAlScore perfectScore = sc.perfectScore(rdlen);
+	if(minsc == perfectScore) {
+		// we should never get in here, should have been feltered out
+		fprintf(stderr, "Warning, internal logical: Found perfect score in extendSeed\n");
+		return EXTEND_PERFECT_SCORE; // Already found all perfect hits!
+	}
+	const int readGaps = sc.maxReadGaps(minsc, rdlen);
+	const int refGaps  = sc.maxRefGaps(minsc, rdlen);
 
 	// cerr << "===" << endl;
 	const uint32_t sp_size = satpos_.size();
@@ -217,9 +223,6 @@ int SwDriver::extendSeeds(
 	size_t neltLeft = nelt_;
 
 	{
-		if(minsc == perfectScore) {
-			return EXTEND_PERFECT_SCORE; // Already found all perfect hits!
-		}
 		for(uint32_t i = 0; i < sp_size; i++) {
 			// In deterministic mode, we can reuse the same gws_ element
 			auto &gws = gws_[0];
@@ -254,14 +257,9 @@ int SwDriver::extendSeeds(
 
 			for (uint32_t elt = 0; elt<sat_size; elt++) {
 				assert(!gws.done());
-				//riter++;
-				if(minsc == perfectScore) {
-					return EXTEND_PERFECT_SCORE;
-				}
 				prm.nExIters++;
 				// Resolve next element offset
 				WalkResult wr;
-				//cerr << "elt=" << elt << endl;
 				SARangeWithOffs<TSlice> sa(
 					satpos.sat.topf,
 					satpos.sat.key.len,
@@ -327,8 +325,6 @@ int SwDriver::extendSeeds(
 				//
 				// We do #1 here, since it is simple and we have all the seed-hit
 				// information here.  #2 and #3 are handled in the DynProgFramer.
-				int readGaps = sc.maxReadGaps(minsc, rdlen);
-				int refGaps  = sc.maxRefGaps(minsc, rdlen);
 				bool found = false;
 				// int64_t pastedRefoff = (int64_t)wr.toff - rdoff;
 				DPRect rect;
@@ -461,38 +457,6 @@ int SwDriver::extendSeeds(
 							// Short-circuited because a limit, e.g. -k, -m or
 							// -M, was exceeded
 							return EXTEND_POLICY_FULFILLED;
-						}
-						if(tighten > 0 &&
-						   msink->Mmode() &&
-						   msink->hasSecondBestUnp1())
-						{
-							if(tighten == 1) {
-								if(msink->bestUnp1() >= minsc) {
-									minsc = msink->bestUnp1();
-									if(minsc < perfectScore &&
-									   msink->bestUnp1() == msink->secondBestUnp1())
-									{
-										minsc++;
-									}
-								}
-							} else if(tighten == 2) {
-								if(msink->secondBestUnp1() >= minsc) {
-									minsc = msink->secondBestUnp1();
-									if(minsc < perfectScore) {
-										minsc++;
-									}
-								}
-							} else {
-								TAlScore diff = msink->bestUnp1() - msink->secondBestUnp1();
-								TAlScore bot = msink->secondBestUnp1() + ((diff*3)/4);
-								if(bot >= minsc) {
-									minsc = bot;
-									if(minsc < perfectScore) {
-										minsc++;
-									}
-								}
-							}
-							assert_leq(minsc, perfectScore);
 						}
 					}
 				}

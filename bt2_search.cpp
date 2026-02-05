@@ -2291,7 +2291,6 @@ public:
 		, norc( gNorc )
 		, extend( doExtend )
 		, doEnable8( enable8 )
-		, doTighten( tighten)
 		, maxHalf( maxhalf )
 	{
 		assert(allHits); // was allMode == allHits
@@ -2306,7 +2305,6 @@ public:
 
 	const bool extend;
 	const bool doEnable8;
-	const int  doTighten; 
 	const size_t maxHalf;
 
 	constexpr static bool   allMode = true;
@@ -2414,6 +2412,9 @@ static void multiseedSearchWorker() {
 			gReportMixed);     // report unpaired alignments for paired reads?
 
 		const bool allHits = rp->allHits();
+		if (!allHits) { fprintf(stderr,"Internal logical error: allHits not true\n"); throw 1;}
+		if (rp->mhitsSet()) { fprintf(stderr,"Internal logical error: Mmode is true\n");  throw 1;}
+
 		// Note: Cannot use std:vector due to GPU compute not having access to the CPU stack
 
 		// Instantiate a mapping quality calculator
@@ -2851,7 +2852,6 @@ static void multiseedSearchWorker() {
 										msconsts->maxHalf,        // max width on one DP side
 										msconsts->extend,       // extend seed hits
 										msconsts->doEnable8,        // use 8-bit SSE where possible
-										msconsts->doTighten,        // -M score tightening mode
 										sdrnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
 										&msinkwrap,     // for organizing hits

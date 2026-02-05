@@ -409,15 +409,14 @@ public:
 		const BitPairReference& ref, // Reference strings
 		SwAligner& swa,              // dynamic programming aligner
 		const Scoring& sc,           // scoring scheme
-		int seedmms,                 // # mismatches allowed in seed
-		int seedlen,                 // length of seed
-		int seedival,                // interval between seeds
-		TAlScore& minsc,             // minimum score for anchor
-		int nceil,                   // maximum # Ns permitted in ref portion
-		size_t maxhalf,              // maximum width on one side of DP table
-		bool doExtend,               // do seed extension
-		bool enable8,                // use 8-bit SSE where possible
-		int tighten,                 // -M score tightening mode
+		const int seedmms,           // # mismatches allowed in seed
+		const int seedlen,           // length of seed
+		const int seedival,          // interval between seeds
+		const TAlScore minsc,        // minimum score for anchor
+		const int nceil,             // maximum # Ns permitted in ref portion
+		const size_t maxhalf,        // maximum width on one side of DP table
+		const bool doExtend,         // do seed extension
+		const bool enable8,          // use 8-bit SSE where possible
 		SwDriverRands& sdrnd,        // pseudo-random source object
 		PerReadMetrics& prm,         // per-read metrics
 		AlnSinkWrap* mhs,            // HitSink for multiseed-style aligner
