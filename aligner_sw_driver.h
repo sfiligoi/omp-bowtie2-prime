@@ -358,9 +358,6 @@ public:
 
 protected:
 
-	// if range as <= nsm elts, it's "small"
-	constexpr static size_t nsm = 5;
-
 	size_t nelt_;  // set by prioritizeSATups
 
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos_;  // holds SATuple, SeedPos pairs
