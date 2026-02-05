@@ -2354,7 +2354,19 @@ public:
 	const char* msgs[32];
 };
 
-
+static inline uint32_t get_lowseeds_ncut(const AlnSink& msink) {
+	size_t ncut = std::numeric_limits<size_t>::max(); // pure -a
+	if (lowseeds>0) {
+		ncut = ((lowseedsDivider!=0) ? ((msink.num_refnames() * lowseeds + (lowseedsDivider-1))/lowseedsDivider) // round up, avoid 0
+                                              : lowseeds
+                        );
+	}
+	if (ncut>(TStateVSize-5)) {
+		ncut = TStateVSize-5;
+		fprintf(stderr, "Warning: Exceeding implementation limit, setting lowseeds=%i\n",int(ncut));
+	}
+	return ncut;
+}
 /**
  * Called once per thread.  Sets up per-thread pointers to the shared global
  * data structures, creates per-thread structures, then enters the alignment
@@ -2381,11 +2393,7 @@ static void multiseedSearchWorker() {
 
 	constexpr bool paired = false;
 
-	const size_t lowseeds_ncut = (lowseeds>0) ?
-			((lowseedsDivider!=0) ? ((msink.num_refnames() * lowseeds + (lowseedsDivider-1))/lowseedsDivider) // round up, avoid 0
-					      : lowseeds
-			) :
-			std::numeric_limits<size_t>::max(); // never filter by size
+	const size_t lowseeds_ncut = get_lowseeds_ncut(msink);
 
 	BTAllocator worker_alloc;
 #ifdef USE_CUSTOM_ALLOCS
