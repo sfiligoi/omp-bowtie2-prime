@@ -176,103 +176,6 @@ struct SATupleAndPos {
 };
 
 /**
- * Encapsulates the weighted random sampling scheme we want to use to pick
- * which seed hit range to sample a row from.
- */
-class RowSampler {
-
-public:
-
-	RowSampler(int cat = 0) { 
-		mass_ = 0.0f;
-	}
-
-	// allow move operators
-	RowSampler(RowSampler&& o) = default;
-	RowSampler& operator=(RowSampler&& o) noexcept= default;
-
-	// but not copy operators
-	RowSampler(const RowSampler& o) = delete;
-	RowSampler& operator=(const RowSampler& o) = delete;
-	
-	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-	}
-
-	void set_alloc(std::pair<BTAllocator *, bool> arg) {
-	}
-
-	/**
-	 * Initialze sampler with respect to a range of elements in a list of
-	 * SATupleAndPos's.
-	 */
-	void init(
-		const AList<SATupleAndPos>& salist,
-		size_t sai,
-		size_t saf,
-		bool lensq, // whether to square the numerator, which = extended length
-		bool szsq)  // whether to square denominator, which = 
-	{
-		assert_gt(saf, sai);
-		elim_.resize(saf - sai);
-		elim_.fill(false);
-		// Initialize mass
-		mass_ = 0.0f;
-		masses_.resize(saf - sai);
-		for(size_t i = sai; i < saf; i++) {
-			size_t len = salist[i].sat.nlex + 1; // + salist[i].sat.key.len;
-			double num = (double)len;
-			if(lensq) {
-				num *= num;
-			}
-			double denom = (double)salist[i].sat.size();
-			if(szsq) {
-				denom *= denom;
-			}
-			masses_[i - sai] = num / denom;
-			mass_ += masses_[i - sai];
-		}
-	}
-	
-	/**
-	 * Caller is indicating that the bin at index i is exhausted and we should
-	 * exclude it from our sampling from now on.
-	 */
-	void finishedRange(size_t i) {
-		assert_lt(i, masses_.size());
-		elim_[i] = true;
-		mass_ -= masses_[i];
-	}
-	
-	/**
-	 * Sample randomly from the mass.
-	 */
-	size_t next(RandomSource& rnd) {
-		// Throw the dart
-		double rd = rnd.nextFloat() * mass_;
-		double mass_sofar = 0.0f;
-		size_t sz = masses_.size();
-		size_t last_unelim = std::numeric_limits<size_t>::max();
-		for(size_t i = 0; i < sz; i++) {
-			if(!elim_[i]) {
-				last_unelim = i;
-				mass_sofar += masses_[i];
-				if(rd < mass_sofar) {
-					// This is the one we hit
-					return i;
-				}
-			}
-		}
-		assert_neq(std::numeric_limits<size_t>::max(), last_unelim);
-		return last_unelim;
-	}
-
-protected:
-	double                       mass_;    // total probability mass to throw darts at
-	DList<bool  , ALN_MAX_ITER>  elim_;    // whether the range is eliminated
-	DList<double, ALN_MAX_ITER>  masses_;  // mass of each range
-};
-
-/**
  * Return values from extendSeeds and extendSeedsPaired.
  */
 enum {
@@ -308,44 +211,6 @@ struct ExtendRange {
 	size_t sz;  // # of elements in SA range
 };
 
-class SwDriverRands {
-public:
-	SwDriverRands() : prnd(NULL) {}
-	~SwDriverRands() {} // nothing to do, prnd not owned
-
-	// Allow move operator
-	SwDriverRands(SwDriverRands&& other) = default;
-	SwDriverRands& operator=(SwDriverRands&& other) noexcept = default;
-
-	// but not copy
-	SwDriverRands(const SwDriverRands& other) = delete;
-	SwDriverRands& operator=(const SwDriverRands& other) = delete;
-
-	void reset(RandomSource& rnd) {
-		prnd = &rnd;
-		clear(); // clear any old states
-	}
-
-	void clear() {
-		rands_.clear();
-	}
-
-	void ensure(size_t thresh) {
-		rands_.ensure(thresh);
-	}
-
-	RandomSource& get_rnd() {
-		assert(prnd!=NULL);
-		return *prnd;
-	}
-
-	DList<Random1toN, ALN_MAX_ITER>    rands_;   // random number generators
-
-protected:
-	RandomSource* prnd;           // pseudo-random source
-
-};
-
 class SwDriver {
 
 public:
@@ -366,7 +231,6 @@ public:
 	SwDriver& operator=(const SwDriver& other) = delete;
 
 	void set_alloc(BTAllocator *alloc, bool propagate_alloc=true) {
-		rowsamp_.set_alloc(alloc,propagate_alloc);
 		seenDiags1_.set_alloc(alloc,propagate_alloc);
 		seenDiags2_.set_alloc(alloc,propagate_alloc);
 		redAnchor_.set_alloc(alloc,propagate_alloc);
@@ -390,7 +254,6 @@ public:
 		bool lensq,                  // square extended length
 		bool szsq,                   // square SA range size
 		AlignmentCacheInterface ca,  // alignment cache for seed hits
-		SwDriverRands& sdrnd,        // pseudo-random generator object
 		bool all);                   // report all hits?
 
 	/**
@@ -417,7 +280,6 @@ public:
 		const size_t maxhalf,        // maximum width on one side of DP table
 		const bool doExtend,         // do seed extension
 		const bool enable8,          // use 8-bit SSE where possible
-		SwDriverRands& sdrnd,        // pseudo-random source object
 		PerReadMetrics& prm,         // per-read metrics
 		AlnSinkWrap* mhs,            // HitSink for multiseed-style aligner
 		bool reportImmediately,      // whether to report hits immediately to mhs
@@ -503,7 +365,6 @@ protected:
 
 	DList<SATupleAndPos, ALN_MAX_ITER> satpos_;  // holds SATuple, SeedPos pairs
 	DList<GroupWalk2S<TSlice>, 1 > gws_;   // list of GroupWalks; only one used at a time
-	RowSampler               rowsamp_;     // row sampler
 	
 	// Ranges that we've extended through when extending seed hits
 	EList<ExtendRange> seedExRangeFw_;

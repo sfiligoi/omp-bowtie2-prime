@@ -66,7 +66,6 @@ void SwDriver::prioritizeSATups(
 	bool lensq,                  // square length in weight calculation
 	bool szsq,                   // square range size in weight calculation
 	AlignmentCacheInterface ca,  // alignment cache for seed hits
-	SwDriverRands& sdrnd,        // pseudo-random source object
 	bool all)                    // report all hits?
 {
 	const size_t nonz = sh.nonzeroOffsets(); // non-zero positions
@@ -177,7 +176,6 @@ int SwDriver::extendSeeds(
 	const size_t maxhalf,  	     // max width in either direction for DP tables
 	const bool doExtend,         // do seed extension
 	const bool enable8,          // use 8-bit SSE where possible
-	SwDriverRands& sdrnd,        // pseudo-random source object
 	PerReadMetrics& prm,         // per-read metrics
 	AlnSinkWrap* msink,          // AlnSink wrapper for multiseed-style aligner
 	bool reportImmediately,      // whether to report hits immediately to msink

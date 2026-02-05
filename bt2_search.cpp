@@ -2235,7 +2235,6 @@ class bcWorkerObjs {
 public:
 	bcWorkerObjs()
 	: sw()
-	, sdrnd()
 	{}
 
 	bcWorkerObjs(bcWorkerObjs&& o) = default;
@@ -2250,7 +2249,6 @@ public:
 	}
 
 	SwAligner sw;
-	SwDriverRands sdrnd;
 };
 
 class msWorkerObjs {
@@ -2778,7 +2776,6 @@ static void multiseedSearchWorker() {
 			   // These objects are really just work areas
 			   // Could have just created them here, but this way we minimize mallocs
 			   bcWorkerObjs& bcobj = g_bcobjs[nb];
-			   SwDriverRands &sdrnd = bcobj.sdrnd;
 
 			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
 				const uint32_t mate = nb*reads_per_batch + ib;
@@ -2786,9 +2783,6 @@ static void multiseedSearchWorker() {
 					msWorkerObjs& msobj = g_msobjs[mate];
 					const SeedResults& sh = psrs->getSR(mate);
 					AlignmentCacheInterface ca = als.getCacheInterface(mate); // copy OK, just a few references
-
-					// sdrnd is thread wise, but rnd is read specific
-					sdrnd.reset(msobj.rnd);
 
 					msobj.sd.prioritizeSATups(
 							sh,            // seed hits to extend into full alignments
@@ -2798,7 +2792,6 @@ static void multiseedSearchWorker() {
 							true,          // square extended length
 							true,          // square SA range size
 							ca,            // alignment cache for seed hits
-							sdrnd,         // pseudo-random generator
 							allHits);      // report all hits?
 				} // if mate done
 			   } // for ib
@@ -2817,7 +2810,6 @@ static void multiseedSearchWorker() {
 			   // Could have just created them here, but this way we minimize mallocs
 			   bcWorkerObjs& bcobj = g_bcobjs[nb];
 			   SwAligner &sw = bcobj.sw;
-			   SwDriverRands &sdrnd = bcobj.sdrnd;
 
 			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
 				const uint32_t mate = nb*reads_per_batch + ib;
@@ -2842,8 +2834,6 @@ static void multiseedSearchWorker() {
 					} else {
 						const SeedResults& sh = psrs->getSR(mate);
 
-						// sdrnd is thread wise, but rnd is read specific
-						sdrnd.reset(msobj.rnd);
 
 								// Unpaired dynamic programming driver
 								int ret = msobj.sd.extendSeeds(
@@ -2860,7 +2850,6 @@ static void multiseedSearchWorker() {
 										msconsts->maxHalf,        // max width on one DP side
 										msconsts->extend,       // extend seed hits
 										msconsts->doEnable8,        // use 8-bit SSE where possible
-										sdrnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
 										&msinkwrap,     // for organizing hits
 										true,           // report hits once found
