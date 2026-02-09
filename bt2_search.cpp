@@ -81,7 +81,9 @@ static string origString; // reference text, or filename(s)
 static int seed;          // srandom() seed
 static int timing;        // whether to report basic timing data
 static bool allHits;      // for multihits, report just one
-static bool deterministicSeeds;      // for low quality seeds, enable subsampling
+static bool legacy_deterministicSeeds;      // for low quality seeds, enable subsampling - assumed to be true during compute
+static bool legacy_doExactUpFront;   // do exact search up front if seeds seem good enough - assumed to be false during compute
+static bool legacy_do1mmUpFront;     // do 1mm search up front if seeds seem good enough - assumed to be false during compute
 static bool showVersion;  // just print version and quit?
 static int ipause;        // pause before maching?
 static int gTrim5;        // amount to trim from 5' end
@@ -279,7 +281,9 @@ static void resetOptions() {
 	seed		    = 0;	// srandom() seed
 	timing		    = 0;	// whether to report basic timing data
 	allHits		    = false;	// for multihits, report just one
-	deterministicSeeds  = false;    // for low quality seeds, enable subsampling
+	legacy_deterministicSeeds  = false;    // for low quality seeds, enable subsampling - keep original bt2 default
+	legacy_doExactUpFront	   = true;	// do exact search up front if seeds seem good enough  - keep original bt2 default
+	legacy_do1mmUpFront	   = true;	// do 1mm search up front if seeds seem good enough - keep original bt2 default
 	showVersion	    = false;	// just print version and quit?
 	ipause		    = 0;	// pause before maching?
 	gTrim5		    = 0;	// amount to trim from 5' end
@@ -1252,15 +1256,14 @@ static void parseOption(int next_option, const char *arg) {
 		break;
 	}
 	case 'a': {
-		cerr << "WARNING: allHits not supported" << endl;
-		//msample = false;
-		//allHits = true;
-		//mhits = 0; // disable -M
-		//if(saw_M || saw_k) {
-		//	cerr << "Warning: -M, -k and -a are mutually exclusive. "
-		//	     << "-a will override" << endl;
-		//}
-		//saw_a = true;
+		msample = false;
+		allHits = true;
+		mhits = 0; // disable -M
+		if(saw_M || saw_k) {
+			cerr << "Warning: -M, -k and -a are mutually exclusive. "
+			     << "-a will override" << endl;
+		}
+		saw_a = true;
 		break;
 	}
 	case 'k': {
@@ -1296,8 +1299,30 @@ static void parseOption(int next_option, const char *arg) {
 		}
 		break;
 	}
-	case 'd': deterministicSeeds = true; break;
-	case ARG_DET_SEEDS_NO: deterministicSeeds = false; break;
+	case 'd': legacy_deterministicSeeds = true; break;
+	case ARG_DET_SEEDS_NO: {
+		cerr << "WARNING: no-deterministic-seeds not supported" << endl;
+		legacy_deterministicSeeds = false;
+		break;
+        }
+	case ARG_EXACT_UPFRONT: { 
+		cerr << "WARNING: exact-upfront not supported" << endl;
+		legacy_doExactUpFront = true;
+		break;
+	}
+	case ARG_1MM_UPFRONT: {
+		cerr << "WARNING: 1mm-upfront not supported" << endl;
+		legacy_do1mmUpFront = true;
+		break;
+	}
+	case ARG_EXACT_UPFRONT_NO: {
+		legacy_doExactUpFront = false;
+		break;
+	}
+	case ARG_1MM_UPFRONT_NO: {
+		legacy_do1mmUpFront = false;
+		break;
+	}
 	case ARG_VERBOSE: gVerbose = 1; break;
 	case ARG_STARTVERBOSE: startVerbose = true; break;
 	case ARG_QUIET: gQuiet = true; break;
@@ -1419,35 +1444,29 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_IGNORE_QUALS: ignoreQuals = true; break;
 	case ARG_MAPQ_V: mapqv = parse<int>(arg); break;
 	case ARG_TIGHTEN: tighten = parse<int>(arg); break;
-	case ARG_EXACT_UPFRONT:    /* noop */ break;
-	case ARG_1MM_UPFRONT:      /* noop */ break;
-	case ARG_EXACT_UPFRONT_NO:
-		break; // the default now
-	case ARG_1MM_UPFRONT_NO:
-		break; // the default now
 	case ARG_1MM_MINLEN:       do1mmMinLen = parse<size_t>(arg); break;
 	case ARG_NOISY_HPOLY: noisyHpolymer = true; break;
 	case 'x': bt2index = arg; break;
 	case ARG_PRESET_VERY_FAST_LOCAL:
-		cerr << "WARNING: localAlign not supported" << endl; 
+		cerr << "WARNING: localAlign not supported, ignoring" << endl; 
 		break;
 	case ARG_PRESET_VERY_FAST: {
 		presetList.push_back("very-fast%LOCAL%"); break;
 	}
 	case ARG_PRESET_FAST_LOCAL:
-		cerr << "WARNING: localAlign not supported" << endl; 
+		cerr << "WARNING: localAlign not supported, ignoring" << endl; 
 		break;
 	case ARG_PRESET_FAST: {
 		presetList.push_back("fast%LOCAL%"); break;
 	}
 	case ARG_PRESET_SENSITIVE_LOCAL:
-		cerr << "WARNING: localAlign not supported" << endl; 
+		cerr << "WARNING: localAlign not supported, ignorning" << endl; 
 		break;
 	case ARG_PRESET_SENSITIVE: {
 		presetList.push_back("sensitive%LOCAL%"); break;
 	}
 	case ARG_PRESET_VERY_SENSITIVE_LOCAL:
-		cerr << "WARNING: localAlign not supported" << endl; 
+		cerr << "WARNING: localAlign not supported, ignoring" << endl; 
 		break;
 	case ARG_PRESET_VERY_SENSITIVE: {
 		presetList.push_back("very-sensitive%LOCAL%"); break;
@@ -1734,18 +1753,27 @@ static void parseOptions(int argc, const char **argv) {
 		assert_gt(mhits, 0);
 		msample = true;
 	}
-	if (deterministicSeeds ) {
+	if (legacy_doExactUpFront || legacy_do1mmUpFront) {
+		cerr << "Warning: Exact and 1MM upfront not supported, automatically turning them off." << endl;
+		legacy_doExactUpFront = false;
+		legacy_do1mmUpFront = false;
+	}
+	if (legacy_deterministicSeeds ) {
 		/* doExactUpFront and  do1mmUpFront were deprecated, mhits cannot be nz
 		if ( doExactUpFront || do1mmUpFront || (mhits!=0) ) {
-			cerr << "Warning: -d cannot be used with --exact-upfront, --1mm-upfront or -m." << endl;
+			cerr << "Error: -d cannot be used with --exact-upfront, --1mm-upfront or -m." << endl;
 			throw 1;
 		}
 		*/
-		if ( !allHits ) {
-			cerr << "Error: -d can only be used with -a." << endl;
-			throw 1;
-		}
+	} else {
+		cerr << "Warning: non-deterministic mode not supported, defaulting to deterministic mode." << endl;
+		legacy_deterministicSeeds = true;
 	}
+	if ( !allHits ) {
+		cerr << "Error: -d can only be used with -a." << endl;
+		throw 1;
+	}
+
 	if (format == UNKNOWN)
 		set_format(format, FASTQ);
 	if(mates1.size() != mates2.size()) {
@@ -2207,7 +2235,6 @@ class bcWorkerObjs {
 public:
 	bcWorkerObjs()
 	: sw()
-	, sdrnd()
 	{}
 
 	bcWorkerObjs(bcWorkerObjs&& o) = default;
@@ -2222,7 +2249,6 @@ public:
 	}
 
 	SwAligner sw;
-	SwDriverRands sdrnd;
 };
 
 class msWorkerObjs {
@@ -2263,18 +2289,9 @@ public:
 		, norc( gNorc )
 		, extend( doExtend )
 		, doEnable8( enable8 )
-		, doTighten( tighten)
 		, maxHalf( maxhalf )
-		, mxKHMul( (khits > 1) ? (khits-1) : 0 )
-		, streak( maxDpStreak + mxKHMul * maxStreakIncr )
-		, mxDp(   maxDp       + mxKHMul * maxItersIncr  )
-		, mxUg(   maxUg       + mxKHMul * maxItersIncr  )
-		, mxIter( maxIters    + mxKHMul * maxItersIncr  )
 	{
-		if (mxIter>ALN_MAX_ITER) {
-			cerr << "FATAL: mxIter too big" << endl;
-			throw 1;
-		}
+		assert(allHits); // was allMode == allHits
 	}
 
 	const BitPairReference& ref;
@@ -2286,15 +2303,9 @@ public:
 
 	const bool extend;
 	const bool doEnable8;
-	const int  doTighten; 
 	const size_t maxHalf;
 
-	// Calculate streak length
-	const size_t mxKHMul;
-	const size_t streak;
-	const size_t mxDp;
-	const size_t mxUg;
-	const size_t mxIter;
+	constexpr static bool   allMode = true;
 };
 
 #include <iostream>
@@ -2341,7 +2352,19 @@ public:
 	const char* msgs[32];
 };
 
-
+static inline uint32_t get_lowseeds_ncut(const AlnSink& msink) {
+	size_t ncut = std::numeric_limits<size_t>::max(); // pure -a
+	if (lowseeds>0) {
+		ncut = ((lowseedsDivider!=0) ? ((msink.num_refnames() * lowseeds + (lowseedsDivider-1))/lowseedsDivider) // round up, avoid 0
+                                              : lowseeds
+                        );
+	}
+	if (ncut>(TStateVSize-5)) {
+		ncut = TStateVSize-5;
+		fprintf(stderr, "Warning: Exceeding implementation limit, setting lowseeds=%i\n",int(ncut));
+	}
+	return ncut;
+}
 /**
  * Called once per thread.  Sets up per-thread pointers to the shared global
  * data structures, creates per-thread structures, then enters the alignment
@@ -2368,11 +2391,7 @@ static void multiseedSearchWorker() {
 
 	constexpr bool paired = false;
 
-	const size_t lowseeds_ncut = (lowseeds>0) ?
-			((lowseedsDivider!=0) ? ((msink.num_refnames() * lowseeds + (lowseedsDivider-1))/lowseedsDivider) // round up, avoid 0
-					      : lowseeds
-			) :
-			std::numeric_limits<size_t>::max(); // never filter by size
+	const size_t lowseeds_ncut = get_lowseeds_ncut(msink);
 
 	BTAllocator worker_alloc;
 #ifdef USE_CUSTOM_ALLOCS
@@ -2391,7 +2410,7 @@ static void multiseedSearchWorker() {
 		// Instantiate an object for holding reporting-related parameters.
 		// Use new to make it GPU-accessible
 		ReportingParams* rp= new ReportingParams(
-			khits,             // -k
+			(allHits ? std::numeric_limits<THitInt>::max() : khits), // -k
 			mhits,             // -m/-M
 			0,                 // penalty gap (not used now)
 			msample,           // true -> -M was specified, otherwise assume -m
@@ -2399,6 +2418,9 @@ static void multiseedSearchWorker() {
 			gReportMixed);     // report unpaired alignments for paired reads?
 
 		const bool allHits = rp->allHits();
+		if (!allHits) { fprintf(stderr,"Internal logical error: allHits not true\n"); throw 1;}
+		if (rp->mhitsSet()) { fprintf(stderr,"Internal logical error: Mmode is true\n");  throw 1;}
+
 		// Note: Cannot use std:vector due to GPU compute not having access to the CPU stack
 
 		// Instantiate a mapping quality calculator
@@ -2595,8 +2617,9 @@ static void multiseedSearchWorker() {
 					exhaustive[mate] = false;
 					msobj.rnd.init(rds[mate]->seed);
 
-					msinkwrap.prm.maxDPFails = msconsts->streak;
-					assert_gt(msconsts->streak, 0);
+					// irrelevant when allHits==true
+					//msinkwrap.prm.maxDPFails = msconsts->streak;
+					//assert_gt(msconsts->streak, 0);
 
 					// Whether we're done with mate
 					// done[mate] = !filt;
@@ -2753,7 +2776,6 @@ static void multiseedSearchWorker() {
 			   // These objects are really just work areas
 			   // Could have just created them here, but this way we minimize mallocs
 			   bcWorkerObjs& bcobj = g_bcobjs[nb];
-			   SwDriverRands &sdrnd = bcobj.sdrnd;
 
 			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
 				const uint32_t mate = nb*reads_per_batch + ib;
@@ -2762,19 +2784,14 @@ static void multiseedSearchWorker() {
 					const SeedResults& sh = psrs->getSR(mate);
 					AlignmentCacheInterface ca = als.getCacheInterface(mate); // copy OK, just a few references
 
-					// sdrnd is thread wise, but rnd is read specific
-					sdrnd.reset(msobj.rnd);
-
 					msobj.sd.prioritizeSATups(
 							sh,            // seed hits to extend into full alignments
 							msconsts->ebwtFw,        // BWT
 							msconsts->ref,           // Reference strings
 							multiseedMms,       // # seed mismatches allowed
-							msconsts->mxIter,      // max rows to consider per position
 							true,          // square extended length
 							true,          // square SA range size
 							ca,            // alignment cache for seed hits
-							sdrnd,         // pseudo-random generator
 							allHits);      // report all hits?
 				} // if mate done
 			   } // for ib
@@ -2793,7 +2810,6 @@ static void multiseedSearchWorker() {
 			   // Could have just created them here, but this way we minimize mallocs
 			   bcWorkerObjs& bcobj = g_bcobjs[nb];
 			   SwAligner &sw = bcobj.sw;
-			   SwDriverRands &sdrnd = bcobj.sdrnd;
 
 			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
 				const uint32_t mate = nb*reads_per_batch + ib;
@@ -2818,8 +2834,6 @@ static void multiseedSearchWorker() {
 					} else {
 						const SeedResults& sh = psrs->getSR(mate);
 
-						// sdrnd is thread wise, but rnd is read specific
-						sdrnd.reset(msobj.rnd);
 
 								// Unpaired dynamic programming driver
 								int ret = msobj.sd.extendSeeds(
@@ -2834,15 +2848,8 @@ static void multiseedSearchWorker() {
 										minsc[mate],    // minimum score for valid
 										nceil[mate],    // N ceil for anchor
 										msconsts->maxHalf,        // max width on one DP side
-										msconsts->mxIter,         // max extend loop iters
-										msconsts->mxUg,           // max # ungapped extends
-										msconsts->mxDp,           // max # DPs
-										msconsts->streak,         // stop after streak of this many end-to-end fails
-										msconsts->streak,         // stop after streak of this many ungap fails
 										msconsts->extend,       // extend seed hits
 										msconsts->doEnable8,        // use 8-bit SSE where possible
-										msconsts->doTighten,        // -M score tightening mode
-										sdrnd,      // pseudo-random source
 										msinkwrap.prm,  // per-read metrics
 										&msinkwrap,     // for organizing hits
 										true,           // report hits once found
