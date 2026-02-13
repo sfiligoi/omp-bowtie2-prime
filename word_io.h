@@ -48,13 +48,6 @@ static inline void writeI(std::ostream& out, T x) {
 /**
  * Read a 32/64 bit unsigned from an input stream
  */
-template <typename T>
-static inline T readU(std::istream& in) {
-	T x;
-	in.read((char *)&x, sizeof(T));
-	assert_eq(sizeof(T), in.gcount());
-	return x;
-}
 
 
 template <typename T>
@@ -104,7 +97,6 @@ static inline T readI(FILE* in) {
 	}
 	return x;
 }
-
 
 
 
