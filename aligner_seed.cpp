@@ -90,7 +90,7 @@ public:
 
 	SeedAlignerSearchData& operator=(const SeedAlignerSearchData& other) = default;
 
-	void reset(
+	constexpr void reset(
 		const char *   _seq,            // sequence of the local seed alignment cache
 		const uint8_t _seq_len          // and its length
 	) {
@@ -123,7 +123,7 @@ public:
 	// sak stores values and not in the struct directly
 	// Thus c needs to be computed with bit operations
 	// 
-	uint8_t get_c(int off) const {
+	constexpr uint8_t get_c(int off) const {
 		uint8_t c = (sak.seq >> (2 * (sak.len-1 - off))) & 0x03;
 		return c;
 	}
@@ -169,7 +169,7 @@ public:
 	, step(0)
 	{}
 
-	void reset() {
+	constexpr void reset() {
 		tloc.invalidate();
 		bloc.invalidate();
 		step = 0;
@@ -688,6 +688,7 @@ void MultiSeedAligner::searchAllSeedsDoAll(const size_t ncut, const bool doExten
  * Get tloc, bloc ready for the next step.  If the new range is under
  * the ceiling.
  */
+constexpr
 inline void nextLocsBi(
 	const EbwtParams& ep,         // index params
 	const uint8_t* ebwt,          // index data
@@ -713,7 +714,7 @@ inline void nextLocsBi(
 }
 
 // return true, if we are already done
-inline bool startSearchSeedBi(
+constexpr inline bool startSearchSeedBi(
 	const EbwtParams& ep,         // index params
 	const uint8_t* ebwt,          // index data
 	const TIndexOffU *ftab,
