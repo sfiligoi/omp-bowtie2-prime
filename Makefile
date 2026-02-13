@@ -45,11 +45,14 @@ CXX := amdclang++
 
 # CPU-only
 #CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -g
+
+
 #
 # GPU-enabled
 CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
 
-# Enable HIP (Exclusive from OpenMP)
+# Enable HIP. Use CXX=amdclang++ or CXX=hipcc 
+# Warning with hybrid OPENMP Compilations
 #CXXFLAGS += -std=c++17 --offload-arch=native
 #CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__
 

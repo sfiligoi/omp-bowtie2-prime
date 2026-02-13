@@ -26,26 +26,6 @@
 
 using namespace std;
 
-// TODO: temporary placement here while debugging searchSeedBi
-/*
-__global__
-void searchSeedBi1(
-                        const Ebwt* ebwt,       // forward index (BWT)
-                        uint64_t& bwops_,         // Burrows-Wheeler operations
-                        uint8_t& nleft,
-                        uint8_t* idxs, // indexes into sstateVec
-                        SeedAlignerSearchState sstateVec[],
-			SeedAlignerSearchData dataVec[]);
-__global__
-void searchSeedBi2(
-                        const Ebwt* ebwt,       // forward index (BWT)
-                        uint64_t& bwops_,         // Burrows-Wheeler operations
-                        uint8_t& nleft,
-                        uint8_t* idxs, // indexes into sstateVec
-                        SeedAlignerSearchState sstateVec[],
-			SeedAlignerSearchData dataVec[]);
-*/
-
 /**
  * Construct a constraint with no edits of any kind allowed.
  */
@@ -110,8 +90,7 @@ public:
 
 	SeedAlignerSearchData& operator=(const SeedAlignerSearchData& other) = default;
 
-	AMD_HOST_DEV
-	void reset(
+	constexpr void reset(
 		const char *   _seq,            // sequence of the local seed alignment cache
 		const uint8_t _seq_len          // and its length
 	) {
@@ -121,8 +100,7 @@ public:
 	  need_reporting = false;
 	}
 
-	AMD_HOST_DEV
-	void set_reporting() { need_reporting = true; }
+	constexpr void set_reporting() { need_reporting = true; }
 
 	BwtTopBotFw bwt;      // The 2 BWT idxs
 	SAKey       sak;      // seed key
@@ -144,8 +122,7 @@ public:
 	// sak stores values and not in the struct directly
 	// Thus c needs to be computed with bit operations
 	// 
-	AMD_HOST_DEV
-	uint8_t get_c(int off) const {
+	constexpr uint8_t get_c(int off) const {
 		uint8_t c = (sak.seq >> (2 * (sak.len-1 - off))) & 0x03;
 		return c;
 	}
@@ -191,8 +168,7 @@ public:
 	, step(0)
 	{}
 
-	AMD_HOST_DEV
-	void reset() {
+	constexpr void reset() {
 		tloc.invalidate();
 		bloc.invalidate();
 		step = 0;
@@ -667,6 +643,7 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 	const uint32_t total_batches = (total_els+(ibatch_size-1))/ibatch_size; // round up
 
 	//fprintf(stderr, "total_els: %i total_els: %i ibatch_size: %i\n", int(ibatch_size), int(total_els), int(ibatch_size));
+#ifdef HIP_KERNELS
 	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
 		//[ebwtFw,paramVec,dataVec,total_els](uint32_t gbatch) mutable {
 		const size_t start_el = gbatch*ibatch_size;
@@ -677,9 +654,11 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 		uint8_t idxs[ibatch_size];
 		SeedAlignerSearchState sstateVec[ibatch_size];
 		// TODO: sstateVec and idxs should be returned into searchSeedBi functions after combined
-		SeedAligner::searchSeedBi1<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
-		//searchSeedBi1<<<1, ibatch_size>>>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
-		SeedAligner::searchSeedBi2<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		// Currently memory accesses bugs...
+		searchSeedBi1<<<1, ibatch_size>>>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		searchSeedBi2<<<1, ibatch_size>>>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		//SeedAligner::searchSeedBi1<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		//SeedAligner::searchSeedBi2<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
 	} // for gbatch
 
 	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
@@ -702,6 +681,58 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 			}
 		}
 	} // for gbatch
+
+#else // not HIP kernel
+
+#ifdef FORCE_ALL_OMP
+#ifdef OMPGPU
+#pragma omp target teams distribute parallel for
+#else
+#pragma omp parallel for
+#endif
+        for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
+ #else
+       std::for_each_n(std::execution::par_unseq,
+               thrust::counting_iterator(0), total_batches,
+               [ebwtFw,paramVec,dataVec,total_els](uint32_t gbatch) mutable {
+ #endif
+                const size_t start_el = gbatch*ibatch_size;
+                size_t end_el = start_el+ibatch_size;
+                if (end_el>total_els) end_el = total_els;
+		uint64_t bwops; // just ignore the bwops for now, keep it local
+                //SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(dataVec[start_el]));
+
+		uint8_t nleft = end_el-start_el;
+		uint8_t idxs[ibatch_size];
+		SeedAlignerSearchState sstateVec[ibatch_size];
+		// TODO: sstateVec and idxs should be returned into searchSeedBi functions after combined
+		// Currently memory accesses bugs...
+		SeedAligner::searchSeedBi1<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		SeedAligner::searchSeedBi2<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+
+
+                // TODO: integrate into searchSeedBi
+                for (size_t i=start_el; i<end_el; i++) {
+                        if(dataVec[i].need_reporting && doExtend) {
+				size_t nlex = 0;
+                                // prm.nSdFmops +=
+                                extend(
+                                        *ebwtFw,
+                                        dataVec[i].bwt.topf,
+                                        dataVec[i].bwt.botf,
+                                        paramVec[i].seq_end,
+                                        paramVec[i].seq_lim,
+                                        nlex);
+                                dataVec[i].nlex = nlex;
+
+                        }
+                }
+        } // for gbatch
+#ifndef FORCE_ALL_OMP
+       ); // for_each
+#endif
+
+#endif HIP_KERNELS
 
 }
 

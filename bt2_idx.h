@@ -1385,8 +1385,7 @@ public:
 	 * Functionally similar to ftabSeqToInt without the encoding,
 	 * left to right, and not reversed
 	 */
-	AMD_HOST_DEV
-	static TIndexOffU ftabSakToInt(
+	constexpr static TIndexOffU ftabSakToInt(
 		const int fc,
 		const uint64_t seq,
 		const uint32_t len,
@@ -1430,8 +1429,7 @@ public:
 	 * It's a static member because it's convenient to ask this
 	 * question before the Ebwt is fully initialized.
 	 */
-	AMD_HOST_DEV
-	static TIndexOffU ftabHi(
+	constexpr static TIndexOffU ftabHi(
 		const TIndexOffU *ftab,
 		const TIndexOffU *eftab,
 		TIndexOffU len,
@@ -1478,8 +1476,7 @@ public:
 	/**
 	 * Get low and high bound of ftab range.
 	 */
-	AMD_HOST_DEV
-	void
+	constexpr void
 	ftabLoHi(
 		TIndexOffU i,
 		TIndexOffU& top,
@@ -1506,8 +1503,7 @@ public:
 			assert_geq(bot, top);
 		}
 
-	AMD_HOST_DEV
-	static void
+	constexpr static void
 	ftabLoHi(
 		const TIndexOffU *ftab,
 		const TIndexOffU *eftab,
@@ -1577,8 +1573,7 @@ public:
 	 * It's a static member because it's convenient to ask this
 	 * question before the Ebwt is fully initialized.
 	 */
-	AMD_HOST_DEV
-	static TIndexOffU ftabLo(
+	constexpr static TIndexOffU ftabLo(
 		const TIndexOffU *ftab,
 		const TIndexOffU *eftab,
 		TIndexOffU len,

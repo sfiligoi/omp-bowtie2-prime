@@ -544,8 +544,8 @@ public:
 		}
 	}
 
-	AMD_HOST_DEV inline T* get() { return p_; }
-	AMD_HOST_DEV inline const T* get() const { return p_; }
+	constexpr inline T* get() { return p_; }
+	constexpr inline const T* get() const { return p_; }
 
 private:
 	int cat_;

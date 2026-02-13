@@ -1407,6 +1407,7 @@ public:
 		AlignmentCache& cache,  // local cache for seed alignments
 		SeedResults& sr);            // holds all the seed hits
 
+#ifndef HIP_KERNELS
 	/**
 	 * Main, recursive implementation of the seed search.
 	 * Given a vector of instantiated seeds, search
@@ -1428,6 +1429,7 @@ public:
 						uint8_t* idxs,						// indexes into sstateVec
 						SeedAlignerSearchState sstateVec[],
 			SeedAlignerSearchData         dataVec[]);
+#endif
 
 protected:
 	
@@ -1446,6 +1448,28 @@ protected:
 
 	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
 };
+
+
+// TODO: temporary placement here while debugging searchSeedBi
+#ifdef HIP_KERNELS
+__global__
+void searchSeedBi1(
+                        const Ebwt* ebwt,       // forward index (BWT)
+                        uint64_t& bwops_,         // Burrows-Wheeler operations
+                        uint8_t& nleft,
+                        uint8_t* idxs, // indexes into sstateVec
+                        SeedAlignerSearchState sstateVec[],
+			SeedAlignerSearchData dataVec[]);
+__global__
+void searchSeedBi2(
+                        const Ebwt* ebwt,       // forward index (BWT)
+                        uint64_t& bwops_,         // Burrows-Wheeler operations
+                        uint8_t& nleft,
+                        uint8_t* idxs, // indexes into sstateVec
+                        SeedAlignerSearchState sstateVec[],
+			SeedAlignerSearchData dataVec[]);
+#endif
+
 
 class MultiSeedAligner {
 

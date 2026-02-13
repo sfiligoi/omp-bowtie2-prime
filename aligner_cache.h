@@ -155,8 +155,7 @@ struct QKey {
 	 * Initialize QKey from DNA string.  Rightmost character is placed in the
 	 * least significant bitpair.
 	 */
-	AMD_HOST_DEV
-	bool init(
+	constexpr bool init(
 		const char *   s,
 		const uint32_t l
 		ASSERT_ONLY(, BTDnaString& tmp))
