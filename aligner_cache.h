@@ -65,6 +65,13 @@
 
 #define CACHE_PAGE_SZ (16 * 1024)
 
+// If compiler can't compile HIP Kernels __host__ __device__ compatibility will be ignored
+#if defined(HIP_KERNELS)
+  #define AMD_HOST_DEV __host__ __device__
+#else
+  #define AMD_HOST_DEV
+#endif
+
 class BwtTopBot {
 public:
 	BwtTopBot() : topf(0), botf(0), topb(0), botb(0) {}
@@ -109,7 +116,7 @@ public:
 	, botf(_botf)
 	{}
 
-	void set(
+	constexpr void set(
 		TIndexOffU _topf,        // top in BWT
 		TIndexOffU _botf)        // bot in BWT
 	{
@@ -148,6 +155,7 @@ struct QKey {
 	 * Initialize QKey from DNA string.  Rightmost character is placed in the
 	 * least significant bitpair.
 	 */
+	AMD_HOST_DEV
 	bool init(
 		const char *   s,
 		const uint32_t l

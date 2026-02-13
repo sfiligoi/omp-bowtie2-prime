@@ -31,6 +31,13 @@
 #include "threading.h"
 #include "btypes.h"
 
+// If compiler can't compile HIP Kernels __host__ __device__ compatibility will be ignored
+#if defined(HIP_KERNELS)
+  #define AMD_HOST_DEV __host__ __device__
+#else
+  #define AMD_HOST_DEV
+#endif
+
 /**
  * Custom allocator of polled memory 
  * aligned to double, since that's the most restrictive type we expect
@@ -537,8 +544,8 @@ public:
 		}
 	}
 
-	inline T* get() { return p_; }
-	inline const T* get() const { return p_; }
+	AMD_HOST_DEV inline T* get() { return p_; }
+	AMD_HOST_DEV inline const T* get() const { return p_; }
 
 private:
 	int cat_;

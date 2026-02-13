@@ -90,6 +90,14 @@ extern uint8_t cCntLUT_4[4][4][256];
 	}
 #endif
 
+// If compiler can't compile HIP Kernels __host__ __device__ compatibility will be ignored
+#if defined(HIP_KERNELS)
+  #define AMD_HOST_DEV __host__ __device__
+#else
+  #define AMD_HOST_DEV
+#endif
+
+
 /**
  * Flags describing type of Ebwt.
  */
@@ -172,7 +180,7 @@ public:
 	int32_t   origOffRate() const   { return _origOffRate; }
 	int32_t   offRate() const       { return _offRate; }
 	TIndexOffU offMask() const       { return _offMask; }
-	int32_t   ftabChars() const     { return _ftabChars; }
+	AMD_HOST_DEV int32_t   ftabChars() const     { return _ftabChars; }
 	int32_t eftabLen() const      { return _eftabLen; }
 	int32_t eftabSz() const       { return _eftabSz; }
 	TIndexOffU ftabLen() const       { return _ftabLen; }
@@ -319,6 +327,7 @@ struct SideLocus {
 	 * Init two SideLocus objects from a top/bot pair, using the result
 	 * from one call to initFromRow to possibly avoid a second call.
 	 */
+	AMD_HOST_DEV
 	static void initFromTopBot(
 		TIndexOffU top,
 		TIndexOffU bot,
@@ -363,6 +372,7 @@ struct SideLocus {
 	 * Calculate SideLocus based on a row and other relevant
 	 * information about the shape of the Ebwt.
 	 */
+	AMD_HOST_DEV
 	void initFromRow(TIndexOffU row,
 			const EbwtParams& ep,
 			const uint8_t* ebwt,
@@ -433,7 +443,7 @@ struct SideLocus {
 	/**
 	 * Return true iff this is an initialized SideLocus
 	 */
-	bool valid() const {
+	AMD_HOST_DEV bool valid() const {
 		if(_bp != -1) {
 			return true;
 		}
@@ -462,6 +472,7 @@ struct SideLocus {
 #endif
 
 	/// Make this look like an invalid SideLocus
+	AMD_HOST_DEV
 	void invalidate() {
 		_bp = -1;
 	}
@@ -469,7 +480,7 @@ struct SideLocus {
 	/**
 	 * Return a read-only pointer to the beginning of the top side.
 	 */
-	const uint8_t *side(const uint8_t* ebwt) const {
+	constexpr const uint8_t *side(const uint8_t* ebwt) const {
 		return ebwt + _sideByteOff;
 	}
 
@@ -480,7 +491,7 @@ struct SideLocus {
 	int32_t _bp;            // bitpair within byte (not adjusted for bw sides)
 };
 
-inline static int pop64(uint64_t x) {
+constexpr inline static int pop64(uint64_t x) {
 	return __builtin_popcountll(x);
 }
 
@@ -488,7 +499,7 @@ inline static int pop64(uint64_t x) {
  * Tricky-bit-bashing bitpair counting for given two-bit value (0-3)
  * within a 64-bit argument.
  */
-inline static int countInU64(int c, uint64_t dw) {
+constexpr inline static int countInU64(int c, uint64_t dw) {
 	constexpr uint64_t c_table[4] = {
 	0xffffffffffffffff,
 	0xaaaaaaaaaaaaaaaa,
@@ -1205,7 +1216,7 @@ public:
 	}
 
 	/// Accessors
-	inline const EbwtParams& eh() const     { return _eh; }
+	AMD_HOST_DEV inline const EbwtParams& eh() const     { return _eh; }
 	TIndexOffU    zOff() const         { return _zOff; }
 	TIndexOffU    zEbwtByteOff() const { return _zEbwtByteOff; }
 	TIndexOff         zEbwtBpOff() const   { return _zEbwtBpOff; }
@@ -1218,13 +1229,13 @@ public:
 	inline TIndexOffU*   plen()              { return _plen.get(); }
 	inline TIndexOffU*   rstarts()           { return _rstarts.get(); }
 	inline uint8_t*    ebwt()              { return _ebwt.get(); }
-	inline const TIndexOffU* fchr() const    { return _fchr.get(); }
-	inline const TIndexOffU* ftab() const    { return _ftab.get(); }
-	inline const TIndexOffU* eftab() const   { return _eftab.get(); }
+	AMD_HOST_DEV inline const TIndexOffU* fchr() const    { return _fchr.get(); }
+	AMD_HOST_DEV inline const TIndexOffU* ftab() const    { return _ftab.get(); }
+	AMD_HOST_DEV inline const TIndexOffU* eftab() const   { return _eftab.get(); }
 	inline const TIndexOffU* offs() const    { return _offs.get(); }
 	inline const TIndexOffU* plen() const    { return _plen.get(); }
 	inline const TIndexOffU* rstarts() const { return _rstarts.get(); }
-	inline const uint8_t*  ebwt() const    { return _ebwt.get(); }
+	AMD_HOST_DEV inline const uint8_t*  ebwt() const    { return _ebwt.get(); }
 	bool        verbose() const      { return _verbose; }
 	bool        sanityCheck() const  { return _sanity; }
 	EList<string>& refnames()        { return _refnames; }
@@ -1374,6 +1385,7 @@ public:
 	 * Functionally similar to ftabSeqToInt without the encoding,
 	 * left to right, and not reversed
 	 */
+	AMD_HOST_DEV
 	static TIndexOffU ftabSakToInt(
 		const int fc,
 		const uint64_t seq,
@@ -1418,6 +1430,7 @@ public:
 	 * It's a static member because it's convenient to ask this
 	 * question before the Ebwt is fully initialized.
 	 */
+	AMD_HOST_DEV
 	static TIndexOffU ftabHi(
 		const TIndexOffU *ftab,
 		const TIndexOffU *eftab,
@@ -1465,6 +1478,7 @@ public:
 	/**
 	 * Get low and high bound of ftab range.
 	 */
+	AMD_HOST_DEV
 	void
 	ftabLoHi(
 		TIndexOffU i,
@@ -1492,6 +1506,7 @@ public:
 			assert_geq(bot, top);
 		}
 
+	AMD_HOST_DEV
 	static void
 	ftabLoHi(
 		const TIndexOffU *ftab,
@@ -1562,6 +1577,7 @@ public:
 	 * It's a static member because it's convenient to ask this
 	 * question before the Ebwt is fully initialized.
 	 */
+	AMD_HOST_DEV
 	static TIndexOffU ftabLo(
 		const TIndexOffU *ftab,
 		const TIndexOffU *eftab,
@@ -1782,7 +1798,7 @@ public:
 	 * XXXXXXXXXXXXXXXX [A] [C] [G] [T]
 	 * --------48------ -4- -4- -4- -4-  (numbers in bytes)
 	 */
-	inline TIndexOffU countBt2Side(const SideLocus& l, int c) const {
+	constexpr inline TIndexOffU countBt2Side(const SideLocus& l, int c) const {
 		assert_range(0, 3, c);
 		assert_range(0, (int)this->_eh._sideBwtSz-1, (int)l._by);
 		assert_range(0, 3, (int)l._bp);
@@ -1911,7 +1927,7 @@ public:
 	 *         Side ptr (result from SideLocus.side())
 	 *
 	 */
-	inline void countBt2SideEx(const SideLocus& l, TIndexOffU* arrs) const {
+	constexpr inline void countBt2SideEx(const SideLocus& l, TIndexOffU* arrs) const {
 		assert_range(0, (int)this->_eh._sideBwtSz-1, (int)l._by);
 		assert_range(0, 3, (int)l._bp);
 		countUpToEx(l, arrs);
@@ -1957,7 +1973,7 @@ public:
 	 * mostly eliminate the cache misses. 
 	 *
 	 */
-	inline TIndexOffU countUpTo(const SideLocus& l, int c) const { // @double-check
+	constexpr inline TIndexOffU countUpTo(const SideLocus& l, int c) const { // @double-check
 		// Count occurrences of c in each 64-bit (using bit trickery);
 		// Someday countInU64() and pop() functions should be
 		// vectorized/SSE-ized in case that helps.
@@ -1985,7 +2001,7 @@ public:
 	 *
 	 * Function gets 2.32% in profile
 	 */
-	inline static void countInU64Ex(uint64_t dw, TIndexOffU* arrs) {
+	constexpr inline static void countInU64Ex(uint64_t dw, TIndexOffU* arrs) {
 		constexpr uint64_t c_table[4] = {
 			0xffffffffffffffff,
 			0xaaaaaaaaaaaaaaaa,
@@ -2037,7 +2053,7 @@ public:
 	 * The use of prefetch instructions in initFromRow, when applied enough in advance,
 	 * mostly eliminate the cache misses. 
 	 */
-	inline void countUpToEx(const SideLocus& l, TIndexOffU* arrs) const {
+	constexpr inline void countUpToEx(const SideLocus& l, TIndexOffU* arrs) const {
 		int i = 0;
 		// Count occurrences of each nucleotide in each 64-bit word using
 		// bit trickery; note: this seems does not seem to lend a
@@ -2234,7 +2250,7 @@ public:
 	 * BWT transform).  Note that the 'L' in the name of the function
 	 * stands for 'last', as in the literature.
 	 */
-	inline int rowL(const SideLocus& l) const {
+	constexpr inline int rowL(const SideLocus& l) const {
 		// Extract and return appropriate bit-pair
 		return unpack_2b_from_8b(l.side(this->ebwt())[l._by], l._bp);
 	}
@@ -2359,7 +2375,7 @@ public:
 	 * those loci.  Also, update a set of tops and bots for the reverse
 	 * index/direction using the idea from the bi-directional BWT paper.
 	 */
-	inline void mapBiLFEx(
+	constexpr inline void mapBiLFEx(
 		const SideLocus& ltop,
 		const SideLocus& lbot,
 		TIndexOffU *tops,
@@ -2402,7 +2418,7 @@ public:
 			botsP[3] = topsP[3] + (bots[3] - tops[3]);
 		}
 
-	inline void mapBiLFEx(
+	constexpr inline void mapBiLFEx(
 		const SideLocus& ltop,
 		const SideLocus& lbot,
 		TIndexOffU *tops,
@@ -2439,7 +2455,7 @@ public:
 	 * and return the next row, or all-fs if we can't proceed on that
 	 * character.  Returns max value if this row ends in $.
 	 */
-	inline TIndexOffU mapLF1(
+	constexpr inline TIndexOffU mapLF1(
 		TIndexOffU row,       // starting row
 		const SideLocus& l, // locus for starting row
 		int c               // character to proceed on

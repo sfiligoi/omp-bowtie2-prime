@@ -18,6 +18,9 @@
  */
 
 #include "aligner_cache.h"
+#ifdef HIP_KERNELS
+#include <hip/hip_runtime.h>
+#endif
 
 #ifndef NDEBUG
 /**

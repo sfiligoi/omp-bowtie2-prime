@@ -1318,7 +1318,7 @@ public:
 	, off(0)
 	{}
 
-	SeedAlignerSearchWorkState(int _off)
+	constexpr SeedAlignerSearchWorkState(int _off)
 	: t{0,0,0,0}, b{0,0,0,0}
 	, off(abs(_off)-1)
 	{}

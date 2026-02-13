@@ -34,18 +34,24 @@ BOWTIE_SHARED_MEM :=
 #
 # Recommended g++ flags
 # CPU-only
-CXX := g++
-CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -g
+#CXX := g++
+#CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -g
 
 #
 # Recommended amdclang++ flags
-#CXX := amdclang++
+CXX := amdclang++
+# amdclang++ can use hipcc to compile hip kernels anyways with -x hip
+#CXX := hipcc
 
 # CPU-only
 #CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -g
 #
 # GPU-enabled
-#CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
+CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
+
+# Enable HIP (Exclusive from OpenMP)
+#CXXFLAGS += -std=c++17 --offload-arch=native
+#CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__
 
 #
 # NVIDIA HPC SDK flags options
