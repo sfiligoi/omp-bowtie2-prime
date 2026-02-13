@@ -180,7 +180,7 @@ public:
 	int32_t   origOffRate() const   { return _origOffRate; }
 	int32_t   offRate() const       { return _offRate; }
 	TIndexOffU offMask() const       { return _offMask; }
-	AMD_HOST_DEV int32_t   ftabChars() const     { return _ftabChars; }
+	constexpr int32_t   ftabChars() const     { return _ftabChars; }
 	int32_t eftabLen() const      { return _eftabLen; }
 	int32_t eftabSz() const       { return _eftabSz; }
 	TIndexOffU ftabLen() const       { return _ftabLen; }
@@ -327,7 +327,7 @@ struct SideLocus {
 	 * Init two SideLocus objects from a top/bot pair, using the result
 	 * from one call to initFromRow to possibly avoid a second call.
 	 */
-	AMD_HOST_DEV
+	constexpr
 	static void initFromTopBot(
 		TIndexOffU top,
 		TIndexOffU bot,
@@ -372,7 +372,7 @@ struct SideLocus {
 	 * Calculate SideLocus based on a row and other relevant
 	 * information about the shape of the Ebwt.
 	 */
-	AMD_HOST_DEV
+	constexpr
 	void initFromRow(TIndexOffU row,
 			const EbwtParams& ep,
 			const uint8_t* ebwt,
@@ -443,7 +443,7 @@ struct SideLocus {
 	/**
 	 * Return true iff this is an initialized SideLocus
 	 */
-	AMD_HOST_DEV bool valid() const {
+	constexpr bool valid() const {
 		if(_bp != -1) {
 			return true;
 		}
@@ -472,7 +472,7 @@ struct SideLocus {
 #endif
 
 	/// Make this look like an invalid SideLocus
-	AMD_HOST_DEV
+	constexpr
 	void invalidate() {
 		_bp = -1;
 	}
@@ -1216,7 +1216,7 @@ public:
 	}
 
 	/// Accessors
-	AMD_HOST_DEV inline const EbwtParams& eh() const     { return _eh; }
+	constexpr inline const EbwtParams& eh() const     { return _eh; }
 	TIndexOffU    zOff() const         { return _zOff; }
 	TIndexOffU    zEbwtByteOff() const { return _zEbwtByteOff; }
 	TIndexOff         zEbwtBpOff() const   { return _zEbwtBpOff; }
@@ -1229,13 +1229,13 @@ public:
 	inline TIndexOffU*   plen()              { return _plen.get(); }
 	inline TIndexOffU*   rstarts()           { return _rstarts.get(); }
 	inline uint8_t*    ebwt()              { return _ebwt.get(); }
-	AMD_HOST_DEV inline const TIndexOffU* fchr() const    { return _fchr.get(); }
-	AMD_HOST_DEV inline const TIndexOffU* ftab() const    { return _ftab.get(); }
-	AMD_HOST_DEV inline const TIndexOffU* eftab() const   { return _eftab.get(); }
+	constexpr inline const TIndexOffU* fchr() const    { return _fchr.get(); }
+	constexpr inline const TIndexOffU* ftab() const    { return _ftab.get(); }
+	constexpr inline const TIndexOffU* eftab() const   { return _eftab.get(); }
 	inline const TIndexOffU* offs() const    { return _offs.get(); }
 	inline const TIndexOffU* plen() const    { return _plen.get(); }
 	inline const TIndexOffU* rstarts() const { return _rstarts.get(); }
-	AMD_HOST_DEV inline const uint8_t*  ebwt() const    { return _ebwt.get(); }
+	constexpr inline const uint8_t*  ebwt() const    { return _ebwt.get(); }
 	bool        verbose() const      { return _verbose; }
 	bool        sanityCheck() const  { return _sanity; }
 	EList<string>& refnames()        { return _refnames; }
