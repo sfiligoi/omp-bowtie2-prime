@@ -480,7 +480,7 @@ struct SideLocus {
 	int32_t _bp;            // bitpair within byte (not adjusted for bw sides)
 };
 
-inline static int pop64(uint64_t x) {
+constexpr static int pop64(uint64_t x) {
 	return __builtin_popcountll(x);
 }
 
@@ -488,7 +488,7 @@ inline static int pop64(uint64_t x) {
  * Tricky-bit-bashing bitpair counting for given two-bit value (0-3)
  * within a 64-bit argument.
  */
-inline static int countInU64(int c, uint64_t dw) {
+constexpr inline static int countInU64(int c, uint64_t dw) {
 	constexpr uint64_t c_table[4] = {
 	0xffffffffffffffff,
 	0xaaaaaaaaaaaaaaaa,
@@ -1985,7 +1985,7 @@ public:
 	 *
 	 * Function gets 2.32% in profile
 	 */
-	inline static void countInU64Ex(uint64_t dw, TIndexOffU* arrs) {
+	constexpr inline static void countInU64Ex(uint64_t dw, TIndexOffU* arrs) {
 		constexpr uint64_t c_table[4] = {
 			0xffffffffffffffff,
 			0xaaaaaaaaaaaaaaaa,
