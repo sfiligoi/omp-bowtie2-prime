@@ -34,7 +34,7 @@ static inline void pack_2b_in_8b(const int two, uint8_t& eight, const int off) {
 	eight |= (two << (off*2));
 }
 
-static inline int unpack_2b_from_8b(const uint8_t eight, const int off) {
+constexpr static inline int unpack_2b_from_8b(const uint8_t eight, const int off) {
 	assert_lt(off, 4);
 	return ((eight >> (off*2)) & 0x3);
 }
