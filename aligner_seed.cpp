@@ -631,7 +631,7 @@ uint16_t MultiSeedAligner::extend(
 	return nSdFmops;
 }
 
-void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
+void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend, uint64_t repcnt)
 {
 	// doExtend               // do extension of seed hits?
 	const Ebwt* ebwtFw= _ebwtFw;
@@ -651,14 +651,40 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 		if (end_el>total_els) end_el = total_els;
 		uint64_t bwops; // just ignore the bwops for now, keep it local
 		uint8_t nleft = end_el-start_el;
+
+		uint8_t* nleft_d = (uint8_t*)malloc(sizeof(uint8_t));
+		*nleft_d = nleft;
+
 		uint8_t idxs[ibatch_size];
-		SeedAlignerSearchState sstateVec[ibatch_size];
+		SeedAlignerSearchState* sstateVec = new SeedAlignerSearchState[ibatch_size];
 		// TODO: sstateVec and idxs should be returned into searchSeedBi functions after combined
 		// Currently memory accesses bugs...
-		searchSeedBi1<<<1, ibatch_size>>>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
-		searchSeedBi2<<<1, ibatch_size>>>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		if(repcnt != 1 &&  gbatch == 0)
+			printf("Made it past repcnt 0! Now at repcnt: %lu\n", repcnt);
+		if(repcnt == 1)
+			printf("Calling searchSeedBi1(), loop: %d repcnt: %lu\n", gbatch, repcnt);
+		searchSeedBi1<<<1, 1>>>(ebwtFw, bwops, nleft_d, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		if(repcnt == 1)
+			printf("Calling searchSeedBi2()\n");
+		nleft = *nleft_d;
+		searchSeedBi2<<<1, 1>>>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		if(repcnt == 1)
+			printf("Done with batch\n");
+		/*
+
 		//SeedAligner::searchSeedBi1<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		if(repcnt == 1 && gbatch == 0) {
+			// print stats of element after this first pass
+			// output 
+			printf("sdata[%d] reporting: %d\n", 0, dataVec[0].need_reporting);
+			printf("nleft: %d\n", nleft);
+		const bool done = startSearchSeedBi(
+				ep, ebwtPtr, ftab, eftab, fchr,
+				sdata, sstate);
+		*/
+
 		//SeedAligner::searchSeedBi2<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
+		free(nleft_d);
 	} // for gbatch
 
 	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
@@ -732,7 +758,7 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
        ); // for_each
 #endif
 
-#endif HIP_KERNELS
+#endif // HIP_KERNELS
 
 }
 
@@ -834,29 +860,26 @@ void SeedAligner::searchSeedBi1(
 #endif
                         const Ebwt* ebwt,       // forward index (BWT)
                         uint64_t& bwops_,         // Burrows-Wheeler operations
-                        uint8_t& nleft,
+                        uint8_t* nleft,
                         uint8_t* idxs, // indexes into sstateVec
                         SeedAlignerSearchState sstateVec[],
 			SeedAlignerSearchData dataVec[])
 {
+	if (blockIdx.x != 0 || threadIdx.x != 0) {
+		printf("Testing on single thread for now\n");
+		return;
+	}
+
 	const EbwtParams& ep = ebwt->eh();
 	const uint8_t* const ebwtPtr = ebwt->ebwt();
 	const TIndexOffU * const ftab = ebwt->ftab();
 	const TIndexOffU * const eftab = ebwt->eftab();
 	const TIndexOffU * const fchr =  ebwt->fchr();
 
-	//int bs = blockDim.x;
-	//uint8_t idxs[SS_SIZE]; // indexes into sstateVec
+	uint8_t n=0;
+	uint8_t iparam = 0; // iparam and n may diverge, if some are done at init stage
 
-	//SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
-	assert(nleft<=SS_SIZE);
-
-	//uint8_t nleft = nparams; // will keep track of how many are not done yet
-
-	{
-	   uint8_t n=0;
-           uint8_t iparam = 0; // iparam and n may diverge, if some are done at init stage
-	   while (n<nleft) {
+	while (n<*nleft) {
 		SeedAlignerSearchData&   sdata   = dataVec[iparam];
 		SeedAlignerSearchState&  sstate  = sstateVec[iparam];
 		//sdata.resetData(pcs.seq, pcs.seq_len);
@@ -864,19 +887,18 @@ void SeedAligner::searchSeedBi1(
 		idxs[n] = iparam;
 		iparam+=1;
 		const bool done = startSearchSeedBi(
-					ep, ebwtPtr, ftab, eftab, fchr,
-					sdata, sstate);
+				ep, ebwtPtr, ftab, eftab, fchr,
+				sdata, sstate);
 		if(done) {
-		        if(sstate.step == (int)sdata.n_seed_steps()) {
-                		// Finished aligning seed
+			if(sstate.step == (int)sdata.n_seed_steps()) {
+				// Finished aligning seed
 				sdata.set_reporting();
 			}
 			// done with this, swap with last and reduce nleft
-			nleft-=1;
+			*nleft-=1;
 		} else {
 			n+=1;
 		}
-	    }
 	}
 
 

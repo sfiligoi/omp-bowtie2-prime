@@ -1456,7 +1456,7 @@ __global__
 void searchSeedBi1(
                         const Ebwt* ebwt,       // forward index (BWT)
                         uint64_t& bwops_,         // Burrows-Wheeler operations
-                        uint8_t& nleft,
+												uint8_t* nleft,    // must be leq SS_SIZE
                         uint8_t* idxs, // indexes into sstateVec
                         SeedAlignerSearchState sstateVec[],
 			SeedAlignerSearchData dataVec[]);
@@ -1516,7 +1516,7 @@ public:
 
 	// Align the Seeds
 	// Assumes all prepareSearchAllSeeds were already called
-	void searchAllSeedsDoAll(bool doExtend);
+	void searchAllSeedsDoAll(bool doExtend, uint64_t repcnt);
 
 	// return False if No seed alignment
 	template <class ASW>
