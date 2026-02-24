@@ -75,7 +75,7 @@ int gVerbose;             // be talkative
 static bool startVerbose; // be talkative at startup
 int gQuiet;               // print nothing but the alignments
 static int sanityCheck;   // enable expensive sanity checks
-static int format;        // default read format is FASTQ
+static int rdformat;        // default read format is FASTQ
 static bool interleaved;  // reads are interleaved
 static string origString; // reference text, or filename(s)
 static int seed;          // srandom() seed
@@ -255,12 +255,12 @@ static EList<string> sra_accs;
 
 #define DMAX std::numeric_limits<double>::max()
 
-static void set_format(int &current_format, file_format format) {
+static void set_format(int &current_format, file_format rdformat) {
 	if (current_format == UNKNOWN)
-		current_format = format;
+		current_format = rdformat;
 	else {
 		std::cerr << file_format_names[current_format] << " and "
-			  << file_format_names[format] << " formats are "
+			  << file_format_names[rdformat] << " formats are "
 			  << "mutually exclusive." << std::endl;
 		exit(1);
 	}
@@ -275,7 +275,7 @@ static void resetOptions() {
 	startVerbose	    = 0;
 	gQuiet		    = false;
 	sanityCheck	    = 0;	// enable expensive sanity checks
-	format		    = UNKNOWN;	// default read format is FASTQ
+	rdformat	    = UNKNOWN;	// default read format is FASTQ
 	interleaved	    = false;	// reads are not interleaved by default
 	origString	    = "";	// reference text, or filename(s)
 	seed		    = 0;	// srandom() seed
@@ -1034,29 +1034,29 @@ static void parseOption(int next_option, const char *arg) {
 	case ARG_DESC_PRIORITIZE: descPrioritizeRoots = true; break;
 	case '1': tokenize(arg, ",", mates1); break;
 	case '2': tokenize(arg, ",", mates2); break;
-	case ARG_ONETWO: tokenize(arg, ",", mates12); set_format(format, TAB_MATE5); break;
-	case ARG_TAB5:   tokenize(arg, ",", mates12); set_format(format, TAB_MATE5); break;
-	case ARG_TAB6:   tokenize(arg, ",", mates12); set_format(format, TAB_MATE6); break;
+	case ARG_ONETWO: tokenize(arg, ",", mates12); set_format(rdformat, TAB_MATE5); break;
+	case ARG_TAB5:   tokenize(arg, ",", mates12); set_format(rdformat, TAB_MATE5); break;
+	case ARG_TAB6:   tokenize(arg, ",", mates12); set_format(rdformat, TAB_MATE6); break;
 	case ARG_INTERLEAVED: {
 		tokenize(arg, ",", mates12);
 		interleaved = true;
 		break;
 	}
 	case 'b': {
-		set_format(format, BAM);
+		set_format(rdformat, BAM);
 		saw_bam = true;
 		break;
 	}
 	case 'f': {
-		if (format != FASTA_CONT)
-			set_format(format, FASTA);
+		if (rdformat != FASTA_CONT)
+			set_format(rdformat, FASTA);
 		break;
 	}
 	case 'F': {
-		if (format == FASTA) {
-			format = UNKNOWN;
+		if (rdformat == FASTA) {
+			rdformat = UNKNOWN;
 		}
-		set_format(format, FASTA_CONT);
+		set_format(rdformat, FASTA_CONT);
 		pair<uint32_t, uint32_t> p = parsePair<uint32_t>(arg, ',');
 		fastaContLen = p.first;
 		fastaContFreq = p.second;
@@ -1066,10 +1066,10 @@ static void parseOption(int next_option, const char *arg) {
 		cerr << "WARNING: BWA_SW_LIKE not supported" << endl; 
 		break;
 	}
-	case 'q': set_format(format, FASTQ); break;
-	case 'r': set_format(format, RAW); break;
-	case 'c': set_format(format, CMDLINE); break;
-	case ARG_QSEQ: set_format(format, QSEQ); break;
+	case 'q': set_format(rdformat, FASTQ); break;
+	case 'r': set_format(rdformat, RAW); break;
+	case 'c': set_format(rdformat, CMDLINE); break;
+	case ARG_QSEQ: set_format(rdformat, QSEQ); break;
 	case 'I':
 		gMinInsert = parseInt(0, "-I arg must be positive", arg);
 		break;
@@ -1629,7 +1629,7 @@ static void parseOption(int next_option, const char *arg) {
 #ifdef USE_SRA
         case ARG_SRA_ACC: {
 		tokenize(arg, ",", sra_accs);
-		set_format(format, SRA_FASTA);
+		set_format(rdformat, SRA_FASTA);
 		break;
         }
 #endif
@@ -1774,33 +1774,33 @@ static void parseOptions(int argc, const char **argv) {
 		throw 1;
 	}
 
-	if (format == UNKNOWN)
-		set_format(format, FASTQ);
+	if (rdformat == UNKNOWN)
+		set_format(rdformat, FASTQ);
 	if(mates1.size() != mates2.size()) {
 		cerr << "Error: " << mates1.size() << " mate files/sequences were specified with -1, but " << mates2.size() << endl
 		     << "mate files/sequences were specified with -2.  The same number of mate files/" << endl
 		     << "sequences must be specified with -1 and -2." << endl;
 		throw 1;
 	}
-	if(interleaved && (format != FASTA && format != FASTQ)) {
+	if(interleaved && (rdformat != FASTA && rdformat != FASTQ)) {
 		cerr << "Error: --interleaved only works in combination with FASTA (-f) and FASTQ (-q) formats." << endl;
 		throw 1;
 	}
-        if (samAppendComment && (format != FASTA && format != FASTQ)) {
+        if (samAppendComment && (rdformat != FASTA && rdformat != FASTQ)) {
 		cerr << "Error --sam-append-comment only works with FASTA (-f) and FASTQ (-q) formats. " << endl;
 		throw 1;
         }
-        if(qualities.size() && format != FASTA) {
+        if(qualities.size() && rdformat != FASTA) {
 		cerr << "Error: one or more quality files were specified with -Q but -f was not" << endl
 		     << "enabled.  -Q works only in combination with -f and -C." << endl;
 		throw 1;
 	}
-	if(qualities1.size() && format != FASTA) {
+	if(qualities1.size() && rdformat != FASTA) {
 		cerr << "Error: one or more quality files were specified with --Q1 but -f was not" << endl
 		     << "enabled.  --Q1 works only in combination with -f and -C." << endl;
 		throw 1;
 	}
-	if(qualities2.size() && format != FASTA) {
+	if(qualities2.size() && rdformat != FASTA) {
 		cerr << "Error: one or more quality files were specified with --Q2 but -f was not" << endl
 		     << "enabled.  --Q2 works only in combination with -f and -C." << endl;
 		throw 1;
@@ -1823,7 +1823,7 @@ static void parseOptions(int argc, const char **argv) {
 		     << "is specified." << endl;
 	}
 	// Check for duplicate mate input files
-	if(format != CMDLINE) {
+	if(rdformat != CMDLINE) {
 		for(size_t i = 0; i < mates1.size(); i++) {
 			for(size_t j = 0; j < mates2.size(); j++) {
 				if(mates1[i] == mates2[j] && !gQuiet) {
@@ -4168,7 +4168,7 @@ static void driver(
 		parseFastas(origFiles, names, nameLens, os, seqLens);
 	}
 	PatternParams pp(
-		format,        // file format
+		rdformat,        // file format
 		interleaved,   // some or all of the reads are interleaved
 		fileParallel,  // true -> wrap files with separate PairedPatternSources
 		seed,          // pseudo-random seed
@@ -4565,7 +4565,7 @@ int bowtie(int argc, const char **argv) {
 			// Optionally summarize
 			if(gVerbose) {
 				cout << "Input " + gEbwt_ext +" file: \"" << bt2index.c_str() << "\"" << endl;
-				cout << "Query inputs (DNA, " << file_format_names[format].c_str() << "):" << endl;
+				cout << "Query inputs (DNA, " << file_format_names[rdformat].c_str() << "):" << endl;
 				for(size_t i = 0; i < queries.size(); i++) {
 					cout << "  " << queries[i].c_str() << endl;
 				}
