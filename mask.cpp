@@ -19,6 +19,8 @@
 
 #include "mask.h"
 
+#if 0
+
 // 5-bit pop count
 int alts5[32] = {
 	 0, 1, 1, 2, 1, 2, 2, 3,
@@ -26,6 +28,7 @@ int alts5[32] = {
 	 1, 2, 2, 3, 2, 3, 3, 4,
 	 2, 3, 3, 4, 3, 4, 4, 5
 };
+// std::popcount(i)
 
 // Index of lowest set bit
 int firsts5[32] = {
@@ -34,3 +37,6 @@ int firsts5[32] = {
 	 4, 0, 1, 0, 2, 0, 1, 0,
 	 3, 0, 1, 0, 2, 0, 1, 0
 };
+// (i==0) ? -1 : std::countr_zero(i)
+#endif
+

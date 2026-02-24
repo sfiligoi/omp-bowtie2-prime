@@ -19,7 +19,6 @@
 #include "aligner_cache.cpp"
 #include "aligner_result.cpp"
 #include "ref_coord.cpp"
-#include "mask.cpp"
 #include "pe.cpp"
 #include "aln_sink.cpp"
 #include "dp_framer.cpp"

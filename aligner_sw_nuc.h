@@ -21,8 +21,11 @@
 #define ALIGNER_SW_NUC_H_
 
 #include <stdint.h>
+
+#ifndef NO_DpNucFrame
 #include "aligner_sw_common.h"
 #include "aligner_result.h"
+
 
 /**
  * Encapsulates a backtrace stack frame.  Includes enough information that we
@@ -86,6 +89,7 @@ enum {
 	BT_CAND_FATE_FILT_DOMINATED, // skipped b/c it was dominated
 	BT_CAND_FATE_FILT_SCORE      // skipped b/c score not interesting anymore
 };
+#endif /* NO_DpNucFrame */
 
 /**
  * Encapsulates a cell that we might want to backtrace from.
