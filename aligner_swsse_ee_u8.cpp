@@ -53,7 +53,26 @@
  */
 
 #include <limits>
+#include <bit>
+
+#include "mask.h"
+
+#ifndef SWSSE_INLINE_ONLY
+
 #include "aligner_sw.h"
+
+#else
+
+#include "cstdint"
+
+// Normally defined in read.h, but explictily defining it here to avoid another include
+typedef int64_t TAlScore;
+
+#include "sse_wrap.h"
+#include "aligner_swsse.h"
+#include "aligner_sw_nuc.h"
+
+#endif
 
 // In end-to-end mode, we start high (255) and go low (0).  Factoring in
 // a query profile involves unsigned saturating subtraction, so all the
@@ -62,6 +81,7 @@
 
 typedef uint8_t EEU8_TCScore;
 
+#ifndef SWSSE_INLINE_ONLY
 /**
  * Build query profile look up tables for the read.  The query profile look
  * up table is organized as a 1D array indexed by [i][j] where i is the
@@ -132,90 +152,8 @@ void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
 		}
 	}
 }
+#endif
 
-#if 0
-/**
- * Return true iff the cell has sane E/F/H values w/r/t its predecessors.
- */
-static bool cellOkEnd2EndU8(
-	SSEData& d,
-	size_t row,
-	size_t col,
-	int refc,
-	int readc,
-	int readq,
-	const Scoring& sc)     // scoring scheme
-{
-	EEU8_TCScore floorsc = 0;
-	TAlScore ceilsc = MAX_I64;
-	TAlScore offsetsc = -0xff;
-	TAlScore sc_h_cur = (TAlScore)d.mat_.helt(row, col);
-	TAlScore sc_e_cur = (TAlScore)d.mat_.eelt(row, col);
-	TAlScore sc_f_cur = (TAlScore)d.mat_.felt(row, col);
-	if(sc_h_cur > floorsc) {
-		sc_h_cur += offsetsc;
-	}
-	if(sc_e_cur > floorsc) {
-		sc_e_cur += offsetsc;
-	}
-	if(sc_f_cur > floorsc) {
-		sc_f_cur += offsetsc;
-	}
-	bool gapsAllowed = true;
-	size_t rowFromEnd = d.mat_.nrow() - row - 1;
-	if(row < (size_t)sc.gapbar || rowFromEnd < (size_t)sc.gapbar) {
-		gapsAllowed = false;
-	}
-	bool e_left_trans = false, h_left_trans = false;
-	bool f_up_trans   = false, h_up_trans = false;
-	bool h_diag_trans = false;
-	if(gapsAllowed) {
-		TAlScore sc_h_left = floorsc;
-		TAlScore sc_e_left = floorsc;
-		TAlScore sc_h_up   = floorsc;
-		TAlScore sc_f_up   = floorsc;
-		if(col > 0 && sc_e_cur > floorsc && sc_e_cur <= ceilsc) {
-			sc_h_left = d.mat_.helt(row, col-1) + offsetsc;
-			sc_e_left = d.mat_.eelt(row, col-1) + offsetsc;
-			e_left_trans = (sc_e_left > floorsc && sc_e_cur == sc_e_left - sc.readGapExtend());
-			h_left_trans = (sc_h_left > floorsc && sc_e_cur == sc_h_left - sc.readGapOpen());
-			assert(e_left_trans || h_left_trans);
-			// Check that we couldn't have got a better E score
-			assert_geq(sc_e_cur, sc_e_left - sc.readGapExtend());
-			assert_geq(sc_e_cur, sc_h_left - sc.readGapOpen());
-		}
-		if(row > 0 && sc_f_cur > floorsc && sc_f_cur <= ceilsc) {
-			sc_h_up = d.mat_.helt(row-1, col) + offsetsc;
-			sc_f_up = d.mat_.felt(row-1, col) + offsetsc;
-			f_up_trans = (sc_f_up > floorsc && sc_f_cur == sc_f_up - sc.refGapExtend());
-			h_up_trans = (sc_h_up > floorsc && sc_f_cur == sc_h_up - sc.refGapOpen());
-			assert(f_up_trans || h_up_trans);
-			// Check that we couldn't have got a better F score
-			assert_geq(sc_f_cur, sc_f_up - sc.refGapExtend());
-			assert_geq(sc_f_cur, sc_h_up - sc.refGapOpen());
-		}
-	} else {
-		assert_geq(floorsc, sc_e_cur);
-		assert_geq(floorsc, sc_f_cur);
-	}
-	if(col > 0 && row > 0 && sc_h_cur > floorsc && sc_h_cur <= ceilsc) {
-		TAlScore sc_h_upleft = d.mat_.helt(row-1, col-1) + offsetsc;
-		TAlScore sc_diag = sc.score(readc, (int)refc, readq - 33);
-		h_diag_trans = sc_h_cur == sc_h_upleft + sc_diag;
-	}
-	assert(
-		sc_h_cur <= floorsc ||
-		e_left_trans ||
-		h_left_trans ||
-		f_up_trans   ||
-		h_up_trans   ||
-		h_diag_trans ||
-		sc_h_cur > ceilsc ||
-		row == 0 ||
-		col == 0);
-	return true;
-}
-#endif /*ndef NDEBUG*/
 
 /**
  * Given a filled-in DP table, populate the btncand_ list with candidate cells
@@ -488,7 +426,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		
 		// Fetch the appropriate query profile.  Note that elements of rf must
 		// be numbers, not masks.
-		size_t off = (size_t)firsts5[ rf[i] ] * iter * 2;
+		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
 		// points into the query profile
 		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 	
@@ -535,6 +473,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	return lrmax;
 }
 
+#ifndef SWSSE_INLINE_ONLY
 /**
  * Align read 'rd' to reference using read & reference information given
  * last time init() was called.
@@ -542,7 +481,9 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 bool SwAligner::alignEnd2EndSseU8(
 	TAlScore& best)    // best alignment score observed in DP matrix
 {
+#ifdef ENABLE_SSE_METRICS
 	constexpr bool debug = false;
+#endif
 
 	assert(initedRef() && initedRead());
 	assert_eq(STATE_INITED, state_);
@@ -941,10 +882,10 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 						mask = (d.mat_.masks(row,col) >> 2) & 31;
 					}
 					assert(gapsAllowed || mask == (1 << 4) || mask == 0);
-					int opts = alts5[mask];
+					int opts = std::popcount(uint8_t(mask));
 					int select = -1;
 					if(opts == 1) {
-						select = firsts5[mask];
+						select = std::countr_zero(uint8_t(mask));
 						assert_geq(mask, 0);
 						d.mat_.hMaskSet(row, col, 0);
 					} else if(opts > 1) {
@@ -1299,7 +1240,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 	assert_eq(gaps, gapsCheck);
 	BTDnaString refstr;
 	for(size_t i = col; i <= origCol; i++) {
-		refstr.append(firsts5[(int)rf_[i]]);
+		refstr.append(std::countr_zero(uint8_t(rf_[i])));
 	}
 	BTDnaString editstr;
 	Edit::toRef((*rd_), ned, editstr, true, trimBeg, trimEnd);
@@ -1321,3 +1262,5 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 #endif
 	return true;
 }
+#endif /* SWSSE_INLINE_ONLY */
+
