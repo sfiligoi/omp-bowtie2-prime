@@ -2635,7 +2635,7 @@ static void multiseedSearchWorker() {
 
 			// Align the seeds
 			// internally parallelized
-			als.searchAllSeedsDoAll(msconsts->extend, repcnt);
+			als.searchAllSeedsDoAll(msconsts->extend);
 
 		   tmr.next("searchAllSeedsDo");
 

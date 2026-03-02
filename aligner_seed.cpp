@@ -631,7 +631,7 @@ uint16_t MultiSeedAligner::extend(
 	return nSdFmops;
 }
 
-void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend, uint64_t repcnt)
+void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 {
 	// doExtend               // do extension of seed hits?
 	const Ebwt* ebwtFw= _ebwtFw;
@@ -657,34 +657,10 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend, uint64_t repcnt)
 
 		uint8_t idxs[ibatch_size];
 		SeedAlignerSearchState* sstateVec = new SeedAlignerSearchState[ibatch_size];
-		// TODO: sstateVec and idxs should be returned into searchSeedBi functions after combined
-		// Currently memory accesses bugs...
-		if(repcnt != 1 &&  gbatch == 0)
-			printf("Made it past repcnt 0! Now at repcnt: %lu\n", repcnt);
-		if(repcnt == 1)
-			printf("Calling searchSeedBi1(), loop: %d repcnt: %lu\n", gbatch, repcnt);
-		searchSeedBi1<<<1, 1>>>(ebwtFw, bwops, nleft_d, idxs, &(sstateVec[0]), &(dataVec[start_el]));
-		if(repcnt == 1)
-			printf("Calling searchSeedBi2()\n");
-		nleft = *nleft_d;
-		searchSeedBi2<<<1, 1>>>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
-		if(repcnt == 1)
-			printf("Done with batch\n");
-		/*
 
-		//SeedAligner::searchSeedBi1<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
-		if(repcnt == 1 && gbatch == 0) {
-			// print stats of element after this first pass
-			// output 
-			printf("sdata[%d] reporting: %d\n", 0, dataVec[0].need_reporting);
-			printf("nleft: %d\n", nleft);
-		const bool done = startSearchSeedBi(
-				ep, ebwtPtr, ftab, eftab, fchr,
-				sdata, sstate);
-		*/
+		searchSeedBi<<<1, 1>>>(ebwtFw, bwops, &(sstateVec[0]), &(dataVec[start_el]));
+		
 
-		//SeedAligner::searchSeedBi2<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
-		free(nleft_d);
 	} // for gbatch
 
 	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
@@ -716,46 +692,36 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend, uint64_t repcnt)
 #else
 #pragma omp parallel for
 #endif
-        for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
- #else
-       std::for_each_n(std::execution::par_unseq,
-               thrust::counting_iterator(0), total_batches,
-               [ebwtFw,paramVec,dataVec,total_els](uint32_t gbatch) mutable {
- #endif
-                const size_t start_el = gbatch*ibatch_size;
-                size_t end_el = start_el+ibatch_size;
-                if (end_el>total_els) end_el = total_els;
-		uint64_t bwops; // just ignore the bwops for now, keep it local
-                //SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(dataVec[start_el]));
+	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
+#else
+	std::for_each_n(std::execution::par_unseq,
+			thrust::counting_iterator(0), total_batches,
+			[ebwtFw,paramVec,dataVec,total_els](uint32_t gbatch) mutable {
+#endif
+				const size_t start_el = gbatch*ibatch_size;
+				size_t end_el = start_el+ibatch_size;
+				if (end_el>total_els) end_el = total_els;
+				uint64_t bwops; // just ignore the bwops for now, keep it local
+				SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(dataVec[start_el]));
+				// TODO: integrate into searchSeedBi
+				for (size_t i=start_el; i<end_el; i++) {
+					if(dataVec[i].need_reporting && doExtend) {
+						size_t nlex = 0;
+						// prm.nSdFmops +=
+						extend(
+								*ebwtFw,
+								dataVec[i].bwt.topf,
+								dataVec[i].bwt.botf,
+								paramVec[i].seq_end,
+								paramVec[i].seq_lim,
+								nlex);
+						dataVec[i].nlex = nlex;
 
-		uint8_t nleft = end_el-start_el;
-		uint8_t idxs[ibatch_size];
-		SeedAlignerSearchState sstateVec[ibatch_size];
-		// TODO: sstateVec and idxs should be returned into searchSeedBi functions after combined
-		// Currently memory accesses bugs...
-		SeedAligner::searchSeedBi1<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
-		SeedAligner::searchSeedBi2<ibatch_size>(ebwtFw, bwops, nleft, idxs, &(sstateVec[0]), &(dataVec[start_el]));
-
-
-                // TODO: integrate into searchSeedBi
-                for (size_t i=start_el; i<end_el; i++) {
-                        if(dataVec[i].need_reporting && doExtend) {
-				size_t nlex = 0;
-                                // prm.nSdFmops +=
-                                extend(
-                                        *ebwtFw,
-                                        dataVec[i].bwt.topf,
-                                        dataVec[i].bwt.botf,
-                                        paramVec[i].seq_end,
-                                        paramVec[i].seq_lim,
-                                        nlex);
-                                dataVec[i].nlex = nlex;
-
-                        }
-                }
-        } // for gbatch
+					}
+				}
+			} // for gbatch
 #ifndef FORCE_ALL_OMP
-       ); // for_each
+	); // for_each
 #endif
 
 #endif // HIP_KERNELS
@@ -853,90 +819,55 @@ constexpr inline bool startSearchSeedBi(
 
 #ifdef HIP_KERNELS
 __global__
-void searchSeedBi1(
+void searchSeedBi(
 #else
 template<uint8_t SS_SIZE>
-void SeedAligner::searchSeedBi1(
+void SeedAligner::searchSeedBi(
 #endif
                         const Ebwt* ebwt,       // forward index (BWT)
                         uint64_t& bwops_,         // Burrows-Wheeler operations
-                        uint8_t* nleft,
-                        uint8_t* idxs, // indexes into sstateVec
-                        SeedAlignerSearchState sstateVec[],
+                        const uint8_t nparams,
 			SeedAlignerSearchData dataVec[])
 {
-	if (blockIdx.x != 0 || threadIdx.x != 0) {
-		printf("Testing on single thread for now\n");
-		return;
-	}
-
 	const EbwtParams& ep = ebwt->eh();
 	const uint8_t* const ebwtPtr = ebwt->ebwt();
 	const TIndexOffU * const ftab = ebwt->ftab();
 	const TIndexOffU * const eftab = ebwt->eftab();
 	const TIndexOffU * const fchr =  ebwt->fchr();
 
-	uint8_t n=0;
-	uint8_t iparam = 0; // iparam and n may diverge, if some are done at init stage
+	uint8_t idxs[SS_SIZE]; // indexes into sstateVec
 
-	while (n<*nleft) {
-		SeedAlignerSearchData&   sdata   = dataVec[iparam];
-		SeedAlignerSearchState&  sstate  = sstateVec[iparam];
-		//sdata.resetData(pcs.seq, pcs.seq_len);
-		sstate.reset();
-		idxs[n] = iparam;
-		iparam+=1;
-		const bool done = startSearchSeedBi(
-				ep, ebwtPtr, ftab, eftab, fchr,
-				sdata, sstate);
-		if(done) {
-			if(sstate.step == (int)sdata.n_seed_steps()) {
-				// Finished aligning seed
-				sdata.set_reporting();
+	SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
+	assert(nparams<=SS_SIZE);
+
+	uint8_t nleft = nparams; // will keep track of how many are not done yet
+
+	{
+		uint8_t n = 0;
+		uint8_t iparam = 0; // iparam and n may diverge, if some are done at init stage
+		while (n<nleft) {
+			SeedAlignerSearchData&   sdata   = dataVec[iparam];
+			SeedAlignerSearchState&  sstate  = sstateVec[iparam];
+			//sdata.resetData(pcs.seq, pcs.seq_len);
+			sstate.reset();
+			idxs[n] = iparam;
+			iparam+=1;
+			const bool done = startSearchSeedBi(
+					ep, ebwtPtr, ftab, eftab, fchr,
+					sdata, sstate);
+			if(done) {
+				if(sstate.step == (int)sdata.n_seed_steps()) {
+					// Finished aligning seed
+					sdata.set_reporting();
+				}
+				// done with this, swap with last and reduce nleft
+				nleft-=1;
+			} else {
+				n+=1;
 			}
-			// done with this, swap with last and reduce nleft
-			*nleft-=1;
-		} else {
-			n+=1;
+
 		}
 	}
-
-
-	return;
-}
-/**
- * Given a seed, search.  Assumes zone 0 = no backtracking.
- *
- * Return a list of Seed hits.
- * 1. Edits
- * 2. Bidirectional BWT range(s) on either end
- */
-#ifdef HIP_KERNELS
-__global__ 
-void searchSeedBi2(
-#else
-template<uint8_t SS_SIZE>
-void SeedAligner::searchSeedBi2(
-#endif
-                        const Ebwt* ebwt,       // forward index (BWT)
-                        uint64_t& bwops_,         // Burrows-Wheeler operations
-                        uint8_t& nleft,
-                        uint8_t* idxs, // indexes into sstateVec
-                        SeedAlignerSearchState sstateVec[],
-			SeedAlignerSearchData dataVec[])
-{
-	const EbwtParams& ep = ebwt->eh();
-	const uint8_t* const ebwtPtr = ebwt->ebwt();
-	const TIndexOffU * const ftab = ebwt->ftab();
-	const TIndexOffU * const eftab = ebwt->eftab();
-	const TIndexOffU * const fchr =  ebwt->fchr();
-
-	//uint8_t idxs[SS_SIZE]; // indexes into sstateVec
-
-	//SeedAlignerSearchState sstateVec[SS_SIZE]; // work area
-	assert(nleft<=SS_SIZE);
-
-	//uint8_t nleft = nparams; // will keep track of how many are not done yet
 
 
 	while (nleft>0) {

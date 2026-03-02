@@ -41,6 +41,23 @@
 #include "simple_func.h"
 #include "btypes.h"
 
+#ifdef HIP_KERNELS
+#include <hip/hip_vector_types.h>
+#include <hip/hip_runtime.h>
+
+#define HIP_CHECK(expression)                  \
+{                                              \
+    const hipError_t status = expression;      \
+    if(status != hipSuccess){                  \
+        std::cerr << "HIP error "              \
+                  << status << ": "            \
+                  << hipGetErrorString(status) \
+                  << " at " << __FILE__ << ":" \
+                  << __LINE__ << std::endl;    \
+    }                                          \
+}
+#endif
+
 /**
  * A constraint to apply to an alignment zone, or to an overall
  * alignment.
@@ -1413,22 +1430,12 @@ public:
 	 * Given a vector of instantiated seeds, search
 	 */
 	template<uint8_t SS_SIZE>
-	static void searchSeedBi1(
+	static void searchSeedBi(
 		        const Ebwt* ebwt,         // forward index (BWT)
         		uint64_t& bwops_,         // Burrows-Wheeler operations
-						uint8_t& nleft,    // must be leq SS_SIZE
-						uint8_t* idxs,						// indexes into sstateVec
-						SeedAlignerSearchState sstateVec[],
+			const uint8_t nparams,    // must be leq SS_SIZE
 			SeedAlignerSearchData         dataVec[]);
 
-	template<uint8_t SS_SIZE>
-	static void searchSeedBi2(
-		        const Ebwt* ebwt,         // forward index (BWT)
-        		uint64_t& bwops_,         // Burrows-Wheeler operations
-						uint8_t& nleft,    // must be leq SS_SIZE
-						uint8_t* idxs,						// indexes into sstateVec
-						SeedAlignerSearchState sstateVec[],
-			SeedAlignerSearchData         dataVec[]);
 #endif
 
 protected:
@@ -1453,21 +1460,11 @@ protected:
 // TODO: temporary placement here while debugging searchSeedBi
 #ifdef HIP_KERNELS
 __global__
-void searchSeedBi1(
-                        const Ebwt* ebwt,       // forward index (BWT)
-                        uint64_t& bwops_,         // Burrows-Wheeler operations
-												uint8_t* nleft,    // must be leq SS_SIZE
-                        uint8_t* idxs, // indexes into sstateVec
-                        SeedAlignerSearchState sstateVec[],
-			SeedAlignerSearchData dataVec[]);
-__global__
-void searchSeedBi2(
-                        const Ebwt* ebwt,       // forward index (BWT)
-                        uint64_t& bwops_,         // Burrows-Wheeler operations
-                        uint8_t& nleft,
-                        uint8_t* idxs, // indexes into sstateVec
-                        SeedAlignerSearchState sstateVec[],
-			SeedAlignerSearchData dataVec[]);
+void searchSeedBi(
+		        const Ebwt* ebwt,         // forward index (BWT)
+        		uint64_t& bwops_,         // Burrows-Wheeler operations
+				uint8_t end_el,								// need to know the ending
+			SeedAlignerSearchData         dataVec[]);
 #endif
 
 
@@ -1516,7 +1513,7 @@ public:
 
 	// Align the Seeds
 	// Assumes all prepareSearchAllSeeds were already called
-	void searchAllSeedsDoAll(bool doExtend, uint64_t repcnt);
+	void searchAllSeedsDoAll(bool doExtend);
 
 	// return False if No seed alignment
 	template <class ASW>
