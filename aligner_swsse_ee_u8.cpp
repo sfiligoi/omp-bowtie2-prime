@@ -63,11 +63,7 @@
 
 #else
 
-#include "cstdint"
-
-// Normally defined in read.h, but explictily defining it here to avoid another include
-typedef int64_t TAlScore;
-
+#include "aligner_types.h"
 #include "sse_wrap.h"
 #include "aligner_swsse.h"
 #include "aligner_sw_nuc.h"
@@ -81,24 +77,18 @@ typedef int64_t TAlScore;
 
 typedef uint8_t EEU8_TCScore;
 
-#ifndef SWSSE_INLINE_ONLY
 /**
  * Build query profile look up tables for the read.  The query profile look
  * up table is organized as a 1D array indexed by [i][j] where i is the
  * reference character in the current DP column (0=A, 1=C, etc), and j is
  * the segment of the query we're currently working on.
  */
-void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
-	bool& done = fw ? sseU8fwBuilt_ : sseU8rcBuilt_;
-	if(done) {
-		return;
-	}
-	done = true;
-	const BTDnaString* rd = fw ? rdfw_ : rdrc_;
-	const BTString* qu = fw ? qufw_ : qurc_;
+static inline void EEU8_buildQueryProfile(
+		const BTDnaString* rd,
+		const BTString*    qu,
+		const Scoring *    psc,
+		SSEData<false,ALN_MAX_ROWS,ALN_MAX_COLS>& d) {
 	const size_t len = rd->length();
-	// How many SSERegI's are needed
-	auto& d = fw ? sseU8fw_ : sseU8rc_;
 	const size_t seglen = d.get_sse_seglen(len);
 	//const size_t nsses = get_nsses(len, false);
 	//d.profbuf_.resizeNoCopy(nsses);
@@ -123,13 +113,13 @@ void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
 				if(j < len) {
 					int readc = (*rd)[j];
 					int readq = (*qu)[j];
-					sc = sc_->score(readc, (int)(1 << refc), readq - 33);
+					sc = psc->score(readc, (int)(1 << refc), readq - 33);
 					// Make score positive, to fit in an unsigned
 					sc = -sc;
 					assert_range(0, 255, sc);
 					size_t j_from_end = len - j - 1;
-					if(j < (size_t)sc_->gapbar ||
-					   j_from_end < (size_t)sc_->gapbar)
+					if(j < (size_t)psc->gapbar ||
+					   j_from_end < (size_t)psc->gapbar)
 					{
 						// Inside the gap barrier
 						*gbarWords = 0xff;
@@ -152,6 +142,21 @@ void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
 		}
 	}
 }
+
+
+#ifndef SWSSE_INLINE_ONLY
+void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
+	bool& done = fw ? sseU8fwBuilt_ : sseU8rcBuilt_;
+	if(done) {
+		return;
+	}
+	done = true;
+	const BTDnaString* rd = fw ? rdfw_ : rdrc_;
+	const BTString* qu = fw ? qufw_ : qurc_;
+	auto& d = fw ? sseU8fw_ : sseU8rc_;
+	EEU8_buildQueryProfile(rd, qu, sc_, d);
+}
+
 #endif
 
 
