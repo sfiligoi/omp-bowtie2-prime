@@ -29,19 +29,11 @@
 #include "ds.h"
 #include "edit.h"
 #include "limit.h"
-
-typedef int64_t TAlScore;
+#include "aligner_types.h"
 
 #define VALID_AL_SCORE(x)   ((x).score_ > MIN_I64)
 #define VALID_SCORE(x)      ((x) > MIN_I64)
 #define INVALIDATE_SCORE(x) ((x) = MIN_I64)
-
-// Hardcode for now. May want to pass in Makefile
-// The cosen values are appropriate for short reads alignment
-// since rdlen is typically 150 (as of July 2024)
-#define ALN_MAX_ROWS 160
-#define ALN_MAX_COLS 200
-
 
 /**
  * A generic score object for an alignment.  Used for accounting during
