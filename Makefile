@@ -407,6 +407,20 @@ bowtie2-align-l-debug: bowtie2-align.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS
 		$(LDFLAGS) $(LDLIBS)
 
 #
+# Test and benchmark files
+#
+
+
+test_align_ee8: devsupport/align_ee8.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
+	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXXFLAGS) \
+		$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX $(NOASSERT_FLAGS) -Wall \
+		$(CPPFLAGS) \
+		-o $@ $< \
+		$(SHARED_CPPS) $(SEARCH_CPPS_MAIN) \
+		$(LDFLAGS) $(LDLIBS)
+
+
+#
 # bowtie2-inspect targets
 #
 
