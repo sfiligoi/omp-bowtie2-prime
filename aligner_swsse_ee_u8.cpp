@@ -331,6 +331,14 @@ inline void EEU8_lazyF(const SSERegI vf0,
 /**
  * Solve the current alignment problem using SSE instructions that operate on 16
  * unsigned 8-bit values packed into a single 128-bit register.
+ *
+ * Select intput parameters:
+ *   profbuf - buffer for query profile & temp vecs
+ *   rf      - reference sequence
+ *
+ * Select output parameters:
+ *   pmat    - SSE matrix for holding all E, F, H vectors
+ *   btncand - cells we might backtrace from
  */
 template<typename TIdxSize>
 inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
