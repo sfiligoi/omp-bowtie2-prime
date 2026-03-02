@@ -45,6 +45,8 @@
 #include <hip/hip_vector_types.h>
 #include <hip/hip_runtime.h>
 
+#define BLOCK_SIZE 64
+
 #define HIP_CHECK(expression)                  \
 {                                              \
     const hipError_t status = expression;      \
@@ -63,8 +65,7 @@
  * alignment.
  *
  * The constraint can put both caps and ceilings on the number and
- * types of edits allowed.
- */
+ * types of edits allowed. */
 struct Constraint {
 	
 	Constraint() { init(); }
@@ -1433,11 +1434,7 @@ public:
 	static void searchSeedBi(
 		        const Ebwt* ebwt,         // forward index (BWT)
         		uint64_t& bwops_,         // Burrows-Wheeler operations
-#ifdef HIP_KERNELS
-			uint64_t total_els, // total elements, must be known for GPU calculation
-#else
                         const uint8_t nparams,
-#endif
 			SeedAlignerSearchData         dataVec[]);
 
 #endif
@@ -1463,11 +1460,12 @@ protected:
 
 // TODO: temporary placement here while debugging searchSeedBi
 #ifdef HIP_KERNELS
+template<uint8_t SS_SIZE>
 __global__
 void searchSeedBi(
 		        const Ebwt* ebwt,         // forward index (BWT)
-        		uint64_t& bwops_,         // Burrows-Wheeler operations
-				uint8_t end_el,								// need to know the ending
+        		uint64_t bwops_,         // Burrows-Wheeler operations
+			uint64_t total_els, // total elements, must be known for GPU calculation
 			SeedAlignerSearchData         dataVec[]);
 #endif
 

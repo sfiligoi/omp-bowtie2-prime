@@ -309,6 +309,7 @@ static inline int64_t fileSize(const char* name) {
  * occurs in and its offset within the side.
  */
 struct SideLocus {
+	__host__ __device__
 	SideLocus() :
 		_sideByteOff(0),
 		_sideNum(0),

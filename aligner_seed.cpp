@@ -162,6 +162,7 @@ public:
 class SeedAlignerSearchState {
 public:
 
+	__host__ __device__
 	SeedAlignerSearchState()
 	: tloc()
 	, bloc()
@@ -641,24 +642,16 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 	// do the searches in batches
 	const uint64_t total_els  = _bufVec_filled;
 
-#ifdef HIP_KERNELS
-	constexpr uint8_t ibatch_size = 64; // GPU batch sizes can be massive because of SIMT
-#endif
-
 	const uint32_t total_batches = (total_els+(ibatch_size-1))/ibatch_size; // round up
 
 	//fprintf(stderr, "total_els: %i total_els: %i ibatch_size: %i\n", int(ibatch_size), int(total_els), int(ibatch_size));
 	//fprintf(stderr, "total_els: %i total_els: %i ibatch_size: %i\n", int(ibatch_size), int(total_els), int(ibatch_size));
 #ifdef HIP_KERNELS
-	//for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
-		//[ebwtFw,paramVec,dataVec,total_els](uint32_t gbatch) mutable {
-		uint64_t bwops; // just ignore the bwops for now, keep it local
 
-		searchSeedBi<<<total_batches, ibatch_size>>>(ebwtFw, bwops, total_els, &(dataVec[0]));
-		//SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, gbatch, start_el, &(dataVec[start_el]));
-		
-
-	//} // for gbatch
+	uint64_t bwops; // just ignore the bwops for now, keep it local
+	searchSeedBi<ibatch_size><<<(total_els+ibatch_size*BLOCK_SIZE-1)/(ibatch_size*BLOCK_SIZE), BLOCK_SIZE>>>(ebwtFw, bwops, total_els, &(dataVec[0]));
+	HIP_CHECK(hipGetLastError());
+	HIP_CHECK(hipDeviceSynchronize());
 
 	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
 		const size_t start_el = gbatch*ibatch_size;
@@ -814,43 +807,39 @@ constexpr inline bool startSearchSeedBi(
 	return false;
 }
 
+template<uint8_t SS_SIZE>
 #ifdef HIP_KERNELS
 __global__
 void searchSeedBi(
 #else
-template<uint8_t SS_SIZE>
 void SeedAligner::searchSeedBi(
 #endif
                         const Ebwt* ebwt,       // forward index (BWT)
-                        uint64_t& bwops_,         // Burrows-Wheeler operations
 #ifdef HIP_KERNELS
+                        uint64_t bwops_,         // Burrows-Wheeler operations
 												uint64_t total_els, // total elements, must be known for GPU calculation
 #else
+                        uint64_t& bwops_,         // Burrows-Wheeler operations
                         const uint8_t nparams,
 #endif
-			SeedAlignerSearchData dataVec[])
+												SeedAlignerSearchData dataVec[])
 {
 
 #ifdef HIP_KERNELS
 		// instead of batches,
-		uint8_t ibatch_size = blockDim.x; // can this be larger? uint8_t is original because of cpu threads is small
-		uint32_t gbatch = blockIdx.x;
-		size_t start_el = gbatch*ibatch_size;
-		size_t end_el = start_el+ibatch_size;
+		size_t start_el = SS_SIZE*(blockIdx.x*blockDim.x+threadIdx.x); // a global tid/SS_SIZE
+		size_t end_el = start_el+SS_SIZE;
 		if (end_el>total_els) end_el = total_els;
-		uint64_t bwops; // just ignore the bwops for now, keep it local
+
 
 		uint8_t nparams = end_el-start_el;
 
+		// guard
+		if (start_el >= total_els) return;
+
 		// move dataVec to our start idx
 		dataVec = &dataVec[start_el];
-		
-		if (blockIdx.x == 0) {
-
-		size_t SS_SIZE = ibatch_size;
-
 #endif
-
 
 
 
@@ -975,9 +964,6 @@ void SeedAligner::searchSeedBi(
 	} // while nleft
 
 	return;
-#ifdef HIP_KERNELS
-		} // if tx == 0
-#endif
 }
 
 #ifdef ALIGNER_SEED_MAIN
