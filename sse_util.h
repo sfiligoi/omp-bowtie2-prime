@@ -26,7 +26,7 @@
 #include <iostream>
 #include "sse_wrap.h"
 
-// Mimick EList, but with static buffer of max size
+// Partially mimick EList, with static buffer of max size and always all elements used
 template<uint32_t sz_>
 class EList_sse {
 public:
@@ -34,8 +34,7 @@ public:
 	/**
 	 * Allocate initial default of S elements.
 	 */
-	explicit EList_sse  (int cat = 0) :
-		cur_(0)
+	explicit EList_sse  (int cat = 0)
 	{
 	}
 
@@ -47,7 +46,7 @@ public:
 	/**
 	 * Return number of elements.
 	 */
-	inline size_t size() const { return cur_; }
+	static constexpr size_t size() { return sz_; }
 
 	/**
 	 * Return number of elements allocated.
@@ -55,108 +54,63 @@ public:
 	static constexpr size_t capacity() { return sz_; }
 	
 	/**
-	 * Ensure that there is sufficient capacity to expand to include
-	 * 'thresh' more elements without having to expand.
-	 */
-	inline void ensure(size_t thresh) {
-		assert_lt(cur_ + thresh, sz_);
-	}
-
-	/**
-	 * Ensure that there is sufficient capacity to include 'newsz' elements.
-	 * If there isn't enough capacity right now, expand capacity to exactly
-	 * equal 'newsz'.
-	 */
-	inline void reserveExact(size_t newsz) {
-		assert_leq(newsz, sz_);
-	}
-
-	/**
 	 * Return true iff there are no elements.
 	 */
-	inline bool empty() const { return cur_ == 0; }
+	static constexpr bool empty() { return false; }
 	
-	/**
-	 * If size is less than requested size, resize up to at least sz
-	 * and set cur_ to requested sz.
-	 */
-	void resize(size_t sz) {
-		assert_leq(sz, sz_);
-		cur_ = sz;
-	}
 	
 	/**
 	 * Zero out contents of vector.
 	 */
-	void zero() {
-		if(cur_ > 0) {
-			memset(list_, 0, cur_ * sizeof(SSERegI));
-		}
-	}
-
-	/**
-	 * If size is less than requested size, resize up to at least sz
-	 * and set cur_ to requested sz.  Do not copy the elements over.
-	 */
-	void resizeNoCopy(size_t sz) { resize(sz); }
-
-	/**
-	 * If size is less than requested size, resize up to exactly sz and set
-	 * cur_ to requested sz.
-	 */
-	void resizeExact(size_t sz) { resize(sz); }
-
-	/**
-	 * Make the stack empty.
-	 */
-	void clear() {
-		cur_ = 0; // re-use stack memory
+	inline void zero() {
+		memset(list_, 0, sz_ * sizeof(SSERegI));
 	}
 
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSERegI& operator[](size_t i) {
-		assert_lt(i, cur_);
+	constexpr SSERegI& operator[](size_t i) {
+		assert_lt(i, sz_);
 		return list_[i];
 	}
 
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSERegI operator[](size_t i) const {
-		assert_lt(i, cur_);
+	constexpr SSERegI operator[](size_t i) const {
+		assert_lt(i, sz_);
 		return list_[i];
 	}
 
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSERegI& get(size_t i) {
+	constexpr SSERegI& get(size_t i) {
+		assert_lt(i, sz_);
 		return operator[](i);
 	}
 	
 	/**
 	 * Return a reference to the ith element.
 	 */
-	inline SSERegI get(size_t i) const {
+	constexpr SSERegI get(size_t i) const {
+		assert_lt(i, sz_);
 		return operator[](i);
 	}
 
 	/**
 	 * Return a pointer to the beginning of the buffer.
 	 */
-	SSERegI *ptr() { return list_; }
+	constexpr SSERegI *ptr() { return list_; }
 
 	/**
 	 * Return a const pointer to the beginning of the buffer.
 	 */
-	const SSERegI *ptr() const { return list_; }
+	constexpr const SSERegI *ptr() const { return list_; }
 
-private:
+public:
 
 	SSERegI  list_[sz_];  // list ptr, aligned version of what new[] returns
-	uint32_t cur_;        // occupancy (AKA size)
 };
 
 struct  CpQuad {
