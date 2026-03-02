@@ -640,28 +640,25 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 
 	// do the searches in batches
 	const uint64_t total_els  = _bufVec_filled;
+
+#ifdef HIP_KERNELS
+	constexpr uint8_t ibatch_size = 64; // GPU batch sizes can be massive because of SIMT
+#endif
+
 	const uint32_t total_batches = (total_els+(ibatch_size-1))/ibatch_size; // round up
 
 	//fprintf(stderr, "total_els: %i total_els: %i ibatch_size: %i\n", int(ibatch_size), int(total_els), int(ibatch_size));
+	//fprintf(stderr, "total_els: %i total_els: %i ibatch_size: %i\n", int(ibatch_size), int(total_els), int(ibatch_size));
 #ifdef HIP_KERNELS
-	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
+	//for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
 		//[ebwtFw,paramVec,dataVec,total_els](uint32_t gbatch) mutable {
-		const size_t start_el = gbatch*ibatch_size;
-		size_t end_el = start_el+ibatch_size;
-		if (end_el>total_els) end_el = total_els;
 		uint64_t bwops; // just ignore the bwops for now, keep it local
-		uint8_t nleft = end_el-start_el;
 
-		uint8_t* nleft_d = (uint8_t*)malloc(sizeof(uint8_t));
-		*nleft_d = nleft;
-
-		uint8_t idxs[ibatch_size];
-		SeedAlignerSearchState* sstateVec = new SeedAlignerSearchState[ibatch_size];
-
-		searchSeedBi<<<1, 1>>>(ebwtFw, bwops, &(sstateVec[0]), &(dataVec[start_el]));
+		searchSeedBi<<<total_batches, ibatch_size>>>(ebwtFw, bwops, total_els, &(dataVec[0]));
+		//SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, gbatch, start_el, &(dataVec[start_el]));
 		
 
-	} // for gbatch
+	//} // for gbatch
 
 	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
 		const size_t start_el = gbatch*ibatch_size;
@@ -826,9 +823,37 @@ void SeedAligner::searchSeedBi(
 #endif
                         const Ebwt* ebwt,       // forward index (BWT)
                         uint64_t& bwops_,         // Burrows-Wheeler operations
+#ifdef HIP_KERNELS
+												uint64_t total_els, // total elements, must be known for GPU calculation
+#else
                         const uint8_t nparams,
+#endif
 			SeedAlignerSearchData dataVec[])
 {
+
+#ifdef HIP_KERNELS
+		// instead of batches,
+		uint8_t ibatch_size = blockDim.x; // can this be larger? uint8_t is original because of cpu threads is small
+		uint32_t gbatch = blockIdx.x;
+		size_t start_el = gbatch*ibatch_size;
+		size_t end_el = start_el+ibatch_size;
+		if (end_el>total_els) end_el = total_els;
+		uint64_t bwops; // just ignore the bwops for now, keep it local
+
+		uint8_t nparams = end_el-start_el;
+
+		// move dataVec to our start idx
+		dataVec = &dataVec[start_el];
+		
+		if (blockIdx.x == 0) {
+
+		size_t SS_SIZE = ibatch_size;
+
+#endif
+
+
+
+
 	const EbwtParams& ep = ebwt->eh();
 	const uint8_t* const ebwtPtr = ebwt->ebwt();
 	const TIndexOffU * const ftab = ebwt->ftab();
@@ -950,6 +975,9 @@ void SeedAligner::searchSeedBi(
 	} // while nleft
 
 	return;
+#ifdef HIP_KERNELS
+		} // if tx == 0
+#endif
 }
 
 #ifdef ALIGNER_SEED_MAIN

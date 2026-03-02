@@ -1433,7 +1433,11 @@ public:
 	static void searchSeedBi(
 		        const Ebwt* ebwt,         // forward index (BWT)
         		uint64_t& bwops_,         // Burrows-Wheeler operations
-			const uint8_t nparams,    // must be leq SS_SIZE
+#ifdef HIP_KERNELS
+			uint64_t total_els, // total elements, must be known for GPU calculation
+#else
+                        const uint8_t nparams,
+#endif
 			SeedAlignerSearchData         dataVec[]);
 
 #endif
