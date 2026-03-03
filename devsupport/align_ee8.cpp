@@ -51,7 +51,7 @@ int load_data(int nels,
       tread(&mat_size,sizeof(size_t), 1, file);
       if (mat_size>MAX_MAT_EL) {fprintf(stderr, "Mat size too big %i\n", int(mat_size)); return 4;}
       tread(&profbuf_size,sizeof(size_t), 1, file);
-      if (profbuf_size>profbuf_size) {fprintf(stderr, "Profbuf size too big %i\n", int(profbuf_size)); return 4;}
+      if (profbuf_size>MAX_PB_EL) {fprintf(stderr, "Profbuf size too big %i\n", int(profbuf_size)); return 4;}
       tread(profbuf+(i*size_t(MAX_PB_EL)), sizeof(SSERegI), profbuf_size, file);
       tread(rfd+i,sizeof(size_t), 1, file);
       if (rfd[i]>MAX_RF_EL) {fprintf(stderr, "RF size too big %i\n", int(rfd[i])); return 4;}
@@ -63,7 +63,30 @@ int load_data(int nels,
    return 0;
 }
 
-void align_ee8_one(const int el, // for debuggging purpose
+int load_results(int nels,
+		int32_t lrmax[],
+		int32_t btnfilled[]) {
+   char fname[256];
+   sprintf(fname,"EEU8_an_res_%i.bin",int(sizeof(SSERegI)));
+   FILE *file = fopen(fname, "rb");
+   if (file==NULL) {
+      fprintf(stderr, "Could not open %s\n",fname);
+      return 2;
+   }
+   
+   for (int i=0; i<nels; i++) {
+      uint32_t cnt = 9999999;
+      tread(&cnt,sizeof(uint32_t), 1, file);
+      if (cnt != i) {fprintf(stderr, "Wrong cnt\n"); return 4;}
+      tread(lrmax+i,sizeof(int32_t), 1, file);
+      tread(btnfilled+i,sizeof(int32_t), 1, file);
+   }
+
+   fclose(file);
+   return 0;
+}
+
+int align_ee8_one(const int el, // for debuggging purpose
 		const size_t nrow,
 		const size_t iter,
 		const size_t colstride,
@@ -74,7 +97,9 @@ void align_ee8_one(const int el, // for debuggging purpose
 		const char    *rf,
 		const uint8_t gaps[],
                 SSERegI          *mat,
-		DpBtCandidate    *btncand) {
+		DpBtCandidate    *btncand,
+                const int32_t ref_lrmax,
+                const int32_t ref_btnfilled) {
 	uint16_t btnfilled = 0;
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
@@ -82,6 +107,14 @@ void align_ee8_one(const int el, // for debuggging purpose
 					minsc, nrow,
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
+	int nerrs = 0;
+	if (int(ref_lrmax) != int(lrmax)) nerrs++;
+	//if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
+#ifndef NO_CHECK_PRINT
+	if (int(ref_lrmax) != int(lrmax)) fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",el,int(lrmax), int(ref_lrmax));
+	//if (int(ref_btnfilled) != int(btnfilled)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i != %i)\n",el,int(btnfilled), int(ref_btnfilled));
+#endif
+	return nerrs;
 }
 
 
@@ -96,26 +129,38 @@ void align_ee8(const int npar, const int nels,
 		const char    rf[],
 		const uint8_t gaps[],
                 SSERegI          mat[], 
-		DpBtCandidate    btncand[]) {
+		DpBtCandidate    btncand[],
+                const int32_t ref_lrmax[],
+                const int32_t ref_btnfilled[]) {
    const int elp_pp = (nels+ (npar-1))/npar; // round up
+   int nerrs = 0;
 #ifdef OMPGPU
-#pragma omp target teams distribute parallel for
+#pragma omp target teams distribute parallel for reduction(+:nerrs)
 #else
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic) reduction(+:nerrs)
 #endif
    for (int p=0; p<npar; p++) {
       const int iend = std::min((p+1)*elp_pp,nels);
       for (int i=p*elp_pp; i<iend; i++) {
-         align_ee8_one(i,
+         nerrs+= align_ee8_one(i,
 		nrow[i], iter[i], colstride[i], lastWordIdx[i],minsc[i], rfd[i],
                 profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),gaps+4*i,
-		mat+p*size_t(MAX_MAT_EL),btncand+p*size_t(MAX_RF_EL));
+		mat+p*size_t(MAX_MAT_EL),btncand+p*size_t(MAX_RF_EL),
+		ref_lrmax[i],ref_btnfilled[i]);
       }
+   }
+
+   if (nerrs!=0) {
+      fprintf(stderr, "FAILED matching results %i times!\n", nerrs);
+   } else {
+      fprintf(stderr, "SUCCESS, all results matched.\n");
    }
 
 }
 
 int load_and_align_ee8(const int npar, const int nels) {
+   int32_t *ref_lrmax = new int32_t[nels];
+   int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
    SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL];
    char    *rf = new char[size_t(MAX_RF_EL)*nels];
@@ -133,14 +178,18 @@ int load_and_align_ee8(const int npar, const int nels) {
    if (load_data(nels,
 		nrow, iter, colstride, lastWordIdx,minsc,rfd,
 		profbuf,rf,gaps) !=0 ) return 1;
+   if (load_results(nels,
+		ref_lrmax, ref_btnfilled) !=0 ) return 1;
    auto t2 = std::chrono::high_resolution_clock::now();
    align_ee8(npar, nels,
 		nrow, iter, colstride, lastWordIdx,minsc,rfd,
-		profbuf,rf,gaps,mat,btncand);
+		profbuf,rf,gaps,mat,btncand,
+		ref_lrmax,ref_btnfilled);
    auto t3 = std::chrono::high_resolution_clock::now();
    align_ee8(npar, nels,
 		nrow, iter, colstride, lastWordIdx,minsc,rfd,
-		profbuf,rf,gaps,mat,btncand);
+		profbuf,rf,gaps,mat,btncand,
+		ref_lrmax, ref_btnfilled);
    auto t4 = std::chrono::high_resolution_clock::now();
 
    auto time_span1 = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
@@ -159,6 +208,8 @@ int load_and_align_ee8(const int npar, const int nels) {
    delete[] rf;
    delete[] mat;
    delete[] profbuf;
+   delete[] ref_btnfilled;
+   delete[] ref_lrmax;
    return 0;
 }
 
