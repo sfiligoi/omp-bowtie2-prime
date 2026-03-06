@@ -22,9 +22,7 @@
 
 #include "ds.h"
 #include "mem_ids.h"
-#include "random_source.h"
 #include "scoring.h"
-#include "mask.h"
 #include "sse_util.h"
 #include <strings.h>
 

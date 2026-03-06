@@ -20,14 +20,13 @@
 #ifndef MASK_H_
 #define MASK_H_
 
-#include <iostream>
-#include "random_source.h"
-
+#if 0
 // 5-bit pop count
 extern int alts5[32];
 
 // Index of lowest set bit
 extern int firsts5[32];
+#endif
 
 /**
  * Return 1 if a 2-bit-encoded base ('i') matches any bit in the mask ('j') and
@@ -48,6 +47,10 @@ static inline int matchesEx(int i, int j) {
 static inline bool matches(int i, int j) {
 	return ((1 << i) & j) != 0;
 }
+
+#if 0
+#include <iostream>
+#include "random_source.h"
 
 /**
  * Given a mask with up to 5 bits, return an index corresponding to a
@@ -75,5 +78,6 @@ static inline int randFromMask(RandomSource& rnd, int mask) {
 	throw 1;
 	return -1;
 }
+#endif
 
 #endif /*ndef MASK_H_*/

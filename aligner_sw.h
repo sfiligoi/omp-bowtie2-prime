@@ -79,7 +79,6 @@
 #include "random_source.h"
 #include "mem_ids.h"
 #include "aligner_result.h"
-#include "mask.h"
 #include "dp_framer.h"
 #include "aligner_swsse.h"
 

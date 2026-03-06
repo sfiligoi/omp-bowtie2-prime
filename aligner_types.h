@@ -17,26 +17,17 @@
  * along with Bowtie 2.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "mask.h"
+#ifndef ALIGNER_TYPES_H_
+#define ALIGNER_TYPES_H_
 
-#if 0
+#include "cstdint"
 
-// 5-bit pop count
-int alts5[32] = {
-	 0, 1, 1, 2, 1, 2, 2, 3,
-	 1, 2, 2, 3, 2, 3, 3, 4,
-	 1, 2, 2, 3, 2, 3, 3, 4,
-	 2, 3, 3, 4, 3, 4, 4, 5
-};
-// std::popcount(i)
+typedef int64_t TAlScore;
 
-// Index of lowest set bit
-int firsts5[32] = {
-	-1, 0, 1, 0, 2, 0, 1, 0,
-	 3, 0, 1, 0, 2, 0, 1, 0,
-	 4, 0, 1, 0, 2, 0, 1, 0,
-	 3, 0, 1, 0, 2, 0, 1, 0
-};
-// (i==0) ? -1 : std::countr_zero(i)
+// Hardcode for now. May want to pass in Makefile
+// The cosen values are appropriate for short reads alignment
+// since rdlen is typically 150 (as of July 2024)
+#define ALN_MAX_ROWS 160
+#define ALN_MAX_COLS 200
+
 #endif
-

@@ -53,7 +53,22 @@
  */
 
 #include <limits>
+#include <bit>
+
+#include "mask.h"
+
+#ifndef SWSSE_INLINE_ONLY
+
 #include "aligner_sw.h"
+
+#else
+
+#include "aligner_types.h"
+#include "sse_wrap.h"
+#include "aligner_swsse.h"
+#include "aligner_sw_nuc.h"
+
+#endif
 
 // In end-to-end mode, we start high (255) and go low (0).  Factoring in
 // a query profile involves unsigned saturating subtraction, so all the
@@ -68,17 +83,12 @@ typedef uint8_t EEU8_TCScore;
  * reference character in the current DP column (0=A, 1=C, etc), and j is
  * the segment of the query we're currently working on.
  */
-void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
-	bool& done = fw ? sseU8fwBuilt_ : sseU8rcBuilt_;
-	if(done) {
-		return;
-	}
-	done = true;
-	const BTDnaString* rd = fw ? rdfw_ : rdrc_;
-	const BTString* qu = fw ? qufw_ : qurc_;
+static inline void EEU8_buildQueryProfile(
+		const BTDnaString* rd,
+		const BTString*    qu,
+		const Scoring *    psc,
+		SSEData<false,ALN_MAX_ROWS,ALN_MAX_COLS>& d) {
 	const size_t len = rd->length();
-	// How many SSERegI's are needed
-	auto& d = fw ? sseU8fw_ : sseU8rc_;
 	const size_t seglen = d.get_sse_seglen(len);
 	//const size_t nsses = get_nsses(len, false);
 	//d.profbuf_.resizeNoCopy(nsses);
@@ -103,13 +113,13 @@ void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
 				if(j < len) {
 					int readc = (*rd)[j];
 					int readq = (*qu)[j];
-					sc = sc_->score(readc, (int)(1 << refc), readq - 33);
+					sc = psc->score(readc, (int)(1 << refc), readq - 33);
 					// Make score positive, to fit in an unsigned
 					sc = -sc;
 					assert_range(0, 255, sc);
 					size_t j_from_end = len - j - 1;
-					if(j < (size_t)sc_->gapbar ||
-					   j_from_end < (size_t)sc_->gapbar)
+					if(j < (size_t)psc->gapbar ||
+					   j_from_end < (size_t)psc->gapbar)
 					{
 						// Inside the gap barrier
 						*gbarWords = 0xff;
@@ -133,89 +143,22 @@ void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
 	}
 }
 
-#if 0
-/**
- * Return true iff the cell has sane E/F/H values w/r/t its predecessors.
- */
-static bool cellOkEnd2EndU8(
-	SSEData& d,
-	size_t row,
-	size_t col,
-	int refc,
-	int readc,
-	int readq,
-	const Scoring& sc)     // scoring scheme
-{
-	EEU8_TCScore floorsc = 0;
-	TAlScore ceilsc = MAX_I64;
-	TAlScore offsetsc = -0xff;
-	TAlScore sc_h_cur = (TAlScore)d.mat_.helt(row, col);
-	TAlScore sc_e_cur = (TAlScore)d.mat_.eelt(row, col);
-	TAlScore sc_f_cur = (TAlScore)d.mat_.felt(row, col);
-	if(sc_h_cur > floorsc) {
-		sc_h_cur += offsetsc;
+
+#ifndef SWSSE_INLINE_ONLY
+void SwAligner::buildQueryProfileEnd2EndSseU8(bool fw) {
+	bool& done = fw ? sseU8fwBuilt_ : sseU8rcBuilt_;
+	if(done) {
+		return;
 	}
-	if(sc_e_cur > floorsc) {
-		sc_e_cur += offsetsc;
-	}
-	if(sc_f_cur > floorsc) {
-		sc_f_cur += offsetsc;
-	}
-	bool gapsAllowed = true;
-	size_t rowFromEnd = d.mat_.nrow() - row - 1;
-	if(row < (size_t)sc.gapbar || rowFromEnd < (size_t)sc.gapbar) {
-		gapsAllowed = false;
-	}
-	bool e_left_trans = false, h_left_trans = false;
-	bool f_up_trans   = false, h_up_trans = false;
-	bool h_diag_trans = false;
-	if(gapsAllowed) {
-		TAlScore sc_h_left = floorsc;
-		TAlScore sc_e_left = floorsc;
-		TAlScore sc_h_up   = floorsc;
-		TAlScore sc_f_up   = floorsc;
-		if(col > 0 && sc_e_cur > floorsc && sc_e_cur <= ceilsc) {
-			sc_h_left = d.mat_.helt(row, col-1) + offsetsc;
-			sc_e_left = d.mat_.eelt(row, col-1) + offsetsc;
-			e_left_trans = (sc_e_left > floorsc && sc_e_cur == sc_e_left - sc.readGapExtend());
-			h_left_trans = (sc_h_left > floorsc && sc_e_cur == sc_h_left - sc.readGapOpen());
-			assert(e_left_trans || h_left_trans);
-			// Check that we couldn't have got a better E score
-			assert_geq(sc_e_cur, sc_e_left - sc.readGapExtend());
-			assert_geq(sc_e_cur, sc_h_left - sc.readGapOpen());
-		}
-		if(row > 0 && sc_f_cur > floorsc && sc_f_cur <= ceilsc) {
-			sc_h_up = d.mat_.helt(row-1, col) + offsetsc;
-			sc_f_up = d.mat_.felt(row-1, col) + offsetsc;
-			f_up_trans = (sc_f_up > floorsc && sc_f_cur == sc_f_up - sc.refGapExtend());
-			h_up_trans = (sc_h_up > floorsc && sc_f_cur == sc_h_up - sc.refGapOpen());
-			assert(f_up_trans || h_up_trans);
-			// Check that we couldn't have got a better F score
-			assert_geq(sc_f_cur, sc_f_up - sc.refGapExtend());
-			assert_geq(sc_f_cur, sc_h_up - sc.refGapOpen());
-		}
-	} else {
-		assert_geq(floorsc, sc_e_cur);
-		assert_geq(floorsc, sc_f_cur);
-	}
-	if(col > 0 && row > 0 && sc_h_cur > floorsc && sc_h_cur <= ceilsc) {
-		TAlScore sc_h_upleft = d.mat_.helt(row-1, col-1) + offsetsc;
-		TAlScore sc_diag = sc.score(readc, (int)refc, readq - 33);
-		h_diag_trans = sc_h_cur == sc_h_upleft + sc_diag;
-	}
-	assert(
-		sc_h_cur <= floorsc ||
-		e_left_trans ||
-		h_left_trans ||
-		f_up_trans   ||
-		h_up_trans   ||
-		h_diag_trans ||
-		sc_h_cur > ceilsc ||
-		row == 0 ||
-		col == 0);
-	return true;
+	done = true;
+	const BTDnaString* rd = fw ? rdfw_ : rdrc_;
+	const BTString* qu = fw ? qufw_ : qurc_;
+	auto& d = fw ? sseU8fw_ : sseU8rc_;
+	EEU8_buildQueryProfile(rd, qu, sc_, d);
 }
-#endif /*ndef NDEBUG*/
+
+#endif
+
 
 /**
  * Given a filled-in DP table, populate the btncand_ list with candidate cells
@@ -393,6 +336,14 @@ inline void EEU8_lazyF(const SSERegI vf0,
 /**
  * Solve the current alignment problem using SSE instructions that operate on 16
  * unsigned 8-bit values packed into a single 128-bit register.
+ *
+ * Select intput parameters:
+ *   profbuf - buffer for query profile & temp vecs
+ *   rf      - reference sequence
+ *
+ * Select output parameters:
+ *   pmat    - SSE matrix for holding all E, F, H vectors
+ *   btncand - cells we might backtrace from
  */
 template<typename TIdxSize>
 inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
@@ -488,7 +439,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		
 		// Fetch the appropriate query profile.  Note that elements of rf must
 		// be numbers, not masks.
-		size_t off = (size_t)firsts5[ rf[i] ] * iter * 2;
+		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
 		// points into the query profile
 		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 	
@@ -535,6 +486,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	return lrmax;
 }
 
+#ifndef SWSSE_INLINE_ONLY
 /**
  * Align read 'rd' to reference using read & reference information given
  * last time init() was called.
@@ -542,7 +494,9 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 bool SwAligner::alignEnd2EndSseU8(
 	TAlScore& best)    // best alignment score observed in DP matrix
 {
+#ifdef ENABLE_SSE_METRICS
 	constexpr bool debug = false;
+#endif
 
 	assert(initedRef() && initedRead());
 	assert_eq(STATE_INITED, state_);
@@ -941,10 +895,10 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 						mask = (d.mat_.masks(row,col) >> 2) & 31;
 					}
 					assert(gapsAllowed || mask == (1 << 4) || mask == 0);
-					int opts = alts5[mask];
+					int opts = std::popcount(uint8_t(mask));
 					int select = -1;
 					if(opts == 1) {
-						select = firsts5[mask];
+						select = std::countr_zero(uint8_t(mask));
 						assert_geq(mask, 0);
 						d.mat_.hMaskSet(row, col, 0);
 					} else if(opts > 1) {
@@ -1299,7 +1253,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 	assert_eq(gaps, gapsCheck);
 	BTDnaString refstr;
 	for(size_t i = col; i <= origCol; i++) {
-		refstr.append(firsts5[(int)rf_[i]]);
+		refstr.append(std::countr_zero(uint8_t(rf_[i])));
 	}
 	BTDnaString editstr;
 	Edit::toRef((*rd_), ned, editstr, true, trimBeg, trimEnd);
@@ -1321,3 +1275,5 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 #endif
 	return true;
 }
+#endif /* SWSSE_INLINE_ONLY */
+

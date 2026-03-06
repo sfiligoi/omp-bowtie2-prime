@@ -35,7 +35,7 @@ BOWTIE_SHARED_MEM :=
 # Recommended g++ flags
 # CPU-only
 #CXX := g++
-#CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -g
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -g
 
 #
 # Recommended amdclang++ flags
@@ -44,25 +44,25 @@ CXX := amdclang++
 # CXX := hipcc
 
 # CPU-only
-# CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2
+# CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2
 
 #
 # GPU-enabled
-CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2 -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
+CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2 -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
 
 # Enable HIP. Use CXX=amdclang++ or CXX=hipcc 
 # Warning with hybrid OPENMP Compilations
-#CXXFLAGS += -std=c++17 --offload-arch=native
+#CXXFLAGS += -std=c++20 --offload-arch=native
 CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__
 
 #
 # NVIDIA HPC SDK flags options
 # Note: It needs -DASM_PREFETCH in CPU mode to emit prefetch instruction 
-#CXXFLAGS += -std=c++17 -stdpar=multicore -DASM_PREFETCH
-#CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -DASM_PREFETCH
-#CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -DSSE_SW8
-#CXXFLAGS += -std=c++17 -acc -gpu=cc86,unified -stdpar=gpu -Minfo=accel -DUSE_ACC_STDPAR
-#CXXFLAGS += -std=c++17 -acc -gpu=cc86,unified,managed -stdpar=gpu -Minfo=accel
+#CXXFLAGS += -std=c++20 -stdpar=multicore -DASM_PREFETCH
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -DASM_PREFETCH
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -DSSE_SW8
+#CXXFLAGS += -std=c++20 -acc -gpu=cc86,unified -stdpar=gpu -Minfo=accel -DUSE_ACC_STDPAR
+#CXXFLAGS += -std=c++20 -acc -gpu=cc86,unified,managed -stdpar=gpu -Minfo=accel
 
 
 
@@ -224,7 +224,7 @@ else ifeq (0,$(shell $(CXX) -E -fsanitize=undefined btypes.h > /dev/null 2>&1; e
 endif
 
 DEBUG_FLAGS    := -O0 -g3 $(SSE_FLAG)
-RELEASE_FLAGS  := -g -O3 $(SSE_FLAG)
+RELEASE_FLAGS  := -g -O3 $(SSE_FLAG) -fno-omit-frame-pointer
 NOASSERT_FLAGS := -DNDEBUG
 FILE_FLAGS     := -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE
 DEBUG_DEFS     = -DCOMPILER_OPTIONS="\"$(DEBUG_FLAGS) $(CXXFLAGS)\""
@@ -405,6 +405,20 @@ bowtie2-align-l-debug: bowtie2-align.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS
 		-o $@ $< \
 		$(SHARED_CPPS) $(SEARCH_CPPS_MAIN) \
 		$(LDFLAGS) $(LDLIBS)
+
+#
+# Test and benchmark files
+#
+
+
+test_align_ee8: devsupport/align_ee8.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
+	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXXFLAGS) \
+		$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX $(NOASSERT_FLAGS) -Wall \
+		$(CPPFLAGS) \
+		-o $@ $< \
+		$(SHARED_CPPS) $(SEARCH_CPPS_MAIN) \
+		$(LDFLAGS) $(LDLIBS)
+
 
 #
 # bowtie2-inspect targets
