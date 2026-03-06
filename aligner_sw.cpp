@@ -26,7 +26,6 @@
 #include "aligner_result.h"
 #include "search_globals.h"
 #include "scoring.h"
-#include "mask.h"
 
 /**
  * Initialize with a new read.

@@ -250,7 +250,7 @@ public:
 		propagate_alloc_ = arg.second;
 	}
 
-	std::pair<BTAllocator *, bool> get_alloc() const {return make_pair(alloc_,propagate_alloc_);}
+	std::pair<BTAllocator *, bool> get_alloc() const {return std::make_pair(alloc_,propagate_alloc_);}
 
 protected:
 	inline BTAllocatorHandler<T>& copy_alloc(const BTAllocatorHandler<T>& o) {

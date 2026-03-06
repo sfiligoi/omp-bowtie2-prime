@@ -27,6 +27,8 @@
 #ifndef SSE_WRAP_H_
 #define SSE_WRAP_H_
 
+#include <cstdint>
+
 #ifdef SSE_AVX2
 #include <immintrin.h>
 #define NBYTES_PER_REG 32
