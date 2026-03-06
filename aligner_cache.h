@@ -124,6 +124,8 @@ public:
 		botf = _botf;
 	}
 
+	constexpr size_t size() const {return botf-topf;}
+
 	TIndexOffU topf;        // top in BWT
 	TIndexOffU botf;        // bot in BWT
 };

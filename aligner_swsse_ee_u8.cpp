@@ -749,8 +749,7 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 	size_t&        off,    // out: store diagonal projection of origin
 	size_t&        nbts,   // out: # backtracks
 	size_t         row,    // start in this row
-	size_t         col,    // start in this column
-	RandomSource&  rnd)    // random gen, to choose among equal paths
+	size_t         col)    // start in this column
 {
 	assert_lt(row, dpRows());
 	assert_lt(col, (size_t)(rflen_));
@@ -841,21 +840,9 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 						mask = (d.mat_.masks(row,col) >> 8) & 3;
 					}
 					if(mask == 3) {
-#if 1
 						// Pick H -> E cell
 						cur = SW_BT_OALL_READ_OPEN;
 						d.mat_.eMaskSet(row, col, 2); // might choose E later
-#else
-						if(rnd.nextU2()) {
-							// Pick H -> E cell
-							cur = SW_BT_OALL_READ_OPEN;
-							d.mat_.eMaskSet(row, col, 2); // might choose E later
-						} else {
-							// Pick E -> E cell
-							cur = SW_BT_RDGAP_EXTEND;
-							d.mat_.eMaskSet(row, col, 1); // might choose H later
-						}
-#endif
 						branch = true;
 					} else if(mask == 2) {
 						// I chose the E cell
@@ -899,21 +886,9 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 						mask = (d.mat_.masks(row,col) >> 11) & 3;
 					}
 					if(mask == 3) {
-#if 1
 						// I chose the H cell
 						cur = SW_BT_OALL_REF_OPEN;
 						d.mat_.fMaskSet(row, col, 2); // might choose E later
-#else
-						if(rnd.nextU2()) {
-							// I chose the H cell
-							cur = SW_BT_OALL_REF_OPEN;
-							d.mat_.fMaskSet(row, col, 2); // might choose E later
-						} else {
-							// I chose the F cell
-							cur = SW_BT_RFGAP_EXTEND;
-							d.mat_.fMaskSet(row, col, 1); // might choose E later
-						}
-#endif
 						branch = true;
 					} else if(mask == 2) {
 						// I chose the F cell
@@ -973,7 +948,6 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 						assert_geq(mask, 0);
 						d.mat_.hMaskSet(row, col, 0);
 					} else if(opts > 1) {
-#if 1
 						if(       (mask & 16) != 0) {
 							select = 4; // H diag
 						} else if((mask & 1) != 0) {
@@ -985,9 +959,6 @@ bool SwAligner::backtraceNucleotidesEnd2EndSseU8(
 						} else if((mask & 8) != 0) {
 							select = 3; // E left
 						}
-#else
-						select = randFromMask(rnd, mask);
-#endif
 						assert_geq(mask, 0);
 						mask &= ~(1 << select);
 						assert(gapsAllowed || mask == (1 << 4) || mask == 0);

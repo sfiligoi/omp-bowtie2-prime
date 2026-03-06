@@ -101,6 +101,7 @@ public:
 	}
 
 	constexpr void set_reporting() { need_reporting = true; }
+	constexpr void cond_set_reporting(size_t max_size) { if (bwt.size()<=max_size) need_reporting = true; /* else leve it false */ }
 
 	BwtTopBotFw bwt;      // The 2 BWT idxs
 	SAKey       sak;      // seed key
@@ -162,7 +163,7 @@ public:
 class SeedAlignerSearchState {
 public:
 
-	__host__ __device__
+	AMD_HOST_DEV
 	SeedAlignerSearchState()
 	: tloc()
 	, bloc()
@@ -631,7 +632,7 @@ uint16_t MultiSeedAligner::extend(
 	return nSdFmops;
 }
 
-void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
+void MultiSeedAligner::searchAllSeedsDoAll(const size_t ncut, const bool doExtend)
 {
 	// doExtend               // do extension of seed hits?
 	const Ebwt* ebwtFw= _ebwtFw;
@@ -647,7 +648,7 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 	//fprintf(stderr, "total_els: %i total_els: %i ibatch_size: %i\n", int(ibatch_size), int(total_els), int(ibatch_size));
 #ifdef HIP_KERNELS
 
-	searchSeedBi<ibatch_size><<<(total_els+ibatch_size*BLOCK_SIZE-1)/(ibatch_size*BLOCK_SIZE), BLOCK_SIZE>>>(ebwtFw, total_els, &(dataVec[0]));
+	searchSeedBi<ibatch_size><<<(total_els+ibatch_size*BLOCK_SIZE-1)/(ibatch_size*BLOCK_SIZE), BLOCK_SIZE>>>(ebwtFw, total_els, ncut, &(dataVec[0]));
 	HIP_CHECK(hipGetLastError());
 	HIP_CHECK(hipDeviceSynchronize());
 
@@ -691,27 +692,26 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 			thrust::counting_iterator(0), total_batches,
 			[ebwtFw,paramVec,dataVec,total_els](uint32_t gbatch) mutable {
 #endif
-				const size_t start_el = gbatch*ibatch_size;
-				size_t end_el = start_el+ibatch_size;
-				if (end_el>total_els) end_el = total_els;
-				SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, end_el-start_el, &(dataVec[start_el]));
-				// TODO: integrate into searchSeedBi
-				for (size_t i=start_el; i<end_el; i++) {
-					if(dataVec[i].need_reporting && doExtend) {
-						size_t nlex = 0;
-						// prm.nSdFmops +=
-						extend(
-								*ebwtFw,
-								dataVec[i].bwt.topf,
-								dataVec[i].bwt.botf,
-								paramVec[i].seq_end,
-								paramVec[i].seq_lim,
-								nlex);
-						dataVec[i].nlex = nlex;
-
-					}
-				}
-			} // for gbatch
+		const size_t start_el = gbatch*ibatch_size;
+		size_t end_el = start_el+ibatch_size;
+		if (end_el>total_els) end_el = total_els;
+		SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, end_el-start_el, ncut, &(dataVec[start_el]));
+		// TODO: integrate into searchSeedBi
+		for (size_t i=start_el; i<end_el; i++) {
+			if(dataVec[i].need_reporting && doExtend) {
+				size_t nlex = 0;
+				// prm.nSdFmops += 
+				extend(
+					*ebwtFw,
+					dataVec[i].bwt.topf,
+					dataVec[i].bwt.botf,
+					paramVec[i].seq_end,
+					paramVec[i].seq_lim,
+					nlex);
+				dataVec[i].nlex = nlex;
+			}
+		}
+	} // for gbatch
 #ifndef FORCE_ALL_OMP
 	); // for_each
 #endif
@@ -822,6 +822,7 @@ void SeedAligner::searchSeedBi(
 #else
                         const uint8_t nparams,
 #endif
+												const size_t ncut,      // max seed result size (larger is lower quality
 												SeedAlignerSearchData dataVec[])
 {
 
@@ -872,14 +873,13 @@ void SeedAligner::searchSeedBi(
 			if(done) {
 				if(sstate.step == (int)sdata.n_seed_steps()) {
 					// Finished aligning seed
-					sdata.set_reporting();
+					sdata.cond_set_reporting(ncut);
 				}
 				// done with this, swap with last and reduce nleft
 				nleft-=1;
 			} else {
 				n+=1;
 			}
-
 		}
 	}
 
@@ -920,8 +920,7 @@ void SeedAligner::searchSeedBi(
 			// we use a simpler query (see if(!bloc.valid()) blocks below)
 			ebwt->mapBiLFEx(sstate.tloc, sstate.bloc, wstate.t, wstate.b);
 		}
-
-		uint8_t c = sdata.get_c(wstate.off); assert_range(0, 4, c_t);
+uint8_t c = sdata.get_c(wstate.off); assert_range(0, 4, c_t);
 
 		if(!sstate.bloc.valid()) {
 			assert(wstate.bp[c] == wstate.tp[c]+1);
@@ -947,7 +946,7 @@ void SeedAligner::searchSeedBi(
 		}
 		sdata.bwt.set(wstate.t[c], wstate.b[c]);
 		if(sstate.step == n_seed_steps) {
-			sdata.set_reporting();
+			sdata.cond_set_reporting(ncut);
 			// done with this, swap with last and reduce nleft
 			nleft-=1;
 			if (n<nleft) idxs[n] = idxs[nleft];

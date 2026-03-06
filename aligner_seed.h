@@ -1433,7 +1433,8 @@ public:
 	template<uint8_t SS_SIZE>
 	static void searchSeedBi(
 		        const Ebwt* ebwt,         // forward index (BWT)
-                        const uint8_t nparams,
+			const uint8_t nparams,    // must be leq SS_SIZE
+			const size_t ncut,        // max seed result size (larger is lower quality
 			SeedAlignerSearchData         dataVec[]);
 
 #endif
@@ -1456,13 +1457,13 @@ protected:
 };
 
 
-// TODO: temporary placement here while debugging searchSeedBi
 #ifdef HIP_KERNELS
 template<uint8_t SS_SIZE>
 __global__
 void searchSeedBi(
 		        const Ebwt* ebwt,         // forward index (BWT)
 			uint64_t total_els, // total elements, must be known for GPU calculation
+			const size_t ncut,        // max seed result size (larger is lower quality
 			SeedAlignerSearchData         dataVec[]);
 #endif
 
@@ -1512,7 +1513,7 @@ public:
 
 	// Align the Seeds
 	// Assumes all prepareSearchAllSeeds were already called
-	void searchAllSeedsDoAll(bool doExtend);
+	void searchAllSeedsDoAll(const size_t ncut, const bool doExtend);
 
 	// return False if No seed alignment
 	template <class ASW>

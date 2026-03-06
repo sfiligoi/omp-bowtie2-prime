@@ -443,7 +443,8 @@ struct PerReadMetrics {
 	bool doFmString;
 	FmString fmString;
 
-	size_t maxDPFails;
+	// Not used with -a, would be infinite
+	//size_t maxDPFails;
 };
 
 #endif /*READ_H_*/

@@ -88,8 +88,9 @@
 #include "reference.h"
 #include "mem_ids.h"
 
-// We need 4+1, but keep it even
-#define TStateVSize ((int)6)
+// We need it to be larger that largest range
+// TODO: Probably should be dynamic
+#define TStateVSize ((int)2048)
 
 /**
  * Encapsulate an SA range and an associated list of slots where the resolved
@@ -917,8 +918,7 @@ public:
 	void init(
 		const Ebwt& ebwtFw,         // forward Bowtie index for walking left
 		const BitPairReference& ref,// bitpair-encoded reference
-		SARangeWithOffs<T>& sa,     // SA range with offsets
-		RandomSource& rnd)          // pseudo-random generator for sampling rows
+		SARangeWithOffs<T>& sa)     // SA range with offsets
 	{
 		reset();
 #ifndef NDEBUG

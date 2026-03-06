@@ -879,6 +879,10 @@ public:
 		return oq_;
 	}
 
+	/**
+	 * Now many possible reference names do we handle
+	 */
+	size_t num_refnames() const { return refnames_.size();}
 protected:
 
 	OutputQueue&       oq_;           // output queue

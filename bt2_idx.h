@@ -171,32 +171,32 @@ public:
 			assert(repOk());
 		}
 
-	TIndexOffU len() const           { return _len; }
-	TIndexOffU lenNucs() const       { return _len + (_color ? 1 : 0); }
-	TIndexOffU bwtLen() const        { return _bwtLen; }
-	TIndexOffU sz() const            { return _sz; }
-	TIndexOffU bwtSz() const         { return _bwtSz; }
-	int32_t   lineRate() const      { return _lineRate; }
-	int32_t   origOffRate() const   { return _origOffRate; }
-	int32_t   offRate() const       { return _offRate; }
-	TIndexOffU offMask() const       { return _offMask; }
+	constexpr TIndexOffU len() const           { return _len; }
+	constexpr TIndexOffU lenNucs() const       { return _len + (_color ? 1 : 0); }
+	constexpr TIndexOffU bwtLen() const        { return _bwtLen; }
+	constexpr TIndexOffU sz() const            { return _sz; }
+	constexpr TIndexOffU bwtSz() const         { return _bwtSz; }
+	constexpr int32_t   lineRate() const      { return _lineRate; }
+	constexpr int32_t   origOffRate() const   { return _origOffRate; }
+	constexpr int32_t   offRate() const       { return _offRate; }
+	constexpr TIndexOffU offMask() const       { return _offMask; }
 	constexpr int32_t   ftabChars() const     { return _ftabChars; }
-	int32_t eftabLen() const      { return _eftabLen; }
-	int32_t eftabSz() const       { return _eftabSz; }
-	TIndexOffU ftabLen() const       { return _ftabLen; }
-	TIndexOffU ftabSz() const        { return _ftabSz; }
-	TIndexOffU offsLen() const       { return _offsLen; }
-	uint64_t offsSz() const        { return _offsSz; }
-	int32_t lineSz() const        { return _lineSz; }
-	int32_t sideSz() const        { return _sideSz; }
-	int32_t sideBwtSz() const     { return _sideBwtSz; }
-	int32_t sideBwtLen() const    { return _sideBwtLen; }
-	TIndexOffU numSides() const      { return _numSides; }
-	TIndexOffU numLines() const      { return _numLines; }
-	TIndexOffU ebwtTotLen() const    { return _ebwtTotLen; }
-	TIndexOffU ebwtTotSz() const     { return _ebwtTotSz; }
-	bool color() const             { return _color; }
-	bool entireReverse() const     { return _entireReverse; }
+	constexpr int32_t eftabLen() const      { return _eftabLen; }
+	constexpr int32_t eftabSz() const       { return _eftabSz; }
+	constexpr TIndexOffU ftabLen() const       { return _ftabLen; }
+	constexpr TIndexOffU ftabSz() const        { return _ftabSz; }
+	constexpr TIndexOffU offsLen() const       { return _offsLen; }
+	constexpr uint64_t offsSz() const        { return _offsSz; }
+	constexpr int32_t lineSz() const        { return _lineSz; }
+	constexpr int32_t sideSz() const        { return _sideSz; }
+	constexpr int32_t sideBwtSz() const     { return _sideBwtSz; }
+	constexpr int32_t sideBwtLen() const    { return _sideBwtLen; }
+	constexpr TIndexOffU numSides() const      { return _numSides; }
+	constexpr TIndexOffU numLines() const      { return _numLines; }
+	constexpr TIndexOffU ebwtTotLen() const    { return _ebwtTotLen; }
+	constexpr TIndexOffU ebwtTotSz() const     { return _ebwtTotSz; }
+	constexpr bool color() const             { return _color; }
+	constexpr bool entireReverse() const     { return _entireReverse; }
 
 	/**
 	 * Set a new suffix-array sampling rate, which involves updating
@@ -309,7 +309,7 @@ static inline int64_t fileSize(const char* name) {
  * occurs in and its offset within the side.
  */
 struct SideLocus {
-	__host__ __device__
+	AMD_HOST_DEV
 	SideLocus() :
 		_sideByteOff(0),
 		_sideNum(0),
@@ -492,7 +492,7 @@ struct SideLocus {
 	int32_t _bp;            // bitpair within byte (not adjusted for bw sides)
 };
 
-constexpr inline static int pop64(uint64_t x) {
+constexpr static int pop64(uint64_t x) {
 	return __builtin_popcountll(x);
 }
 
@@ -1218,29 +1218,29 @@ public:
 
 	/// Accessors
 	constexpr inline const EbwtParams& eh() const     { return _eh; }
-	TIndexOffU    zOff() const         { return _zOff; }
-	TIndexOffU    zEbwtByteOff() const { return _zEbwtByteOff; }
-	TIndexOff         zEbwtBpOff() const   { return _zEbwtBpOff; }
-	TIndexOffU    nPat() const         { return _nPat; }
-	TIndexOffU    nFrag() const        { return _nFrag; }
-	inline TIndexOffU*   fchr()              { return _fchr.get(); }
-	inline TIndexOffU*   ftab()              { return _ftab.get(); }
-	inline TIndexOffU*   eftab()             { return _eftab.get(); }
-	inline TIndexOffU*   offs()              { return _offs.get(); }
-	inline TIndexOffU*   plen()              { return _plen.get(); }
-	inline TIndexOffU*   rstarts()           { return _rstarts.get(); }
-	inline uint8_t*    ebwt()              { return _ebwt.get(); }
+	constexpr TIndexOffU    zOff() const         { return _zOff; }
+	constexpr TIndexOffU    zEbwtByteOff() const { return _zEbwtByteOff; }
+	constexpr TIndexOff         zEbwtBpOff() const   { return _zEbwtBpOff; }
+	constexpr TIndexOffU    nPat() const         { return _nPat; }
+	constexpr TIndexOffU    nFrag() const        { return _nFrag; }
+	constexpr inline TIndexOffU*   fchr()              { return _fchr.get(); }
+	constexpr inline TIndexOffU*   ftab()              { return _ftab.get(); }
+	constexpr inline TIndexOffU*   eftab()             { return _eftab.get(); }
+	constexpr inline TIndexOffU*   offs()              { return _offs.get(); }
+	constexpr inline TIndexOffU*   plen()              { return _plen.get(); }
+	constexpr inline TIndexOffU*   rstarts()           { return _rstarts.get(); }
+	constexpr inline uint8_t*    ebwt()              { return _ebwt.get(); }
 	constexpr inline const TIndexOffU* fchr() const    { return _fchr.get(); }
 	constexpr inline const TIndexOffU* ftab() const    { return _ftab.get(); }
 	constexpr inline const TIndexOffU* eftab() const   { return _eftab.get(); }
-	inline const TIndexOffU* offs() const    { return _offs.get(); }
-	inline const TIndexOffU* plen() const    { return _plen.get(); }
-	inline const TIndexOffU* rstarts() const { return _rstarts.get(); }
+	constexpr inline const TIndexOffU* offs() const    { return _offs.get(); }
+	constexpr inline const TIndexOffU* plen() const    { return _plen.get(); }
+	constexpr inline const TIndexOffU* rstarts() const { return _rstarts.get(); }
 	constexpr inline const uint8_t*  ebwt() const    { return _ebwt.get(); }
-	bool        verbose() const      { return _verbose; }
-	bool        sanityCheck() const  { return _sanity; }
-	EList<string>& refnames()        { return _refnames; }
-	bool        fw() const           { return fw_; }
+	constexpr bool        verbose() const      { return _verbose; }
+	constexpr bool        sanityCheck() const  { return _sanity; }
+	constexpr EList<string>& refnames()        { return _refnames; }
+	constexpr bool        fw() const           { return fw_; }
 
 	/**
 	 * Returns true iff the index contains the given string (exactly).  The

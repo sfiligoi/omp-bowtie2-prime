@@ -301,8 +301,7 @@ public:
 	 */
 	bool nextAlignment(
 		SwResult& res,
-		TAlScore minsc,
-		RandomSource& rnd);
+		TAlScore minsc);
 	
 	/**
 	 * Print out an alignment result as an ASCII DP table.
@@ -438,8 +437,7 @@ protected:
 		size_t&        off,    // out: store diagonal projection of origin
 		size_t&        nbts,   // out: # backtracks
 		size_t         row,    // start in this rectangle row
-		size_t         col,    // start in this rectangle column
-		RandomSource&  rand);  // random gen, to choose among equal paths
+		size_t         col);   // start in this rectangle column
 
 #ifdef ENABLE_I16
 	bool backtraceNucleotidesEnd2EndSseI16(
@@ -448,8 +446,7 @@ protected:
 		size_t&        off,    // out: store diagonal projection of origin
 		size_t&        nbts,   // out: # backtracks
 		size_t         row,    // start in this rectangle row
-		size_t         col,    // start in this rectangle column
-		RandomSource&  rand);  // random gen, to choose among equal paths
+		size_t         col);   // start in this rectangle column
 #endif
 
 

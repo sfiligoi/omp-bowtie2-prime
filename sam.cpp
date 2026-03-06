@@ -157,14 +157,17 @@ void SamConfig::printAlignedOptFlags(
 			o.append("XS:i:");
 			o.append(buf);
 		}  else {
+#if 0
 			// If we did not find a secondary alignment for the read and
 			// the average seed hits is less than the max DP failures allowed,
 			// then we conclude that the alignment is unique.
 			int mate = (rd.mate < 2 ? 0 : 1);
 			float seedHitAvgMS = (prm.seedHitAvgMS[2 * mate] + prm.seedHitAvgMS[2 * mate + 1]) + 0.5f;
                         if (seedHitAvgMS < prm.maxDPFails) {
+#endif
+			// Only supporting -a, where maxDPFails is infinite
 				uniqueAlignment = true;
-			}
+			//}
                 }
 
 	}

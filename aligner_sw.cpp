@@ -251,8 +251,7 @@ inline bool SwAligner::align(
  */
 bool SwAligner::nextAlignment(
 	SwResult& res,
-	TAlScore minsc,
-	RandomSource& rnd)
+	TAlScore minsc)
 {
 	assert(initedRead() && initedRef());
 	assert_eq(STATE_ALIGNED, state_);
@@ -320,8 +319,6 @@ bool SwAligner::nextAlignment(
 #ifdef ENABLE_I16
 			if(enable8_) {
 #endif
-				uint32_t reseed = rnd.nextU32() + 1;
-				rnd.init(reseed);
 				res.reset();
 				ret = backtraceNucleotidesEnd2EndSseU8(
 						btncand_[cural_].score, // in: expected score
@@ -329,12 +326,9 @@ bool SwAligner::nextAlignment(
 						off,    // out: store diagonal projection of origin
 						nbts,   // out: # backtracks
 						row,    // start in this rectangle row
-						col,    // start in this rectangle column
-						rnd);   // random gen, to choose among equal paths
-				rnd.init(reseed+1); // debug/release pseudo-randoms in lock step
+						col);   // start in this rectangle column
 #ifdef ENABLE_I16
 			} else {
-				uint32_t reseed = rnd.nextU32() + 1;
 				res.reset();
 				ret = backtraceNucleotidesEnd2EndSseI16(
 						btncand_[cural_].score, // in: expected score
@@ -342,9 +336,7 @@ bool SwAligner::nextAlignment(
 						off,    // out: store diagonal projection of origin
 						nbts,   // out: # backtracks
 						row,    // start in this rectangle row
-						col,    // start in this rectangle column
-						rnd);   // random gen, to choose among equal paths
-				rnd.init(reseed); // debug/release pseudo-randoms in lock step
+						col);   // start in this rectangle column
 			}
 #endif
 			if(ret) {
