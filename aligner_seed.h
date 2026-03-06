@@ -1433,7 +1433,6 @@ public:
 	template<uint8_t SS_SIZE>
 	static void searchSeedBi(
 		        const Ebwt* ebwt,         // forward index (BWT)
-        		uint64_t& bwops_,         // Burrows-Wheeler operations
                         const uint8_t nparams,
 			SeedAlignerSearchData         dataVec[]);
 
@@ -1441,7 +1440,6 @@ public:
 
 protected:
 	
-	uint64_t bwops_;           // Burrows-Wheeler operations
 
 	/**
  	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.
@@ -1464,7 +1462,6 @@ template<uint8_t SS_SIZE>
 __global__
 void searchSeedBi(
 		        const Ebwt* ebwt,         // forward index (BWT)
-        		uint64_t bwops_,         // Burrows-Wheeler operations
 			uint64_t total_els, // total elements, must be known for GPU calculation
 			SeedAlignerSearchData         dataVec[]);
 #endif

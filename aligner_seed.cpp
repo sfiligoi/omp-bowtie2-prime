@@ -458,7 +458,6 @@ uint32_t SeedAligner::searchAllSeedsPrepare(
 			}
 		} // for i
 	} // for fwi
-	bwops_ = 0;
 	assert_eq(seedsearches_,seedsearches);
 
 	// return number of batches (rounded up)
@@ -648,31 +647,35 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 	//fprintf(stderr, "total_els: %i total_els: %i ibatch_size: %i\n", int(ibatch_size), int(total_els), int(ibatch_size));
 #ifdef HIP_KERNELS
 
-	uint64_t bwops; // just ignore the bwops for now, keep it local
-	searchSeedBi<ibatch_size><<<(total_els+ibatch_size*BLOCK_SIZE-1)/(ibatch_size*BLOCK_SIZE), BLOCK_SIZE>>>(ebwtFw, bwops, total_els, &(dataVec[0]));
+	searchSeedBi<ibatch_size><<<(total_els+ibatch_size*BLOCK_SIZE-1)/(ibatch_size*BLOCK_SIZE), BLOCK_SIZE>>>(ebwtFw, total_els, &(dataVec[0]));
 	HIP_CHECK(hipGetLastError());
 	HIP_CHECK(hipDeviceSynchronize());
 
-	for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
-		const size_t start_el = gbatch*ibatch_size;
-		size_t end_el = start_el+ibatch_size;
-		if (end_el>total_els) end_el = total_els;
-		// TODO: integrate into searchSeedBi
-		for (size_t i=start_el; i<end_el; i++) {
-			if(dataVec[i].need_reporting && doExtend) {
-				size_t nlex = 0;
-				// prm.nSdFmops += 
-				extend(
-					*ebwtFw,
-					dataVec[i].bwt.topf,
-					dataVec[i].bwt.botf,
-					paramVec[i].seq_end,
-					paramVec[i].seq_lim,
-					nlex);
-				dataVec[i].nlex = nlex;
+	if(doExtend) {
+#ifdef FORCE_ALL_OMP
+#pragma omp parallel for
+#endif
+		for (uint32_t gbatch=0; gbatch<total_batches; gbatch++) {
+			const size_t start_el = gbatch*ibatch_size;
+			size_t end_el = start_el+ibatch_size;
+			if (end_el>total_els) end_el = total_els;
+			// TODO: integrate into searchSeedBi
+			for (size_t i=start_el; i<end_el; i++) {
+				if(dataVec[i].need_reporting) {
+					size_t nlex = 0;
+					// prm.nSdFmops += 
+					extend(
+						*ebwtFw,
+						dataVec[i].bwt.topf,
+						dataVec[i].bwt.botf,
+						paramVec[i].seq_end,
+						paramVec[i].seq_lim,
+						nlex);
+					dataVec[i].nlex = nlex;
+				}
 			}
-		}
-	} // for gbatch
+		} // for gbatch
+	}
 
 #else // not HIP kernel
 
@@ -691,8 +694,7 @@ void MultiSeedAligner::searchAllSeedsDoAll(bool doExtend)
 				const size_t start_el = gbatch*ibatch_size;
 				size_t end_el = start_el+ibatch_size;
 				if (end_el>total_els) end_el = total_els;
-				uint64_t bwops; // just ignore the bwops for now, keep it local
-				SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, bwops, end_el-start_el, &(dataVec[start_el]));
+				SeedAligner::searchSeedBi<ibatch_size>(ebwtFw, end_el-start_el, &(dataVec[start_el]));
 				// TODO: integrate into searchSeedBi
 				for (size_t i=start_el; i<end_el; i++) {
 					if(dataVec[i].need_reporting && doExtend) {
@@ -816,10 +818,8 @@ void SeedAligner::searchSeedBi(
 #endif
                         const Ebwt* ebwt,       // forward index (BWT)
 #ifdef HIP_KERNELS
-                        uint64_t bwops_,         // Burrows-Wheeler operations
 												uint64_t total_els, // total elements, must be known for GPU calculation
 #else
-                        uint64_t& bwops_,         // Burrows-Wheeler operations
                         const uint8_t nparams,
 #endif
 												SeedAlignerSearchData dataVec[])
@@ -889,7 +889,6 @@ void SeedAligner::searchSeedBi(
 	   // but we must do the steps inside the same param in order
 	   // We still want to do them sequentially, not in parallel, 
 	   // to give time for the prefetch to do its job.
-	   uint32_t bwops = 0;
 	   uint8_t n=0;
            // logically a for (uint32_t n=0; n<nleft; n++) but with nleft potentially changing
 	   while (n<nleft) {
@@ -919,7 +918,6 @@ void SeedAligner::searchSeedBi(
 		if(sstate.bloc.valid()) {
 			// Range delimited by tloc/bloc has size >1.  If size == 1,
 			// we use a simpler query (see if(!bloc.valid()) blocks below)
-			bwops++;
 			ebwt->mapBiLFEx(sstate.tloc, sstate.bloc, wstate.t, wstate.b);
 		}
 
@@ -928,7 +926,6 @@ void SeedAligner::searchSeedBi(
 		if(!sstate.bloc.valid()) {
 			assert(wstate.bp[c] == wstate.tp[c]+1);
 			// Range delimited by tloc/bloc has size 1
-			bwops++;
 			const TIndexOffU ntop = sdata.bwt.topf;
 			wstate.t[c] = ebwt->mapLF1(ntop, sstate.tloc, c);
 			if(wstate.t[c] == OFF_MASK) {
@@ -960,7 +957,6 @@ void SeedAligner::searchSeedBi(
 		// not done, move to the next element
 		n+=1;
 	   } // while n
-	   bwops_ += bwops;
 	} // while nleft
 
 	return;
