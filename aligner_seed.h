@@ -41,13 +41,31 @@
 #include "simple_func.h"
 #include "btypes.h"
 
+#ifdef HIP_KERNELS
+#include <hip/hip_vector_types.h>
+#include <hip/hip_runtime.h>
+
+#define BLOCK_SIZE 64
+
+#define HIP_CHECK(expression)                  \
+{                                              \
+    const hipError_t status = expression;      \
+    if(status != hipSuccess){                  \
+        std::cerr << "HIP error "              \
+                  << status << ": "            \
+                  << hipGetErrorString(status) \
+                  << " at " << __FILE__ << ":" \
+                  << __LINE__ << std::endl;    \
+    }                                          \
+}
+#endif
+
 /**
  * A constraint to apply to an alignment zone, or to an overall
  * alignment.
  *
  * The constraint can put both caps and ceilings on the number and
- * types of edits allowed.
- */
+ * types of edits allowed. */
 struct Constraint {
 	
 	Constraint() { init(); }
@@ -1407,6 +1425,7 @@ public:
 		AlignmentCache& cache,  // local cache for seed alignments
 		SeedResults& sr);            // holds all the seed hits
 
+#ifndef HIP_KERNELS
 	/**
 	 * Main, recursive implementation of the seed search.
 	 * Given a vector of instantiated seeds, search
@@ -1414,14 +1433,14 @@ public:
 	template<uint8_t SS_SIZE>
 	static void searchSeedBi(
 		        const Ebwt* ebwt,         // forward index (BWT)
-        		uint64_t& bwops_,         // Burrows-Wheeler operations
-			const size_t ncut,        // max seed result size (larger is lower quality
 			const uint8_t nparams,    // must be leq SS_SIZE
+			const size_t ncut,        // max seed result size (larger is lower quality
 			SeedAlignerSearchData         dataVec[]);
+
+#endif
 
 protected:
 	
-	uint64_t bwops_;           // Burrows-Wheeler operations
 
 	/**
  	* Note: The ideal ibatch_size_ may be dependent on the CPU model, but 8 seems to work fine.
@@ -1436,6 +1455,18 @@ protected:
 
 	ASSERT_ONLY(ESet<BTDnaString> hits_); // Ref hits so far for seed being aligned
 };
+
+
+#ifdef HIP_KERNELS
+template<uint8_t SS_SIZE>
+__global__
+void searchSeedBi(
+		        const Ebwt* ebwt,         // forward index (BWT)
+			uint64_t total_els, // total elements, must be known for GPU calculation
+			const size_t ncut,        // max seed result size (larger is lower quality
+			SeedAlignerSearchData         dataVec[]);
+#endif
+
 
 class MultiSeedAligner {
 

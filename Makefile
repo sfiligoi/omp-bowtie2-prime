@@ -53,7 +53,7 @@ CXXFLAGS += -std=c++17 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2 -DOMPGPU 
 # Enable HIP. Use CXX=amdclang++ or CXX=hipcc 
 # Warning with hybrid OPENMP Compilations
 #CXXFLAGS += -std=c++17 --offload-arch=native
-#CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__
+CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__
 
 #
 # NVIDIA HPC SDK flags options
