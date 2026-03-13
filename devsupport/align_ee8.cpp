@@ -107,6 +107,18 @@ int align_ee8_one(const int el, // for debuggging purpose
 					minsc, nrow,
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
+
+	//EEU8_TCScore lrmax;
+	//EEU8_TCScore* lrmax_p = &lrmax;
+	//// assuming previously this was avx (256bit) for uint16_t
+	//EEU8_alignNucleotides_HIP<32><<<1, 32>>>(profbuf, rf, rfd,
+	//      mat,
+	//      iter, colstride, lastWordIdx,
+	//      minsc, nrow,
+	//      btncand, btnfilled,
+	//      gaps[0],gaps[1],gaps[2],gaps[3],
+	//      lrmax_p);
+	//hipDeviceSynchronize();
 	int nerrs = 0;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
 	//if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
@@ -155,7 +167,35 @@ void align_ee8(const int npar, const int nels,
    } else {
       fprintf(stderr, "SUCCESS, all results matched.\n");
    }
+   
+   //const int N_LANES = sizeof(SSERegI); // 16 for SSE, 32 for AVX2
+   //const int threads_per_block = 256;
+   //const int reads_per_block = threads_per_block / N_LANES;
+   //const int num_blocks = (nels + (reads_per_block - 1)) / reads_per_block;
 
+   // Launch the HIP kernel
+//   hipLaunchKernelGGL(EEU8_alignNucleotides_HIP<16>, // Assuming SSE lanes=16
+//                      dim3(num_blocks), 
+//                      dim3(threads_per_block), 
+//                      0, 0,
+//                      (const uint8_t*)profbuf, 
+//                      rf, 
+//                      (const uint32_t*)rfd, 
+//                      (uint8_t*)mat, 
+//                      (const uint32_t*)iter, 
+//                      (const uint32_t*)colstride, 
+//                      gaps, 
+//                      nels);
+//
+   //hipDeviceSynchronize();
+   // Wait for the GPU to finish
+
+   // Post-process: Extract results from the DP matrix (on CPU)
+   //int nerrs = 0;
+   //for (int i = 0; i < nels; i++) {
+   //    // ... existing verification logic ...
+   //    // (lrmax and btnfilled are now extracted from the 'mat' buffer on the CPU)
+   //}
 }
 
 int load_and_align_ee8(const int npar, const int nels) {
