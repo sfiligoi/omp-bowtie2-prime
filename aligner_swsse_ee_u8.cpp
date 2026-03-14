@@ -70,7 +70,9 @@
 
 #endif
 
+#ifdef HIP_KERNELS
 #include <hip/hip_runtime.h>
+#endif
 
 // In end-to-end mode, we start high (255) and go low (0).  Factoring in
 // a query profile involves unsigned saturating subtraction, so all the
@@ -335,6 +337,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 }
 #endif
 
+#ifdef HIP_KERNELS
 /**
  * Solve the current alignment problem using SSE instructions that operate on 16
  * unsigned 8-bit values packed into a single 128-bit register.
@@ -354,10 +357,10 @@ __device__ __forceinline__ uint8_t subs_u8(uint8_t a, uint8_t b) {
 }
 
 
-template<typename TIdxSize>
+
 __device__
 uint8_t EEU8_alignOne_gpu(
-        const TIdxSize iter,
+        const uint16_t iter,
         const size_t colstride,
         const uint8_t *pvScore,
         const uint8_t *pvHLoad,
@@ -370,41 +373,43 @@ uint8_t EEU8_alignOne_gpu(
         const uint8_t rdgapo,
         const uint8_t rdgape)
 {
+    int lane_id = threadIdx.x;
     const int LANES = 32;
-    int lane = threadIdx.x & 31;
 
     uint8_t vf = 0;
 
     // load last H from previous column
     uint8_t vh =
-        pvHLoad[(colstride - ROWSTRIDE) * LANES + lane];
+        pvHLoad[(colstride - ROWSTRIDE) * LANES + lane_id];
 
-    vh = warp_shift_down(vh, lane);
+    vh = __shfl_down(vh, 1);
 
-    if (lane == 0)
+    // in cpu the corresponding vh lane
+    // is just orred with 0xff via vhilsw
+    if (lane_id == 0)
         vh = 0xff;
 
-    for (TIdxSize j = 0; j < iter; j++)
+    for (uint16_t j = 0; j < iter; j++)
     {
-        uint8_t vs0 = pvScore[lane];
+        uint8_t vs0 = pvScore[lane_id];
         pvScore += LANES;
 
-        uint8_t vs1 = pvScore[lane];
+        uint8_t vs1 = pvScore[lane_id];
         pvScore += LANES;
 
         uint8_t ve =
-            pvELoad[j * ROWSTRIDE * LANES + lane];
+            pvELoad[j * ROWSTRIDE * LANES + lane_id];
 
         vf = subs_u8(vf, vs1);
 
-        pvFStore[j * ROWSTRIDE * LANES + lane] = vf;
+        pvFStore[j * ROWSTRIDE * LANES + lane_id] = vf;
 
         vh = subs_u8(vh, vs0);
 
         vh = max(vh, ve);
         vh = max(vh, vf);
 
-        pvHStore[j * ROWSTRIDE * LANES + lane] = vh;
+        pvHStore[j * ROWSTRIDE * LANES + lane_id] = vh;
 
         uint8_t vtmp = vh;
 
@@ -414,9 +419,9 @@ uint8_t EEU8_alignOne_gpu(
         ve = subs_u8(ve, rdgape);
         ve = max(ve, vh_gap);
 
-        vh = pvHLoad[j * ROWSTRIDE * LANES + lane];
+        vh = pvHLoad[j * ROWSTRIDE * LANES + lane_id];
 
-        pvEStore[j * ROWSTRIDE * LANES + lane] = ve;
+        pvEStore[j * ROWSTRIDE * LANES + lane_id] = ve;
 
         vtmp = subs_u8(vtmp, rfgapo);
 
@@ -427,11 +432,10 @@ uint8_t EEU8_alignOne_gpu(
     return vf;
 }
 
-template<typename TIdxSize>
 __device__
 void EEU8_lazyF_gpu(
         uint8_t vf0,
-        const TIdxSize iter,
+        const uint16_t iter,
         const size_t colstride,
         const uint8_t *pvScore,
         uint8_t *pvHStore,
@@ -441,14 +445,15 @@ void EEU8_lazyF_gpu(
         const uint8_t rdgapo)
 {
     const int LANES = 32;
-    int lane = threadIdx.x & 31;
+    int lane_id = threadIdx.x;
+    assert(LANES=32);
 
-    uint8_t vf = warp_shift_down(vf0, lane);
+    uint8_t vf = __shfl_down(vf0, 1);
 
     pvScore += LANES;
 
-    uint8_t vs1 = pvScore[lane];
-    uint8_t vtmp = pvFStore[lane];
+    uint8_t vs1 = pvScore[lane_id];
+    uint8_t vtmp = pvFStore[lane_id];
 
     vf = subs_u8(vf, vs1);
     vf = max(vtmp, vf);
@@ -457,25 +462,25 @@ void EEU8_lazyF_gpu(
 
     unsigned mask = __ballot(anygt);
 
-    uint8_t vh = pvHStore[lane];
-    uint8_t ve = pvEStore[lane];
+    uint8_t vh = pvHStore[lane_id];
+    uint8_t ve = pvEStore[lane_id];
 
-    TIdxSize j = 0;
+    uint16_t j = 0;
 
     while (mask)
     {
-        pvFStore[lane] = vf;
+        pvFStore[lane_id] = vf;
 
         vh = max(vh, vf);
 
-        pvHStore[lane] = vh;
+        pvHStore[lane_id] = vh;
 
         uint8_t vh_gap = subs_u8(vh, rdgapo);
         vh_gap = subs_u8(vh_gap, vs1);
 
         ve = max(ve, vh_gap);
 
-        pvEStore[lane] = ve;
+        pvEStore[lane_id] = ve;
 
         pvScore += 2 *LANES;
 
@@ -488,11 +493,11 @@ void EEU8_lazyF_gpu(
             pvHStore -= colstride*LANES;
             pvEStore -= colstride*LANES;
 
-            vf = __shfl_down(vf, lane, LANES);
+            vf = __shfl_down(vf, 1);
         }
 
-        vs1 = pvScore[lane];
-        vtmp = pvFStore[lane];
+        vs1 = pvScore[lane_id];
+        vtmp = pvFStore[lane_id];
 
         vf = subs_u8(vf, rfgape);
         vf = subs_u8(vf, vs1);
@@ -503,14 +508,13 @@ void EEU8_lazyF_gpu(
 
         mask = __ballot(anygt);
 
-        vh = pvHStore[lane];
-        ve = pvEStore[lane];
+        vh = pvHStore[lane_id];
+        ve = pvEStore[lane_id];
     }
 }
 
 
 
-template<int N_LANES>
 __global__ void EEU8_alignNucleotides_HIP(
     const uint8_t* profbuf,      // Query profile (pre-built)
     const char*    rf,           // Reference sequence
@@ -518,26 +522,28 @@ __global__ void EEU8_alignNucleotides_HIP(
     uint8_t*       pmat,         // DP Matrix (global memory)
     const uint32_t iter,         // Number of segments (segments per column)
     const uint32_t colstride,    // Distance between columns in pmat
+    const uint32_t lastWordIdx,
+    const int64_t  minsc,
+    const uint32_t nrow,
+    DpBtCandidate  btncand[],
+    uint16_t*      btnfilled_,
     const int8_t   refGapOpen,
     const int8_t   refGapExtend,
     const int8_t   readGapOpen,
     const int8_t   readGapExtend,
-    const int64_t  minsc,
-    const uint32_t nrow,
-    DpBtCandidate* btand_out[],
-    uint8_t*       lrmax_out,    // Global max score
+    uint8_t*       lrmax_out    // Global max score, originally return value
     )
 {
     // Each thread handles one lane
-    int lane_id = threadIdx.x % N_LANES;
     int WARP_SIZE = blockDim.x;
-    //int read_id = threadIdx.x / N_LANES; //blockIdx.x * (blockDim.x / N_LANES) + (threadIdx.x / N_LANES);
+    //if(WARP_SIZE!=32){fprintf(stderr, "Why is WARP_SIZE for EEU8_alignNucleotides_HIP not 32?\n");};
+    int lane_id = threadIdx.x % WARP_SIZE;
 
     assert(WARP_SIZE==32);
     //extern __shared__ uint8_t s_mem[]; 
 
     //Fills rdgapo values with readGapOpen
-    uint8_t rfgape = refGapOpen;
+    uint8_t rfgapo = refGapOpen;
     uint8_t rfgape = readGapExtend;
     uint8_t rdgapo = refGapOpen;
     uint8_t rdgape = readGapExtend;
@@ -551,8 +557,8 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  uint8_t *pvETmp = pmat + WARP_SIZE*SSEMatrixConsts::E;
 	
 	  for(size_t i = 0; i < iter; i++) {
-		pvEtmp[lane_id] = 0;
-		pvHtmp[lane_id] = 0;
+		pvETmp[lane_id] = 0;
+		pvHTmp[lane_id] = 0;
 		pvETmp += ROWSTRIDE*WARP_SIZE;
 		pvHTmp += ROWSTRIDE*WARP_SIZE;
 	  }
@@ -567,10 +573,10 @@ __global__ void EEU8_alignNucleotides_HIP(
     uint8_t *pvFStore = pmat + SSEMatrixConsts::F;
 
     // needs to to be shared amongst all threads in warp
-    __shared__ uint8_t lrmax = MIN_U8;
+    uint8_t lrmax = MIN_U8;
 
     // keep a local copy
-    TIdxSize btnfilled = 0;
+    uint16_t btnfilled = 0;
 
     for (uint32_t i = 0; i < rfd; i++) {
 	  //size_t off = (size_t)__builtin_ctz((uint32_t)rf[i]) * iter * 2;
@@ -581,7 +587,7 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  size_t off = (size_t)(__ffs((uint32_t)rf[i]) - 1) * iter * 2;
 
 	  // points into the query profile
-	  const uint8_t pvScore = profbuf + off; 
+	  const uint8_t* pvScore = profbuf + off; 
 	
 
 	  // Does one lane at a time
@@ -592,7 +598,7 @@ __global__ void EEU8_alignNucleotides_HIP(
 	      pvHStore, pvEStore, pvFStore,
 	      rfgapo, rfgape, rdgapo, rdgape);
 
-	  // known at compile time... needs to be compiled?!
+	  // known at compile time and is true
 	  if constexpr(NBYTES_PER_REG>1) {
 	    EEU8_lazyF_gpu(vf,
 		iter, colstride,
@@ -604,16 +610,25 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  pvHLoad = pvHStore;    // new pvHLoad = pvHStore
 
 	  // Note: we may not want to extract from the final row
-	  uint8_t lr = ((EEU8_TCScore*)(pvHLoad))[lastWordIdx];
-	  TAlScore sc = (TAlScore)(lr - 0xff);
-	  if(lr > lrmax) {
-	    lrmax = lr;
+	  // Scores shared amongst all threads... so one single thread can do this
+	  __syncthreads(); // doesn't really need syncing... 
+
+	  uint8_t res;
+	  // scalar portion taking scores from last column for traceback
+	  if(lane_id == lastWordIdx){
+	    uint8_t lr = pvHLoad[lastWordIdx];
+	    TAlScore sc = (TAlScore)(lr - 0xff);
+	    if(lr > lrmax) {
+	      lrmax = lr;
+	    }
+	    if(sc >= minsc) {
+	      // Yes, this is legit
+	      btncand[btnfilled].init(nrow-1, i, lr);
+	      btnfilled++;
+	    }
+	    res = lr;
 	  }
-	  if(sc >= minsc) {
-	    // Yes, this is legit
-	    btncand[btnfilled].init(nrow-1, i, lr);
-	    btnfilled++;
-	  }
+	  __syncthreads();
 
 
 	  pvHStore = pvHStore + WARP_SIZE*colstride;
@@ -621,7 +636,6 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  pvEStore = pvEStore + WARP_SIZE*colstride;
 	  pvFStore = pvFStore + WARP_SIZE*colstride;
 
-	  uint8_t res = lr;
 
 
 	  __syncthreads();
@@ -629,25 +643,26 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  // reference: https://rocm.docs.amd.com/projects/HIP/en/latest/tutorial/reduction.html#reduction-on-gpus
 	  // Warp reduction. TODO: Can use an intrinsic since it happens within warp level
 	  //
-	  if (lane_id < WARP_SIZE)
-	  {
-	    for (int offset = 16; offset > 0; offset /= 2) {
-	      uint8_t tmp = __shfl_down(res, offset, 32);
-	      res = max(res, tmp);
-	    }
+	  //if (lane_id < WARP_SIZE) {
+	  //  for (int offset = 16; offset > 0; offset /= 2) {
+	  //    uint8_t tmp = __shfl_down(res, offset, 32);
+	  //    res = max(res, tmp);
+	  //  }
 
-	    // Write result from shared to back buffer
-	    if (tid == 0)
-	      back[bid] = res;
-	  }
+	  //  // Write result from shared to back buffer
+	  //  if (lane_id == 0)
+	  //    back[bid] = res;
+	  //}
 
     }
 
 
-    btnfilled_ = btnfilled;
-    if (lane_id == 0)
+    if (lane_id == 0) {
+      *btnfilled_ = btnfilled;
       *lrmax_out = lrmax;
+    }
 }
+#endif // HIP_KERNELS
 
 template<typename TIdxSize>
 inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],

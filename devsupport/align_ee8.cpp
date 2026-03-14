@@ -101,6 +101,8 @@ int align_ee8_one(const int el, // for debuggging purpose
                 const int32_t ref_lrmax,
                 const int32_t ref_btnfilled) {
 	uint16_t btnfilled = 0;
+
+#ifndef HIP_KERNELS
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
                                         iter, colstride, lastWordIdx,
@@ -108,17 +110,19 @@ int align_ee8_one(const int el, // for debuggging purpose
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 
-	//EEU8_TCScore lrmax;
-	//EEU8_TCScore* lrmax_p = &lrmax;
-	//// assuming previously this was avx (256bit) for uint16_t
-	//EEU8_alignNucleotides_HIP<32><<<1, 32>>>(profbuf, rf, rfd,
-	//      mat,
-	//      iter, colstride, lastWordIdx,
-	//      minsc, nrow,
-	//      btncand, btnfilled,
-	//      gaps[0],gaps[1],gaps[2],gaps[3],
-	//      lrmax_p);
-	//hipDeviceSynchronize();
+#else
+	EEU8_TCScore lrmax;
+	EEU8_TCScore* lrmax_p = &lrmax;
+	// assuming previously this was avx (256bit) for uint16_t
+	EEU8_alignNucleotides_HIP<<<1, 32>>>((uint8_t*)profbuf, rf, rfd,
+	      (uint8_t*)mat,
+	      iter, colstride, lastWordIdx,
+	      minsc, nrow,
+	      btncand, (uint16_t*)btnfilled,
+	      gaps[0],gaps[1],gaps[2],gaps[3],
+	      lrmax_p);
+	hipDeviceSynchronize();
+#endif
 	int nerrs = 0;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
 	//if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
