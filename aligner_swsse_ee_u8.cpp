@@ -230,13 +230,6 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			SSERegI ve = sse_load_siall(pvELoad);
 			pvELoad += ROWSTRIDE;
 
-			//alignas(32) uint8_t tmp_debug[32];
-			//_mm256_store_si256((__m256i*)tmp_debug, vs0);
-			//for(int dd = 0; dd < 32; dd++) printf("vs0[%d]=%d ", dd, tmp_debug[dd]);
-			//printf("\n");
-			//_mm256_store_si256((__m256i*)tmp_debug, vs1);
-			//for(int dd = 0; dd < 32; dd++) printf("vs1[%d]=%d ", dd, tmp_debug[dd]);
-			//printf("\n");
 			
 			// Store cells in F, calculated previously
 			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
@@ -604,7 +597,7 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  //https://rocm.docs.amd.com/projects/HIP/en/docs-6.0.2/reference/kernel_language.html
 	  // cpu version
 	  //(size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
-	  size_t off = (size_t)(__ffs((uint32_t)rf[i]) - 1) * iter * 2;
+	  size_t off = 32*((size_t)(__ffs((uint32_t)rf[i]) - 1) * iter * 2); // 32 factor because original packs into 256
 
 	  // debug to check off statement
 	  //if(lane_id == 0)printf("off:%d rf[%d]=%d , iter=%d\n", off, i, rf[i], iter);
@@ -612,13 +605,6 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  // points into the query profile
 	  const uint8_t* pvScore = profbuf + off; 
 	
-	  debug_buff[lane_id] = pvScore[lane_id];
-	  __syncthreads();
-	  if(lane_id==0 && i == 0){
-	    for(int dd = 0; dd < WARP_SIZE; dd++) printf("pvScore[%d]=%d ", dd, debug_buff[dd]);
-	    printf("\n");
-	  }
-	  __syncthreads();
 
 	  // Does one lane at a time
 	  uint8_t vf = EEU8_alignOne_gpu(iter,
@@ -792,14 +778,6 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
 		// points into the query profile
 		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
-	
-		// For debugging
-		if(i == 0){
-		  alignas(32) uint8_t tmp_debug[32];
-		  _mm256_store_si256((__m256i*)tmp_debug, pvScore[0]);
-		  for(int dd = 0; dd < 32; dd++) printf("pvScore[%d]=%d ", dd, tmp_debug[dd]);
-		  printf("\n");
-		}
 
 
 		SSERegI vf = EEU8_alignOne(iter,
@@ -808,6 +786,12 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
                         	pvHLoad, pvELoad,
                         	pvHStore, pvEStore, pvFStore,
                         	rfgapo, rfgape, rdgapo, rdgape);
+	
+		// For debugging
+		// alignas(32) uint8_t tmp_debug[32];
+		// _mm256_store_si256((__m256i*)tmp_debug, vf);
+		// for(int dd = 0; dd < 32; dd++) printf("vf[%d]=%d ", dd, tmp_debug[dd]);
+		// printf("\n");
 
 		// printf("off:%d rf[%d]=%d , iter=%d\n", off, i, rf[i], iter);
 		if constexpr(NBYTES_PER_REG>1) {
