@@ -247,6 +247,7 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			
 			// Store cells in F, calculated previously
 			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
+			DEBUG_PRINT_AVX(vf, "vfAlignOne");
 			sse_store_siall(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
 			
@@ -297,20 +298,20 @@ inline void EEU8_lazyF(const SSERegI vf0,
 
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
-		DEBUG_PRINT_AVX(vf0, "vf0");
+		//DEBUG_PRINT_AVX(vf0, "vf0");
 		SSERegI vf = sse_slli_u8(vf0);
 		
-		DEBUG_PRINT_AVX(vf, "vfloop");
+		//DEBUG_PRINT_AVX(vf, "vfloop");
 		pvScore += 1;
 	        SSERegI vs1 = sse_load_siall(pvScore);
-		DEBUG_PRINT_AVX(vs1, "vs1");
+		//DEBUG_PRINT_AVX(vs1, "vs1");
 		SSERegI vtmp = sse_load_siall(pvFStore);
 		DEBUG_PRINT_AVX(vf, "vtmp");
 		
 		vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
-		DEBUG_PRINT_AVX(vf, "vfSubvs1");
+		//DEBUG_PRINT_AVX(vf, "vfSubvs1");
 		vf = sse_max_epu8(vtmp, vf);
-		DEBUG_PRINT_AVX(vf, "vfmax");
+		//DEBUG_PRINT_AVX(vf, "vfmax");
 		//DEBUG_PRINT_AVX(vf, "vfA");
 		//DEBUG_PRINT_AVX(vtmp, "vtmp");
 		bool anygt;
@@ -325,9 +326,9 @@ inline void EEU8_lazyF(const SSERegI vf0,
 		TIdxSize j = 0;
 		//printf("anygt is %d\n", anygt);
 		int cnt = 0;
-		printf("lazy looping?:  ");
+		//printf("lazy looping?:  ");
 		while(anygt) {
-			printf("%d ", cnt++);
+			//printf("%d ", cnt++);
 			// Store this vf
 			sse_store_siall(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
@@ -369,7 +370,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 			vh = sse_load_siall(pvHStore);     // load next vh 
 			ve = sse_load_siall(pvEStore);     // load next ve
 		}
-		printf("\n");
+		//printf("\n");
 }
 #endif
 
@@ -425,6 +426,8 @@ uint8_t EEU8_alignOne_gpu(
     if (lane_id == 0)
         vh = 0xff;
 
+    uint8_t* pvFStore_0 = pvFStore;
+    DEBUG_THREADS(pvFStore[lane_id], "pvFStore_before");
     // For each character in the reference text:
     for (uint16_t j = 0; j < iter; j++)
     {
@@ -438,7 +441,14 @@ uint8_t EEU8_alignOne_gpu(
         uint8_t ve =
             pvELoad[j * ROWSTRIDE * LANES + lane_id];
         vf = subs_u8(vf, vs1);
+	//DEBUG_THREADS(vf, "vfAlignOne");
         pvFStore[j * ROWSTRIDE * LANES + lane_id] = vf;
+	//if(j == 0){
+	//    DEBUG_THREADS(pvFStore[lane_id], "pvFStoreAlignOneLoop0");
+	//}
+	//if(j == 1){
+	//    DEBUG_THREADS(pvFStore[lane_id], "pvFStoreAlignOneLoop1");
+	//}
 
 	// Factor in query profile (matches and mismatches)
         vh = subs_u8(vh, vs0);
@@ -462,11 +472,14 @@ uint8_t EEU8_alignOne_gpu(
         vh = pvHLoad[j * ROWSTRIDE * LANES + lane_id];
         pvEStore[j * ROWSTRIDE * LANES + lane_id] = ve;
 
+	__threadfence_block();
+
 	// Update vf value
         vtmp = subs_u8(vtmp, rfgapo);
         vf = subs_u8(vf, rfgape);
         vf = max(vf, vtmp);
     }
+    DEBUG_THREADS(pvFStore_0[lane_id], "pvFStore_after");
 
     //DEBUG_THREADS(vf, "vf");
     return vf;
@@ -488,24 +501,24 @@ void EEU8_lazyF_HIP(
     const int WARP_SIZE = 32;
     int lane_id = threadIdx.x;
     assert(WARP_SIZE=32);
-    DEBUG_THREADS(vf0, "vf0");
+    //DEBUG_THREADS(vf0, "vf0");
 
     uint8_t vf = __shfl_up(vf0, 1);
-    DEBUG_THREADS(vf, "vfShufl");
+    //DEBUG_THREADS(vf, "vfShufl");
     if (lane_id == 0) vf = 0;
-    DEBUG_THREADS(vf, "vfloop");
+    //DEBUG_THREADS(vf, "vfloop");
 
     pvScore += WARP_SIZE;
 
     uint8_t vs1 = pvScore[lane_id];
-    DEBUG_THREADS(vs1, "vs1");
+    //DEBUG_THREADS(vs1, "vs1");
     uint8_t vtmp = pvFStore[lane_id];
     DEBUG_THREADS(vtmp, "vtmp");
 
     vf = subs_u8(vf, vs1);
-    DEBUG_THREADS(vf, "vfSubvs1");
+    //DEBUG_THREADS(vf, "vfSubvs1");
     vf = max(vtmp, vf);
-    DEBUG_THREADS(vf, "vfmax");
+    //DEBUG_THREADS(vf, "vfmax");
 
     bool anygt = vf > vtmp;
 
@@ -517,10 +530,10 @@ void EEU8_lazyF_HIP(
     uint16_t j = 0;
 
     int cnt = 0;
-    if(lane_id==0)printf("lazy looping?:  ");
+    //if(lane_id==0)printf("lazy looping?:  ");
     while (mask)
     {
-	if(lane_id==0)printf("%d ", cnt++);
+	//if(lane_id==0)printf("%d ", cnt++);
         pvFStore[lane_id] = vf;
 	pvFStore += ROWSTRIDE*WARP_SIZE;
 
@@ -568,7 +581,7 @@ void EEU8_lazyF_HIP(
         vh = pvHStore[lane_id];
         ve = pvEStore[lane_id];
     }
-    if(lane_id==0)printf("\n");
+    //if(lane_id==0)printf("\n");
 }
 
 
@@ -653,6 +666,7 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  const uint8_t* pvScore = profbuf + off; 
 
 	  //DEBUG_THREADS(pvScore[lane_id], "pvScore");
+	  DEBUG_THREADS(pvFStore[lane_id], "pvFStore_BefAlignOne");
 
 	  // Does one lane at a time
 	  uint8_t vf = EEU8_alignOne_gpu(iter,
@@ -661,7 +675,8 @@ __global__ void EEU8_alignNucleotides_HIP(
 	      pvHLoad, pvELoad,
 	      pvHStore, pvEStore, pvFStore,
 	      rfgapo, rfgape, rdgapo, rdgape);
-    DEBUG_THREADS(vf, "vf_post");
+    //DEBUG_THREADS(vf, "vf_post");
+	  DEBUG_THREADS(pvFStore[lane_id], "pvFStore_AftAlignOne");
 
 	  //DEBUG_THREADS(vf, "vf");
 	  //DEBUG_THREADS(pvScore[lane_id], "pvScore");
@@ -847,7 +862,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
                         	pvHStore, pvEStore, pvFStore,
                         	rfgapo, rfgape, rdgapo, rdgape);
 
-		DEBUG_PRINT_AVX(vf, "vf_post");
+		//DEBUG_PRINT_AVX(vf, "vf_post");
 	
 
 		if constexpr(NBYTES_PER_REG>1) {
