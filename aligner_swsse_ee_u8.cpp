@@ -70,13 +70,12 @@ printf("Addr %s=%p elem[0]:%d\n", name, avx_pointer, tmp_debug[0]); \
 #define DEBUG_THREADS(thread_elem, name)            \
 {                                                                       \
 debug_buff[lane_id]=thread_elem;                                       \
+  __syncthreads();                                                      \
 if(lane_id ==0){                                                        \
-  __syncthreads();                                                      \
   for(int dd = 0; dd < 32; dd++) printf("%s[%d]=%d ", name, dd, debug_buff[dd]); \
-  __syncthreads();                                                      \
 printf("\n");                                                           \
-                                                                        \
 }                                                                       \
+__syncthreads();                                                        \
 }
 
 #define DEBUG_GPU_POINTER(pointer, name)            \
@@ -250,6 +249,11 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 		// Fill topmost (least sig) cell with high value
 		vh = sse_or_siall(vh, vhilsw);
 		
+
+		//SSERegI* pvFStore_0 = pvFStore;
+		//for (uint16_t j = 0; j < iter; j++) {
+		//	DEBUG_PRINT_AVX(*(pvFStore_0+j*ROWSTRIDE), "pvFStoreB");
+		//}
 		// For each character in the reference text:
 		for(TIdxSize j = 0; j < iter; j++) {
 			SSERegI vs0 = sse_load_siall(pvScore);
@@ -298,6 +302,9 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			vf = sse_subs_epu8(vf, rfgape);
 			vf = sse_max_epu8(vf, vtmp);
 		}
+		//for (uint16_t j = 0; j < iter; j++) {
+		//	DEBUG_PRINT_AVX(*(pvFStore_0+j*ROWSTRIDE), "pvFStoreA");
+		//}
 		//DEBUG_PRINT_POINTER(pvELoad, "pvEloadinAlignOne");
 
 		//DEBUG_PRINT_AVX(vf, "vf");
@@ -313,17 +320,20 @@ inline void EEU8_lazyF(const SSERegI vf0,
 			const SSERegI rfgape, const SSERegI rdgapo) {
 		const SSERegI vzero    = sse_setzero_siall();  // needed by sse_anygt_epu8
 
+		//DEBUG_PRINT_AVX(vf0, "vfB");
+
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
 		//DEBUG_PRINT_AVX(vf0, "vf0");
 		SSERegI vf = sse_slli_u8(vf0);
+		//DEBUG_PRINT_AVX(vf, "vfA");
 		
-		//DEBUG_PRINT_AVX(vf, "vfloop");
+		//DEBUG_PRINT_AVX(*(pvScore+1), "pvScore+1");
 		pvScore += 1;
 	        SSERegI vs1 = sse_load_siall(pvScore);
 		//DEBUG_PRINT_AVX(vs1, "vs1");
 		SSERegI vtmp = sse_load_siall(pvFStore);
-		//DEBUG_PRINT_AVX(vf, "vtmp");
+		//DEBUG_PRINT_AVX(vtmp, "vtmp");
 		
 		vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
 		//DEBUG_PRINT_AVX(vf, "vfSubvs1");
@@ -344,8 +354,21 @@ inline void EEU8_lazyF(const SSERegI vf0,
 		//printf("anygt is %d\n", anygt);
 		int cnt = 0;
 		//printf("lazy looping?:  ");
+
+		//if(anygt){
+		//	DEBUG_PRINT_AVX(vf, "vf");
+		//	DEBUG_PRINT_AVX(vtmp, "vtmp");
+		//}
+
+		if(anygt){
+			DEBUG_PRINT_AVX(vf, "vf");
+			DEBUG_PRINT_AVX(vtmp, "vtmp");
+		}
+
 		while(anygt) {
 			//printf("%d ", cnt++);
+			//DEBUG_PRINT_AVX(vf, "vf");
+			//DEBUG_PRINT_AVX(vtmp, "vtmp");
 			// Store this vf
 			sse_store_siall(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
@@ -413,7 +436,7 @@ __device__ __forceinline__ uint8_t subs_u8(uint8_t a, uint8_t b) {
 
 
 __device__
-uint8_t EEU8_alignOne_gpu(
+uint8_t EEU8_alignOne_HIP(
         const uint16_t iter,
         const size_t colstride,
         const uint8_t *pvScore,
@@ -436,14 +459,19 @@ uint8_t EEU8_alignOne_gpu(
     // load last H from previous column
     uint8_t vh = pvHLoad[(colstride - ROWSTRIDE) * LANES + lane_id];
 
-    vh = __shfl_up(vh, 1);
+    __syncthreads();
+    vh = __shfl_up(vh, 1, LANES);
 
     // in cpu the corresponding vh lane
     // is just orred with 0xff via vhilsw
     if (lane_id == 0)
         vh = 0xff;
+    __syncthreads();
 
-    uint8_t* pvFStore_0 = pvFStore;
+    //uint8_t* pvFStore_0 = pvFStore;
+    //for (uint16_t j = 0; j < iter; j++) {
+    //  DEBUG_THREADS(pvFStore_0[j*ROWSTRIDE*LANES+lane_id], "pvFStoreB");
+    //}
     //DEBUG_THREADS(pvFStore[lane_id], "pvFStore_before");
     // For each character in the reference text:
     for (uint16_t j = 0; j < iter; j++)
@@ -464,7 +492,7 @@ uint8_t EEU8_alignOne_gpu(
         vf = subs_u8(vf, vs1);
 	//DEBUG_THREADS(vf, "vfAlignOne");
         pvFStore[lane_id] = vf;
-	pvFStore += ROWSTRIDE*LANES;
+        pvFStore += ROWSTRIDE*LANES;
 	//debug_buff[lane_id]=vf;
 	//if(j == 0){
 	//    DEBUG_THREADS(pvFStore[lane_id], "pvFStoreAlignOneLoop0");
@@ -504,11 +532,10 @@ uint8_t EEU8_alignOne_gpu(
         vf = subs_u8(vf, rfgape);
         vf = max(vf, vtmp);
     }
+    //for (uint16_t j = 0; j < iter; j++) {
+    //  DEBUG_THREADS(pvFStore_0[j*ROWSTRIDE*LANES+lane_id], "pvFStoreA");
+    //}
     //__syncthreads();
-    //DEBUG_THREADS(pvFStore_0[lane_id], "pvFStore_after");
-    //DEBUG_GPU_POINTER(pvELoad, "pvEloadinAlignOne");
-
-    //DEBUG_THREADS(vf, "vf");
     return vf;
 }
 
@@ -530,14 +557,21 @@ void EEU8_lazyF_HIP(
     assert(WARP_SIZE=32);
     //DEBUG_THREADS(vf0, "vf0");
 
-    uint8_t vf = __shfl_up(vf0, 1);
+    //DEBUG_THREADS(vf0, "vfB");
+    __syncthreads();
+    uint8_t vf = __shfl_up(vf0, 1, WARP_SIZE);
+    if(lane_id==0) vf = 0;
+    __syncthreads();
     //DEBUG_THREADS(vf, "vfShufl");
-    if (lane_id == 0) vf = 0;
+    //DEBUG_THREADS(vf, "vfI");
+    //DEBUG_THREADS(vf, "vfA");
     //DEBUG_THREADS(vf, "vfloop");
 
     pvScore += WARP_SIZE;
 
+    //DEBUG_THREADS(pvScore[lane_id], "pvScore+1");
     uint8_t vs1 = pvScore[lane_id];
+    //DEBUG_THREADS(vs1, "pvScore+1");
     //DEBUG_THREADS(vs1, "vs1");
     uint8_t vtmp = pvFStore[lane_id];
     //DEBUG_THREADS(vtmp, "vtmp");
@@ -556,11 +590,19 @@ void EEU8_lazyF_HIP(
 
     uint16_t j = 0;
 
+    // for debugging, want to see when we keep entering this darn loop
+    //if(mask){
+    //    DEBUG_THREADS(vf, "vf");
+    //    DEBUG_THREADS(vtmp, "vtmp");
+    //}
+
     int cnt = 0;
     //if(lane_id==0)printf("lazy looping?:  ");
     while (mask)
     {
 	//if(lane_id==0)printf("%d ", cnt++);
+	//DEBUG_THREADS(vf, "vf");
+	//DEBUG_THREADS(vtmp, "vtmp");
         pvFStore[lane_id] = vf;
 	pvFStore += ROWSTRIDE*WARP_SIZE;
 
@@ -589,7 +631,8 @@ void EEU8_lazyF_HIP(
             pvEStore -= colstride*WARP_SIZE;
 
 	    __syncthreads();
-            vf = __shfl_up(vf, 1);
+            vf = __shfl_up(vf, 1, WARP_SIZE);
+	    if(lane_id==0)vf=0;
 	    __syncthreads();
         }
 
@@ -608,6 +651,7 @@ void EEU8_lazyF_HIP(
         vh = pvHStore[lane_id];
         ve = pvEStore[lane_id];
     }
+    //printf("\n");
     //if(lane_id==0)printf("\n");
 }
 
@@ -700,10 +744,11 @@ __global__ void EEU8_alignNucleotides_HIP(
 
 	  //DEBUG_GPU_POINTER(pvScore, "profbuf+off");
 	  //DEBUG_THREADS(pvScore[lane_id], "pvScore");
+	  //DEBUG_GPU_POINTER(pvFStore, "pvFStoreBAO");
 	  //DEBUG_THREADS(pvFStore[lane_id], "pvFStoreBeforeAlignOne");
 
 	  // Does one lane at a time
-	  uint8_t vf = EEU8_alignOne_gpu(iter,
+	  uint8_t vf = EEU8_alignOne_HIP(iter,
 	      colstride,
 	      pvScore,
 	      pvHLoad, pvELoad,
@@ -716,7 +761,7 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  //DEBUG_THREADS(vf, "vf");
 	  //DEBUG_THREADS(pvScore[lane_id], "pvScore");
 	  //DEBUG_THREADS(pvELoad, "pvELoad[0]");
-	  //DEBUG_THREADS(pvFStore, "pvFStore");
+	  //DEBUG_GPU_POINTER(pvFStore, "pvFStoreAAO");
 	  //DEBUG_THREADS(pvHStore, "pvHStore");
 	  //DEBUG_THREADS(pvHLoad, "pvHLoad");
 
@@ -737,12 +782,14 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  __syncthreads(); // doesn't really need syncing... 
 
 	  // scalar portion taking scores from last column for traceback
-	  if(lane_id == lastWordIdx){
+	  if(lane_id == 0){
 	    //printf("checkLastWord %d ", lastWordIdx);
+
+	    // We don't let lastWordIdx do this because warp may not be active?
 	    uint8_t lr = pvHLoad[lastWordIdx];
 	    TAlScore sc = (TAlScore)(lr - 0xff);
 	    if(lr > lrmax) {
-		    //printf("Updating lr %d ", lr);
+		    //printf("i:%d Updating lr %d \n", i, lr);
 	      lrmax = lr;
 	    }
 	    if(sc >= minsc) {
@@ -757,46 +804,31 @@ __global__ void EEU8_alignNucleotides_HIP(
 
 	  //DEBUG_THREADS(pvScore[lane_id], "pvScore");
 	  //DEBUG_THREADS(pvFStore[lane_id], "pvFStore");
-	//DEBUG_GPU_POINTER(pvHLoad, "pvHLoad");
-	//DEBUG_GPU_POINTER(pvHStore, "pvHStore");
-	//DEBUG_GPU_POINTER(pvELoad, "pvELoad");
-	//DEBUG_GPU_POINTER(pvEStore, "pvEStore");
-	//DEBUG_GPU_POINTER(pvFStore, "pvFStore");
+	  //DEBUG_GPU_POINTER(pvHLoad, "pvHLoad");
+	  //DEBUG_GPU_POINTER(pvHStore, "pvHStore");
+	  //DEBUG_GPU_POINTER(pvELoad, "pvELoad");
+	  //DEBUG_GPU_POINTER(pvEStore, "pvEStore");
+	  //DEBUG_GPU_POINTER(pvFStore, "pvFStore");
 
 	  pvHStore = pvHStore + WARP_SIZE*colstride;
 	  pvELoad  = pvELoad  + WARP_SIZE*colstride;
 	  pvEStore = pvEStore + WARP_SIZE*colstride;
 	  pvFStore = pvFStore + WARP_SIZE*colstride;
 
-	//DEBUG_GPU_POINTER(pvHLoad, "pvHLoad");
-	//DEBUG_GPU_POINTER(pvHStore, "pvHStore");
-	//DEBUG_GPU_POINTER(pvELoad, "pvELoad");
-	//DEBUG_GPU_POINTER(pvEStore, "pvEStore");
-	//DEBUG_GPU_POINTER(pvFStore, "pvFStore");
-
+	  //DEBUG_GPU_POINTER(pvHLoad, "pvHLoad");
+	  //DEBUG_GPU_POINTER(pvHStore, "pvHStore");
+	  //DEBUG_GPU_POINTER(pvELoad, "pvELoad");
+	  //DEBUG_GPU_POINTER(pvEStore, "pvEStore");
+	  //DEBUG_GPU_POINTER(pvFStore, "pvFStore");
 
 	  __syncthreads();
-	  // reduction to find max amongst threads
-	  // reference: https://rocm.docs.amd.com/projects/HIP/en/latest/tutorial/reduction.html#reduction-on-gpus
-	  // Warp reduction. TODO: Can use an intrinsic since it happens within warp level
-	  //
-	  //if (lane_id < WARP_SIZE) {
-	  //  for (int offset = 16; offset > 0; offset /= 2) {
-	  //    uint8_t tmp = __shfl_down(res, offset, 32);
-	  //    res = max(res, tmp);
-	  //  }
-
-	  //  // Write result from shared to back buffer
-	  //  if (lane_id == 0)
-	  //    back[bid] = res;
-	  //}
 
     }
 
 
     // notice it isn't 0, but our last one.
-    if (lane_id == lastWordIdx) {
-      //printf("lrmax %d\n",lrmax);
+    if (lane_id == 0) {
+      //printf("lrmax:%d\n",lrmax);
       *btnfilled_ = btnfilled;
       *lrmax_out = lrmax;
     }
@@ -911,6 +943,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	  //DEBUG_PRINT_AVX(*pvScore, "pvScore");
 	  //DEBUG_PRINT_AVX(*pvFStore, "pvFStoreBeforeAlignOne");
 		//DEBUG_PRINT_POINTER(pvScore, "profbuff+off");
+	//DEBUG_PRINT_POINTER(pvFStore, "pvFStoreBAO");
 
 		SSERegI vf = EEU8_alignOne(iter,
                         	colstride,
@@ -919,6 +952,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
                         	pvHStore, pvEStore, pvFStore,
                         	rfgapo, rfgape, rdgapo, rdgape);
 
+	//DEBUG_PRINT_POINTER(pvFStore, "pvFStoreAAO");
 		//DEBUG_PRINT_POINTER(pvELoad, "pvEloadAfterAlignOne");
 		//DEBUG_PRINT_AVX(vf, "vf_post");
 	  //DEBUG_PRINT_AVX(*pvFStore, "pvFStoreAfterAlignOne");
@@ -940,6 +974,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		TAlScore sc = (TAlScore)(lr - 0xff);
 		if(lr > lrmax) {
 			lrmax = lr;
+		    //printf("i:%d Updating lr %d \n", i, lr);
 		    //printf("Updating lr %d ", lr);
 		}
 		if(sc >= minsc) {
