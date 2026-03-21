@@ -6,11 +6,25 @@
 
 #include "../aligner_swsse_ee_u8.cpp"
 
-#define MAX_PB_EL   128
-#define MAX_RF_EL   192
-#define MAX_MAT_EL  4096
+#include "align_ee8.h"
 
 #define tread(data,size,n, file) if (fread(data,size,n,file)!=n) {fprintf(stderr, "Read failed\n"); return 3;}
+
+#ifdef HIP_KERNELS
+#include <hip/hip_runtime.h>
+
+#define HIP_CHECK(expression)                  \
+{                                              \
+    const hipError_t status = expression;      \
+    if(status != hipSuccess){                  \
+        std::cerr << "HIP error "              \
+                  << status << ": "            \
+                  << hipGetErrorString(status) \
+                  << " at " << __FILE__ << ":" \
+                  << __LINE__ << std::endl;    \
+    }                                          \
+}
+#endif
 
 int load_data(int nels,
 		size_t nrow[],
@@ -86,6 +100,54 @@ int load_results(int nels,
    return 0;
 }
 
+#ifdef HIP_KERNELS
+/* Function exists to cound errors and handle some of the separation on batching
+ * @returns number of errors; zero if checking is disabled
+ */
+int align_ee8_batchLaunch(const int p, const int elp_pp, const int nels,
+		const size_t* nrow,
+		const size_t* iter,
+		const size_t* colstride,
+		const size_t* lastWordIdx,
+		const size_t* minsc,
+		const size_t* rfd,
+                const SSERegI *profbuf,
+		const char    *rf,
+		const uint8_t gaps[],
+                SSERegI          *mat,
+		DpBtCandidate    *btncand,
+                const int32_t* ref_lrmax,
+                const int32_t* ref_btnfilled) {
+
+      const int curBatchSize = std::min(elp_pp,nels-p*elp_pp);
+      const int offset = p*elp_pp;
+
+
+      uint16_t btnfilled[curBatchSize];
+      uint8_t lrmax[curBatchSize];
+      int nerrs = 0;
+
+	// Handle all the proper indexing in this call.
+      EEU8_alignNucleotidesBatch_HIP<<<curBatchSize, 32>>>(p, elp_pp, nels, // need these three to figure out batch index and range
+	    nrow, iter, colstride, lastWordIdx,minsc, rfd,
+	    profbuf,rf,gaps,
+	    mat,btncand,
+	    lrmax, btnfilled);
+      HIP_CHECK(hipDeviceSynchronize());
+
+#ifndef NO_CHECK_PRINT
+      for(int i = 0; i<curBatchSize; i++){
+	 const int globalIdx = offset+i;
+	 if (int(ref_lrmax[i]) != int(lrmax[globalIdx])) {
+	    fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",globalIdx,int(lrmax[i]), int(ref_lrmax[globalIdx]));
+	    nerrs++;
+	 } 
+      }
+#endif
+      return nerrs;
+}
+#endif
+
 int align_ee8_one(const int el, // for debuggging purpose
 		const size_t nrow,
 		const size_t iter,
@@ -100,9 +162,8 @@ int align_ee8_one(const int el, // for debuggging purpose
 		DpBtCandidate    *btncand,
                 const int32_t ref_lrmax,
                 const int32_t ref_btnfilled) {
-	uint16_t btnfilled = 0;
 
-#ifndef HIP_KERNELS
+	uint16_t btnfilled = 0;
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
                                         iter, colstride, lastWordIdx,
@@ -110,19 +171,6 @@ int align_ee8_one(const int el, // for debuggging purpose
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 
-#else
-	EEU8_TCScore lrmax;
-	EEU8_TCScore* lrmax_p = &lrmax;
-	// assuming previously this was avx (256bit) for uint16_t
-	EEU8_alignNucleotides_HIP<<<1, 32>>>((uint8_t*)profbuf, rf, rfd,
-	      (uint8_t*)mat,
-	      iter, colstride, lastWordIdx,
-	      minsc, nrow,
-	      btncand, (uint16_t*)btnfilled,
-	      gaps[0],gaps[1],gaps[2],gaps[3],
-	      lrmax_p);
-	hipDeviceSynchronize();
-#endif
 	int nerrs = 0;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
 	//if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
@@ -150,6 +198,7 @@ void align_ee8(const int npar, const int nels,
                 const int32_t ref_btnfilled[]) {
    const int elp_pp = (nels+ (npar-1))/npar; // round up
    int nerrs = 0;
+#ifndef HIP_KERNELS
 #ifdef OMPGPU
 #pragma omp target teams distribute parallel for reduction(+:nerrs)
 #else
@@ -166,40 +215,25 @@ void align_ee8(const int npar, const int nels,
       }
    }
 
+#else
+   // while previously npar meant splitting into nels/npar processes, this is SIMT
+   // so a smaller batch size means running once on gpu and letting the GPU kernel launch
+   // handle the indexing for SIMT
+   for (int p=0; p<npar; p++) {
+      nerrs+= align_ee8_batchLaunch(p, elp_pp, nels, // need these three to figure out batch index and range
+		nrow, iter, colstride, lastWordIdx,minsc, rfd,
+                profbuf,rf,gaps,
+		mat,btncand,
+		ref_lrmax,ref_btnfilled);
+   }
+#endif
+   //fprintf(stdout, "nels:%d npar:%d elp_pp:%d\n", nels, npar, elp_pp);
+
    if (nerrs!=0) {
       fprintf(stderr, "FAILED matching results %i times!\n", nerrs);
    } else {
       fprintf(stderr, "SUCCESS, all results matched.\n");
    }
-   
-   //const int N_LANES = sizeof(SSERegI); // 16 for SSE, 32 for AVX2
-   //const int threads_per_block = 256;
-   //const int reads_per_block = threads_per_block / N_LANES;
-   //const int num_blocks = (nels + (reads_per_block - 1)) / reads_per_block;
-
-   // Launch the HIP kernel
-//   hipLaunchKernelGGL(EEU8_alignNucleotides_HIP<16>, // Assuming SSE lanes=16
-//                      dim3(num_blocks), 
-//                      dim3(threads_per_block), 
-//                      0, 0,
-//                      (const uint8_t*)profbuf, 
-//                      rf, 
-//                      (const uint32_t*)rfd, 
-//                      (uint8_t*)mat, 
-//                      (const uint32_t*)iter, 
-//                      (const uint32_t*)colstride, 
-//                      gaps, 
-//                      nels);
-//
-   //hipDeviceSynchronize();
-   // Wait for the GPU to finish
-
-   // Post-process: Extract results from the DP matrix (on CPU)
-   //int nerrs = 0;
-   //for (int i = 0; i < nels; i++) {
-   //    // ... existing verification logic ...
-   //    // (lrmax and btnfilled are now extracted from the 'mat' buffer on the CPU)
-   //}
 }
 
 int load_and_align_ee8(const int npar, const int nels) {

@@ -106,6 +106,7 @@ __syncthreads();                                                        \
 #endif
 
 #ifdef HIP_KERNELS
+#include "devsupport/align_ee8.h"
 #include <hip/hip_runtime.h>
 #endif
 
@@ -352,23 +353,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 		// If any element of vtmp is greater than H - gap-open...
 		TIdxSize j = 0;
 		//printf("anygt is %d\n", anygt);
-		int cnt = 0;
-		//printf("lazy looping?:  ");
-
-		//if(anygt){
-		//	DEBUG_PRINT_AVX(vf, "vf");
-		//	DEBUG_PRINT_AVX(vtmp, "vtmp");
-		//}
-
-		if(anygt){
-			DEBUG_PRINT_AVX(vf, "vf");
-			DEBUG_PRINT_AVX(vtmp, "vtmp");
-		}
-
 		while(anygt) {
-			//printf("%d ", cnt++);
-			//DEBUG_PRINT_AVX(vf, "vf");
-			//DEBUG_PRINT_AVX(vtmp, "vtmp");
 			// Store this vf
 			sse_store_siall(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
@@ -450,7 +435,6 @@ uint8_t EEU8_alignOne_HIP(
         const uint8_t rdgapo,
         const uint8_t rdgape)
 {
-    __shared__ uint8_t debug_buff[32];
     int lane_id = threadIdx.x;
     const int LANES = 32;
 
@@ -459,14 +443,12 @@ uint8_t EEU8_alignOne_HIP(
     // load last H from previous column
     uint8_t vh = pvHLoad[(colstride - ROWSTRIDE) * LANES + lane_id];
 
-    __syncthreads();
     vh = __shfl_up(vh, 1, LANES);
 
     // in cpu the corresponding vh lane
     // is just orred with 0xff via vhilsw
     if (lane_id == 0)
         vh = 0xff;
-    __syncthreads();
 
     //uint8_t* pvFStore_0 = pvFStore;
     //for (uint16_t j = 0; j < iter; j++) {
@@ -476,7 +458,6 @@ uint8_t EEU8_alignOne_HIP(
     // For each character in the reference text:
     for (uint16_t j = 0; j < iter; j++)
     {
-	__syncthreads();
         //uint8_t vs0 = pvScore[2*j*LANES+lane_id];
         uint8_t vs0 = pvScore[lane_id];
 	pvScore+=LANES;
@@ -535,7 +516,6 @@ uint8_t EEU8_alignOne_HIP(
     //for (uint16_t j = 0; j < iter; j++) {
     //  DEBUG_THREADS(pvFStore_0[j*ROWSTRIDE*LANES+lane_id], "pvFStoreA");
     //}
-    //__syncthreads();
     return vf;
 }
 
@@ -551,17 +531,14 @@ void EEU8_lazyF_HIP(
         const uint8_t rfgape,
         const uint8_t rdgapo)
 {
-    __shared__ uint32_t debug_buff[32];
     const int WARP_SIZE = 32;
     int lane_id = threadIdx.x;
     assert(WARP_SIZE=32);
     //DEBUG_THREADS(vf0, "vf0");
 
     //DEBUG_THREADS(vf0, "vfB");
-    __syncthreads();
     uint8_t vf = __shfl_up(vf0, 1, WARP_SIZE);
     if(lane_id==0) vf = 0;
-    __syncthreads();
     //DEBUG_THREADS(vf, "vfShufl");
     //DEBUG_THREADS(vf, "vfI");
     //DEBUG_THREADS(vf, "vfA");
@@ -590,19 +567,8 @@ void EEU8_lazyF_HIP(
 
     uint16_t j = 0;
 
-    // for debugging, want to see when we keep entering this darn loop
-    //if(mask){
-    //    DEBUG_THREADS(vf, "vf");
-    //    DEBUG_THREADS(vtmp, "vtmp");
-    //}
-
-    int cnt = 0;
-    //if(lane_id==0)printf("lazy looping?:  ");
     while (mask)
     {
-	//if(lane_id==0)printf("%d ", cnt++);
-	//DEBUG_THREADS(vf, "vf");
-	//DEBUG_THREADS(vtmp, "vtmp");
         pvFStore[lane_id] = vf;
 	pvFStore += ROWSTRIDE*WARP_SIZE;
 
@@ -630,10 +596,8 @@ void EEU8_lazyF_HIP(
             pvHStore -= colstride*WARP_SIZE;
             pvEStore -= colstride*WARP_SIZE;
 
-	    __syncthreads();
             vf = __shfl_up(vf, 1, WARP_SIZE);
 	    if(lane_id==0)vf=0;
-	    __syncthreads();
         }
 
         vs1 = pvScore[lane_id];
@@ -651,13 +615,11 @@ void EEU8_lazyF_HIP(
         vh = pvHStore[lane_id];
         ve = pvEStore[lane_id];
     }
-    //printf("\n");
-    //if(lane_id==0)printf("\n");
 }
 
 
 
-__global__ void EEU8_alignNucleotides_HIP(
+__device__ void EEU8_alignNucleotides_HIP(
     const uint8_t  profbuf[],      // Query profile (pre-built)
     const char     rf[],           // Reference sequence
     const uint32_t rfd,          // Reference length
@@ -676,23 +638,18 @@ __global__ void EEU8_alignNucleotides_HIP(
     uint8_t*       lrmax_out    // Global max score, originally return value
     )
 {
-    // Each thread handles one lane
+    // Each thread handles one lane, must be 32
     int WARP_SIZE = blockDim.x;
     //if(WARP_SIZE!=32){fprintf(stderr, "Why is WARP_SIZE for EEU8_alignNucleotides_HIP not 32?\n");};
     int lane_id = threadIdx.x % WARP_SIZE;
 
     assert(WARP_SIZE==32);
-    //extern __shared__ uint8_t s_mem[]; 
 
     //Fills rdgapo values with readGapOpen
     uint8_t rfgapo = refGapOpen;
     uint8_t rfgape = readGapExtend;
     uint8_t rdgapo = refGapOpen;
     uint8_t rdgape = readGapExtend;
-
-    __shared__ uint32_t debug_buff[32]; // 32 threads
-    
-    //sse_fill_i8(readGapOpen, rdgapo);
 
     // Initial values for the first column (H and E are 0)
     // pmat layout: [col][segment][lane]
@@ -717,12 +674,6 @@ __global__ void EEU8_alignNucleotides_HIP(
     uint8_t *pvEStore = ((uint8_t*)pmat) + 32*colstride + 32*SSEMatrixConsts::E;
     uint8_t *pvFStore = ((uint8_t*)pmat) + 32*SSEMatrixConsts::F;
 
-    //DEBUG_GPU_POINTER(pvHLoad, "pvHLoad");
-    //DEBUG_GPU_POINTER(pvHStore, "pvHStore");
-    //DEBUG_GPU_POINTER(pvELoad, "pvELoad");
-    //DEBUG_GPU_POINTER(pvEStore, "pvEStore");
-    //DEBUG_GPU_POINTER(pvFStore, "pvFStore");
-
     // needs to to be shared amongst all threads in warp
     uint8_t lrmax = MIN_U8;
 
@@ -730,12 +681,11 @@ __global__ void EEU8_alignNucleotides_HIP(
     uint16_t btnfilled = 0;
 
     for (uint32_t i = 0; i < rfd; i++) {
-	  //size_t off = (size_t)__builtin_ctz((uint32_t)rf[i]) * iter * 2;
 
 	  //https://rocm.docs.amd.com/projects/HIP/en/docs-6.0.2/reference/kernel_language.html
-	  // cpu version
-	  //(size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
-	  size_t off = 32*((size_t)(__ffs((uint32_t)rf[i]) - 1) * iter * 2); // 32 factor because original packs into 256
+	  // Both offset instructions are acceptable
+	  size_t off = 32*((size_t)__builtin_ctz((uint32_t)rf[i]) * iter * 2);
+	  //size_t off = 32*((size_t)(__ffs((uint32_t)rf[i]) - 1) * iter * 2); // 32 factor because original packs into 256
 
 	  // points into the query profile
 	  //if(lane_id==0)printf("Running main loop %d off:%zu\n", i,off);
@@ -779,7 +729,6 @@ __global__ void EEU8_alignNucleotides_HIP(
 
 	  // Note: we may not want to extract from the final row
 	  // Scores shared amongst all threads... so one single thread can do this
-	  __syncthreads(); // doesn't really need syncing... 
 
 	  // scalar portion taking scores from last column for traceback
 	  if(lane_id == 0){
@@ -800,7 +749,6 @@ __global__ void EEU8_alignNucleotides_HIP(
 	    }
 	    //printf("\n");
 	  }
-	  __syncthreads();
 
 	  //DEBUG_THREADS(pvScore[lane_id], "pvScore");
 	  //DEBUG_THREADS(pvFStore[lane_id], "pvFStore");
@@ -821,8 +769,6 @@ __global__ void EEU8_alignNucleotides_HIP(
 	  //DEBUG_GPU_POINTER(pvEStore, "pvEStore");
 	  //DEBUG_GPU_POINTER(pvFStore, "pvFStore");
 
-	  __syncthreads();
-
     }
 
 
@@ -833,6 +779,69 @@ __global__ void EEU8_alignNucleotides_HIP(
       *lrmax_out = lrmax;
     }
 }
+
+
+/*
+ * Wrapper for EEU8_alignNucleotides_HIP
+ * But handles the offsets and batch sizes
+ *
+ */
+__global__
+void EEU8_alignNucleotidesBatch_HIP(const int p, const int elp_pp, const int nels,
+		const size_t nrow_[],
+		const size_t iter_[],
+		const size_t colstride_[],
+		const size_t lastWordIdx_[],
+		const size_t minsc_[],
+		const size_t rfd_[],
+		const SSERegI profbuf_[],
+		const char    rf_[],
+		const uint8_t gaps_[],
+		SSERegI          mat_[],
+		DpBtCandidate    btncand_[],
+		uint8_t  lrmax[],
+		uint16_t btnfilled[]) {
+
+    int curBatchSize = std::min(elp_pp,nels-p*elp_pp);
+    int offset = p*elp_pp;
+
+    // leave each block to parallelize
+    // where each block does 32 lanes.
+    const int bx = blockIdx.x;
+    const int globalIdx = offset+bx;
+    
+
+    const size_t nrow        = nrow_[globalIdx];
+    const size_t iter        = iter_[globalIdx];
+    const size_t colstride   = colstride_[globalIdx];
+    const size_t lastWordIdx = lastWordIdx_[globalIdx];
+    const size_t minsc       = minsc_[globalIdx];
+    const size_t rfd         = rfd_[globalIdx];
+
+    const SSERegI* profbuf   = profbuf_ + (globalIdx * (size_t)MAX_MAT_EL);
+    const char* rf           = rf_      + (globalIdx * (size_t)MAX_RF_EL);
+    const uint8_t* gaps      = gaps_    + (globalIdx * 4);
+    
+    // NOTE: Use globalIdx here too, otherwise every block in the batch 
+    // writes to the same 'p' offset and crashes/corrupts results.
+    //SSERegI* mat             = mat_     + (globalIdx * (size_t)MAX_MAT_EL);
+    //DpBtCandidate* btncand   = btncand_ + (globalIdx * (size_t)MAX_RF_EL);
+    SSERegI* mat             = mat_     + (p * (size_t)MAX_MAT_EL);
+    DpBtCandidate* btncand   = btncand_ + (p * (size_t)MAX_RF_EL);
+
+    // Updates btnfilled and lrmax
+    EEU8_alignNucleotides_HIP(
+        (uint8_t*)profbuf, rf, rfd,
+        (uint8_t*)mat,
+        iter, colstride, lastWordIdx,
+        minsc, nrow,
+        btncand, &btnfilled[bx],
+        gaps[0], gaps[1], gaps[2], gaps[3],
+	&lrmax[bx]
+    );
+
+}
+
 #endif // HIP_KERNELS
 
 template<typename TIdxSize>
@@ -1008,7 +1017,6 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 
 
 	btnfilled_ = btnfilled;  // pass it out
-	printf("lrmax:%d\n",lrmax);
 	return lrmax;
 }
 
