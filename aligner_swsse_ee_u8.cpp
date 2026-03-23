@@ -619,7 +619,7 @@ void EEU8_lazyF_HIP(
 
 
 
-__device__ void EEU8_alignNucleotides_HIP(
+__global__ void EEU8_alignNucleotides_HIP(
     const uint8_t  profbuf[],      // Query profile (pre-built)
     const char     rf[],           // Reference sequence
     const uint32_t rfd,          // Reference length
@@ -630,7 +630,7 @@ __device__ void EEU8_alignNucleotides_HIP(
     const int64_t  minsc,
     const uint32_t nrow,
     DpBtCandidate  btncand[],
-    uint16_t*      btnfilled_,
+    uint8_t*      btnfilled_,
     const int8_t   refGapOpen,
     const int8_t   refGapExtend,
     const int8_t   readGapOpen,
@@ -786,61 +786,64 @@ __device__ void EEU8_alignNucleotides_HIP(
  * But handles the offsets and batch sizes
  *
  */
-__global__
-void EEU8_alignNucleotidesBatch_HIP(const int p, const int elp_pp, const int nels,
-		const size_t nrow_[],
-		const size_t iter_[],
-		const size_t colstride_[],
-		const size_t lastWordIdx_[],
-		const size_t minsc_[],
-		const size_t rfd_[],
-		const SSERegI profbuf_[],
-		const char    rf_[],
-		const uint8_t gaps_[],
-		SSERegI          mat_[],
-		DpBtCandidate    btncand_[],
-		uint8_t  lrmax[],
-		uint16_t btnfilled[]) {
-
-    int curBatchSize = std::min(elp_pp,nels-p*elp_pp);
-    int offset = p*elp_pp;
-
-    // leave each block to parallelize
-    // where each block does 32 lanes.
-    const int bx = blockIdx.x;
-    const int globalIdx = offset+bx;
-    
-
-    const size_t nrow        = nrow_[globalIdx];
-    const size_t iter        = iter_[globalIdx];
-    const size_t colstride   = colstride_[globalIdx];
-    const size_t lastWordIdx = lastWordIdx_[globalIdx];
-    const size_t minsc       = minsc_[globalIdx];
-    const size_t rfd         = rfd_[globalIdx];
-
-    const SSERegI* profbuf   = profbuf_ + (globalIdx * (size_t)MAX_MAT_EL);
-    const char* rf           = rf_      + (globalIdx * (size_t)MAX_RF_EL);
-    const uint8_t* gaps      = gaps_    + (globalIdx * 4);
-    
-    // NOTE: Use globalIdx here too, otherwise every block in the batch 
-    // writes to the same 'p' offset and crashes/corrupts results.
-    //SSERegI* mat             = mat_     + (globalIdx * (size_t)MAX_MAT_EL);
-    //DpBtCandidate* btncand   = btncand_ + (globalIdx * (size_t)MAX_RF_EL);
-    SSERegI* mat             = mat_     + (p * (size_t)MAX_MAT_EL);
-    DpBtCandidate* btncand   = btncand_ + (p * (size_t)MAX_RF_EL);
-
-    // Updates btnfilled and lrmax
-    EEU8_alignNucleotides_HIP(
-        (uint8_t*)profbuf, rf, rfd,
-        (uint8_t*)mat,
-        iter, colstride, lastWordIdx,
-        minsc, nrow,
-        btncand, &btnfilled[bx],
-        gaps[0], gaps[1], gaps[2], gaps[3],
-	&lrmax[bx]
-    );
-
-}
+//__global__
+//void EEU8_alignNucleotidesBatch_HIP(int p, int elp_pp, int nels,
+//		const size_t nrow_[],
+//		const size_t iter_[],
+//		const size_t colstride_[],
+//		const size_t lastWordIdx_[],
+//		const size_t minsc_[],
+//		const size_t rfd_[],
+//		const SSERegI profbuf_[],
+//		const char    rf_[],
+//		const uint8_t gaps_[],
+//		SSERegI          mat_[],
+//		DpBtCandidate    btncand_[],
+//		uint8_t  lrmax[],
+//		uint8_t btnfilled[]) {
+//
+//    //int curBatchSize = std::min(elp_pp,nels-p*elp_pp);
+//    int offset = p*elp_pp;
+//
+//    // leave each block to parallelize
+//    // where each block does 32 lanes.
+//    const int bx = blockIdx.x;
+//    const int globalIdx = offset+bx;
+//    
+//
+//    const size_t nrow        = nrow_[globalIdx];
+//    const size_t iter        = iter_[globalIdx];
+//    const size_t colstride   = colstride_[globalIdx];
+//    const size_t lastWordIdx = lastWordIdx_[globalIdx];
+//    const size_t minsc       = minsc_[globalIdx];
+//    const size_t rfd         = rfd_[globalIdx];
+//
+//    const SSERegI* profbuf   = profbuf_ + (globalIdx * size_t(MAX_MAT_EL));
+//    const char* rf           = rf_      + (globalIdx * size_t(MAX_RF_EL));
+//    const uint8_t* gaps      = gaps_    + (globalIdx * 4);
+//
+//    //if(threadIdx.x==0)printf("(%d,%d)=%d profbuf_=%p profbuf: %p, rf_:%p rf:%p gaps_:%p gaps:%p\n", bx, threadIdx.x, globalIdx, profbuf_, profbuf, rf_, rf, gaps_, gaps);
+//    //if(threadIdx.x==0)printf("(%d,%d)=%d\n", bx, threadIdx.x, globalIdx);
+//    
+//    // NOTE: Use globalIdx here too, otherwise every block in the batch 
+//    // writes to the same 'p' offset and crashes/corrupts results.
+//    //SSERegI* mat             = mat_     + (globalIdx * (size_t)MAX_MAT_EL);
+//    //DpBtCandidate* btncand   = btncand_ + (globalIdx * (size_t)MAX_RF_EL);
+//    SSERegI* mat             = mat_ + (p * size_t(MAX_MAT_EL));
+//    DpBtCandidate* btncand   = btncand_ + (p * size_t(MAX_RF_EL));
+//
+//    // Updates btnfilled and lrmax
+//    EEU8_alignNucleotides_HIP(
+//        (uint8_t*)profbuf, rf, rfd,
+//        (uint8_t*)mat,
+//        iter, colstride, lastWordIdx,
+//        minsc, nrow,
+//        btncand, &btnfilled[bx],
+//        gaps[0], gaps[1], gaps[2], gaps[3],
+//	&lrmax[bx]
+//    );
+//
+//}
 
 #endif // HIP_KERNELS
 
