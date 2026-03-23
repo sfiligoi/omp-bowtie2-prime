@@ -787,7 +787,7 @@ __device__ void EEU8_alignNucleotides_HIP(
  *
  */
 __global__
-void EEU8_alignNucleotidesBatch_HIP(int p, int elp_pp, int nels,
+void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 		const size_t nrow_[],
 		const size_t iter_[],
 		const size_t colstride_[],
@@ -799,58 +799,89 @@ void EEU8_alignNucleotidesBatch_HIP(int p, int elp_pp, int nels,
 		const uint8_t gaps_[],
 		SSERegI          mat_[],
 		DpBtCandidate    btncand_[],
-		uint8_t  lrmax[],
-		uint8_t btnfilled[]) {
+		const int32_t  ref_lrmax_[],
+		const int32_t ref_btnfilled_[], // unused
+		uint32_t nerrs[]) {
 
-    //int curBatchSize = std::min(elp_pp,nels-p*elp_pp);
-    int offset = p*elp_pp;
+    const int p = blockIdx.x; // parallel task (1 per gpu block)
+    const int elp_pp = (nels+ (npar-1))/npar; // round up
+    const int lane_id = threadIdx.x;// used for output and debugging in this wrapper function.
 
-    // leave each block to parallelize
-    // where each block does 32 lanes.
+    uint32_t nerrs_npar = 0;
+
+    int curBatchSize = std::min(elp_pp,nels-p*elp_pp);
+
     const int bx = blockIdx.x;
-    const int globalIdx = offset+bx;
-    
+    int offset = bx*elp_pp;
 
-    const size_t nrow        = nrow_[globalIdx];
-    const size_t iter        = iter_[globalIdx];
-    const size_t colstride   = colstride_[globalIdx];
-    const size_t lastWordIdx = lastWordIdx_[globalIdx];
-    const size_t minsc       = minsc_[globalIdx];
-    const size_t rfd         = rfd_[globalIdx];
+//    if(threadIdx.x==0){
+//	    printf("bx:%d tx:%d p:%d elp_pp:%d offset:%d globalIdx:%d\n\
+// Deltas: \n\
+//profbuf: %d \n\
+//     rf: %d \n\
+//   gaps: %d \n\
+//    mat: %d \n\
+//btncand: %d \n",
+//	    bx, threadIdx.x, p, elp_pp, offset, globalIdx, profbuf-profbuf_, rf-rf_, gaps-gaps_, mat-mat_, btncand-btncand_);
+//
+//
+//    }
+   uint8_t btnfilled; // Only curBatchSize amount indexed, but this is to compile
+   uint8_t lrmax;
 
-    const SSERegI* profbuf   = profbuf_ + (globalIdx * size_t(MAX_PB_EL)); // why is this needed here?
-    const char* rf           = rf_      + (globalIdx * size_t(MAX_RF_EL));
-    const uint8_t* gaps      = gaps_    + (globalIdx * 4);
-    
-    // NOTE: Use globalIdx here too, otherwise every block in the batch 
-    // writes to the same 'p'... not used yet
-    SSERegI* mat             = mat_;// + (p * size_t(MAX_MAT_EL));
-    DpBtCandidate* btncand   = btncand_;// + (p * size_t(MAX_RF_EL));
+    const int iend = std::min((p+1)*elp_pp,nels);
+    for (int i=p*elp_pp; i<iend; i++) {
 
-    if(threadIdx.x==0){
-	    printf("bx:%d tx:%d p:%d elp_pp:%d offset:%d globalIdx:%d\n\
- Deltas: \n\
-profbuf: %d \n\
-     rf: %d \n\
-   gaps: %d \n\
-    mat: %d \n\
-btncand: %d \n",
-	    bx, threadIdx.x, p, elp_pp, offset, globalIdx, profbuf-profbuf_, rf-rf_, gaps-gaps_, mat-mat_, btncand-btncand_);
+	    // leave each block to parallelize
+	    // where each block does 32 lanes.
+	    const int globalIdx = offset+i;
 
+
+	    const size_t nrow        = nrow_[globalIdx];
+	    const size_t iter        = iter_[globalIdx];
+	    const size_t colstride   = colstride_[globalIdx];
+	    const size_t lastWordIdx = lastWordIdx_[globalIdx];
+	    const size_t minsc       = minsc_[globalIdx];
+	    const size_t rfd         = rfd_[globalIdx];
+
+	    const SSERegI* profbuf   = profbuf_ + (globalIdx * size_t(MAX_PB_EL)); // why is this needed here?
+	    const char* rf           = rf_      + (globalIdx * size_t(MAX_RF_EL));
+	    const uint8_t* gaps      = gaps_    + (globalIdx * 4);
+
+	    // NOTE: Use globalIdx here too, otherwise every block in the batch 
+	    // writes to the same 'p'... not used yet
+	    SSERegI* mat             = mat_ + (p * size_t(MAX_MAT_EL));
+	    DpBtCandidate* btncand   = btncand_ + (p * size_t(MAX_RF_EL));
+
+
+	    // Updates btnfilled and lrmax
+	    __syncthreads();
+	    EEU8_alignNucleotides_HIP(
+		(uint8_t*)profbuf, rf, rfd,
+		(uint8_t*)mat,
+		iter, colstride, lastWordIdx,
+		minsc, nrow,
+		btncand, &btnfilled,
+		gaps[0], gaps[1], gaps[2], gaps[3],
+		&lrmax
+	    );
+
+#ifndef NO_CHECK_PRINT
+    __syncthreads();
+    if(lane_id == 0) {
+      const int globalIdx = offset+i;
+      if (int(ref_lrmax_[globalIdx]) != int(lrmax)) {
+        printf("[%i]vs[%i] MISMATCH in lrmax (%i != %i)\n",globalIdx,i,int(lrmax), int(ref_lrmax_[globalIdx]));
+        nerrs_npar++;
+      } 
+    }
+    __syncthreads();
+#endif
 
     }
 
-    // Updates btnfilled and lrmax
-    EEU8_alignNucleotides_HIP(
-        (uint8_t*)profbuf, rf, rfd,
-        (uint8_t*)mat,
-        iter, colstride, lastWordIdx,
-        minsc, nrow,
-        btncand, &btnfilled[bx],
-        gaps[0], gaps[1], gaps[2], gaps[3],
-	&lrmax[bx]
-    );
 
+    if(lane_id==0) nerrs[p] = nerrs_npar;
 }
 
 #endif // HIP_KERNELS

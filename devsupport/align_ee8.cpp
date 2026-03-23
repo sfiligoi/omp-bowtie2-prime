@@ -104,7 +104,7 @@ int load_results(int nels,
 /* Function exists to cound errors and handle some of the separation on batching
  * @returns number of errors; zero if checking is disabled
  */
-int align_ee8_batchLaunch(const int p, const int elp_pp, const int nels,
+int align_ee8_batchLaunch(const int npar, const int nels,
 		const size_t nrow_[],
 		const size_t iter_[],
 		const size_t colstride_[],
@@ -119,32 +119,27 @@ int align_ee8_batchLaunch(const int p, const int elp_pp, const int nels,
                 const int32_t ref_lrmax_[],
                 const int32_t ref_btnfilled_[]) {
 
-      int curBatchSize = std::min(elp_pp,nels-p*elp_pp);
-      int offset = p*elp_pp;
-
-
-      uint8_t btnfilled[MAX_MAT_EL]; // Only curBatchSize amount indexed, but this is to compile
-      uint8_t lrmax[MAX_MAT_EL];
-      int nerrs = 0;
+      uint32_t nerrs[MAX_MAT_EL];// = 0;
 
 	// Handle all the proper indexing in this call.
-      EEU8_alignNucleotidesBatch_HIP<<<curBatchSize, 32>>>(p, elp_pp, nels, // need these three to figure out batch index and range
+      EEU8_alignNucleotidesBatch_HIP<<<npar, 32>>>(npar, nels,
 	    nrow_, iter_, colstride_, lastWordIdx_,minsc_, rfd_,
 	    profbuf_,rf_,gaps_,
 	    mat_,btncand_,
-	    lrmax, btnfilled);
+	    ref_lrmax_, ref_btnfilled_,
+	    nerrs);
       HIP_CHECK(hipDeviceSynchronize());
 
+      uint32_t nerr_acc = 0;
 #ifndef NO_CHECK_PRINT
-      for(int i = 0; i<curBatchSize; i++){
-         const int globalIdx = offset+i;
-         if (int(ref_lrmax_[globalIdx]) != int(lrmax[i])) {
-            fprintf(stderr, "[%i]vs[%i] MISMATCH in lrmax (%i != %i)\n",globalIdx,i,int(lrmax[i]), int(ref_lrmax_[globalIdx]));
-            nerrs++;
+      for(int p = 0; p<npar; p++){
+         if (nerrs[p] > 0) {
+            fprintf(stderr, "NPar Task [%i] MISMATCH %i errors\n",p,nerrs[p]);
+            nerr_acc+=nerrs[p];
          } 
       }
 #endif
-      return nerrs;
+      return nerr_acc;
 }
 #endif
 
@@ -196,9 +191,10 @@ void align_ee8(const int npar, const int nels,
 		DpBtCandidate    btncand[],
                 const int32_t ref_lrmax[],
                 const int32_t ref_btnfilled[]) {
-   const int elp_pp = (nels+ (npar-1))/npar; // round up
    int nerrs = 0;
+
 #ifndef HIP_KERNELS
+   const int elp_pp = (nels+ (npar-1))/npar; // round up
 #ifdef OMPGPU
 #pragma omp target teams distribute parallel for reduction(+:nerrs)
 #else
@@ -219,14 +215,12 @@ void align_ee8(const int npar, const int nels,
    // while previously npar meant splitting into nels/npar processes, this is SIMT
    // so a smaller batch size means running once on gpu and letting the GPU kernel launch
    // handle the indexing for SIMT
-   for (int p=0; p<npar; p++) {
-      //printf("each batch must do around %d (%3d/%3d)\n", elp_pp, p, npar);
-      nerrs+= align_ee8_batchLaunch(p, elp_pp, nels, // need these three to figure out batch index and range
-		nrow, iter, colstride, lastWordIdx,minsc, rfd,
-                profbuf,rf,gaps,
-		mat,btncand,
-		ref_lrmax,ref_btnfilled);
-   }
+   nerrs = align_ee8_batchLaunch(npar, nels,
+	 nrow, iter, colstride, lastWordIdx,minsc, rfd,
+	 profbuf,rf,gaps,
+	 mat,btncand,
+	 ref_lrmax,ref_btnfilled);
+   //}
 #endif
 
    if (nerrs!=0) {
