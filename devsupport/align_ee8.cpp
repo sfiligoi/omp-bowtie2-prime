@@ -127,59 +127,21 @@ int align_ee8_batchLaunch(const int p, const int elp_pp, const int nels,
       uint8_t lrmax[MAX_MAT_EL];
       int nerrs = 0;
 
-      // to delete
-
-    const int globalIdx = offset;//+bx;
-    
-
-    const size_t nrow        = nrow_[globalIdx];
-    const size_t iter        = iter_[globalIdx];
-    const size_t colstride   = colstride_[globalIdx];
-    const size_t lastWordIdx = lastWordIdx_[globalIdx];
-    const size_t minsc       = minsc_[globalIdx];
-    const size_t rfd         = rfd_[globalIdx];
-
-    const SSERegI* profbuf   = profbuf_ ;//+ (globalIdx * size_t(MAX_MAT_EL));
-    const char* rf           = rf_      ;//+ (globalIdx * size_t(MAX_RF_EL));
-    const uint8_t* gaps      = gaps_    ;//+ (globalIdx * 4);
-
-    //if(threadIdx.x==0)printf("(%d,%d)=%d profbuf_=%p profbuf: %p, rf_:%p rf:%p gaps_:%p gaps:%p\n", bx, threadIdx.x, globalIdx, profbuf_, profbuf, rf_, rf, gaps_, gaps);
-    //if(threadIdx.x==0)printf("(%d,%d)=%d\n", bx, threadIdx.x, globalIdx);
-    
-    // NOTE: Use globalIdx here too, otherwise every block in the batch 
-    // writes to the same 'p' offset and crashes/corrupts results.
-    //SSERegI* mat             = mat_     + (globalIdx * (size_t)MAX_MAT_EL);
-    //DpBtCandidate* btncand   = btncand_ + (globalIdx * (size_t)MAX_RF_EL);
-    SSERegI* mat             = mat_;// + (p * size_t(MAX_MAT_EL));
-    DpBtCandidate* btncand   = btncand_;// + (p * size_t(MAX_RF_EL));
-
-
-    EEU8_alignNucleotides_HIP<<<1, 32>>>((uint8_t*)profbuf, rf, rfd,
-	  (uint8_t*)mat,
-	  iter, colstride, lastWordIdx,
-	  minsc, nrow,
-	  btncand, btnfilled,
-	  gaps[0],gaps[1],gaps[2],gaps[3],
-	  lrmax);
-      
-
-
 	// Handle all the proper indexing in this call.
-//      EEU8_alignNucleotidesBatch_HIP<<<curBatchSize, 32>>>(p, elp_pp, nels, // need these three to figure out batch index and range
-//	    nrow_, iter_, colstride_, lastWordIdx_,minsc_, rfd_,
-//	    profbuf_,rf_,gaps_,
-//	    mat_,btncand_,
-//	    lrmax, btnfilled);
+      EEU8_alignNucleotidesBatch_HIP<<<curBatchSize, 32>>>(p, elp_pp, nels, // need these three to figure out batch index and range
+	    nrow_, iter_, colstride_, lastWordIdx_,minsc_, rfd_,
+	    profbuf_,rf_,gaps_,
+	    mat_,btncand_,
+	    lrmax, btnfilled);
       HIP_CHECK(hipDeviceSynchronize());
 
-      fprintf(stdout, "batch[%d][[0-%d]] curBatchSize: %d, nels: %d maxBatchSize: %d \n", p, curBatchSize, curBatchSize, nels, elp_pp);
 #ifndef NO_CHECK_PRINT
       for(int i = 0; i<curBatchSize; i++){
-	 const int globalIdx = offset+i;
-	 if (int(ref_lrmax_[globalIdx]) != int(lrmax[i])) {
-	    fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",globalIdx,int(lrmax[i]), int(ref_lrmax_[globalIdx]));
-	    nerrs++;
-	 } 
+         const int globalIdx = offset+i;
+         if (int(ref_lrmax_[globalIdx]) != int(lrmax[i])) {
+            fprintf(stderr, "[%i]vs[%i] MISMATCH in lrmax (%i != %i)\n",globalIdx,i,int(lrmax[i]), int(ref_lrmax_[globalIdx]));
+            nerrs++;
+         } 
       }
 #endif
       return nerrs;
@@ -258,14 +220,14 @@ void align_ee8(const int npar, const int nels,
    // so a smaller batch size means running once on gpu and letting the GPU kernel launch
    // handle the indexing for SIMT
    for (int p=0; p<npar; p++) {
+      //printf("each batch must do around %d (%3d/%3d)\n", elp_pp, p, npar);
       nerrs+= align_ee8_batchLaunch(p, elp_pp, nels, // need these three to figure out batch index and range
 		nrow, iter, colstride, lastWordIdx,minsc, rfd,
-                profbuf+p*size_t(MAX_PB_EL),rf+p*size_t(MAX_RF_EL),gaps+4*p,
-		mat+p*size_t(MAX_MAT_EL),btncand+p*size_t(MAX_RF_EL),
+                profbuf,rf,gaps,
+		mat,btncand,
 		ref_lrmax,ref_btnfilled);
    }
 #endif
-   //fprintf(stdout, "nels:%d npar:%d elp_pp:%d\n", nels, npar, elp_pp);
 
    if (nerrs!=0) {
       fprintf(stderr, "FAILED matching results %i times!\n", nerrs);
