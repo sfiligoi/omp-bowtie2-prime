@@ -52,6 +52,42 @@
  *   to find and backtrace from good solutions.
  */
 
+// useful macros for debugging. Unused if not coded in.
+#define DEBUG_PRINT_AVX(avx_reg, name)            \
+{                                                                       \
+alignas(32) uint8_t tmp_debug[32];                                      \
+_mm256_store_si256((__m256i*)tmp_debug, avx_reg);                       \
+for(int dd = 0; dd < 32; dd++) printf("%s[%d]=%d ", name, dd, tmp_debug[dd]); \
+printf("\n");                                                           \
+}
+
+#define DEBUG_PRINT_POINTER(avx_pointer, name)            \
+{                                                                       \
+alignas(32) uint8_t tmp_debug[32];                                      \
+_mm256_store_si256((__m256i*)tmp_debug, *avx_pointer);                       \
+printf("Addr %s=%p elem[0]:%d\n", name, avx_pointer, tmp_debug[0]); \
+}
+
+#define DEBUG_THREADS(thread_elem, name)            \
+{                                                                       \
+debug_buff[lane_id]=thread_elem;                                       \
+  __syncthreads();                                                      \
+if(lane_id ==0){                                                        \
+  for(int dd = 0; dd < 32; dd++) printf("%s[%d]=%d ", name, dd, debug_buff[dd]); \
+printf("\n");                                                           \
+}                                                                       \
+__syncthreads();                                                        \
+}
+
+#define DEBUG_GPU_POINTER(pointer, name)            \
+{                                                                       \
+  __syncthreads();                                                      \
+  if(lane_id ==0){                                                      \
+    printf("Addr %s=%p elem[0]:%d\n", name, pointer, pointer[0]);        \
+  }                                                                     \
+  __syncthreads();                                                      \
+}
+
 #include <limits>
 #include <bit>
 
@@ -68,6 +104,10 @@
 #include "aligner_swsse.h"
 #include "aligner_sw_nuc.h"
 
+#endif
+
+#ifdef HIP_KERNELS
+#include <hip/hip_runtime.h>
 #endif
 
 // In end-to-end mode, we start high (255) and go low (0).  Factoring in
@@ -210,6 +250,7 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 		// Fill topmost (least sig) cell with high value
 		vh = sse_or_siall(vh, vhilsw);
 		
+
 		// For each character in the reference text:
 		for(TIdxSize j = 0; j < iter; j++) {
 			SSERegI vs0 = sse_load_siall(pvScore);
@@ -219,6 +260,7 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			// Load cells from E, calculated previously
 			SSERegI ve = sse_load_siall(pvELoad);
 			pvELoad += ROWSTRIDE;
+
 			
 			// Store cells in F, calculated previously
 			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
@@ -280,6 +322,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 		vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
 		vf = sse_max_epu8(vtmp, vf);
 		bool anygt;
+		
 		sse_anygt_epu8(vf,vtmp,anygt);
 	
 		// Load after computing cmp, so the result is ready by the time it is tested in while
@@ -332,6 +375,333 @@ inline void EEU8_lazyF(const SSERegI vf0,
 		}
 }
 #endif
+
+#ifdef HIP_KERNELS
+
+// Helper for saturating subtraction (unsigned 8-bit)
+// No CDNA builtin.
+__device__ __forceinline__ uint8_t subs_u8(uint8_t a, uint8_t b) {
+    int res = (int)a - (int)b;
+    return (uint8_t)(res < 0 ? 0 : res);
+}
+
+
+
+__device__
+uint8_t EEU8_alignOne_HIP(
+        const uint16_t iter,
+        const size_t colstride,
+        const uint8_t *pvScore,
+        const uint8_t *pvHLoad,
+        const uint8_t *pvELoad,
+        uint8_t *pvHStore,
+        uint8_t *pvEStore,
+        uint8_t *pvFStore,
+        const uint8_t rfgapo,
+        const uint8_t rfgape,
+        const uint8_t rdgapo,
+        const uint8_t rdgape)
+{
+    int lane_id = threadIdx.x;
+    const int LANES = 32;
+
+    uint8_t vf = 0;
+
+    // load last H from previous column
+    uint8_t vh = pvHLoad[(colstride - ROWSTRIDE) * LANES + lane_id];
+
+    vh = __shfl_up(vh, 1, LANES);
+
+    // in cpu the corresponding vh lane
+    // is just orred with 0xff via vhilsw
+    if (lane_id == 0)
+        vh = 0xff;
+
+    // For each character in the reference text:
+    for (uint16_t j = 0; j < iter; j++)
+    {
+        //uint8_t vs0 = pvScore[2*j*LANES+lane_id];
+        uint8_t vs0 = pvScore[lane_id];
+	pvScore+=LANES;
+
+        //uint8_t vs1 = pvScore[(2*j+1)*LANES+lane_id];
+        uint8_t vs1 = pvScore[lane_id];
+	pvScore+=LANES;
+
+	// Store cells in F, calculated previously
+        uint8_t ve =
+            pvELoad[lane_id];
+	pvELoad += ROWSTRIDE*LANES;
+        vf = subs_u8(vf, vs1);
+
+        pvFStore[lane_id] = vf;
+        pvFStore += ROWSTRIDE*LANES;
+
+	// Factor in query profile (matches and mismatches)
+        vh = subs_u8(vh, vs0);
+
+	// Update H, factoring in E and F
+        vh = max(vh, ve);
+        vh = max(vh, vf);
+
+	// Save the new vH values
+        pvHStore[lane_id] = vh;
+	pvHStore += ROWSTRIDE*LANES;
+
+
+	// Update vE value
+        uint8_t vtmp = vh;
+        vh = subs_u8(vh, rdgapo);
+        vh = subs_u8(vh, vs1); // veto some read gap opens
+        ve = subs_u8(ve, rdgape);
+        ve = max(ve, vh);
+
+	// Save E values
+        vh = pvHLoad[lane_id];
+	pvHLoad+=ROWSTRIDE*LANES;
+        pvEStore[lane_id] = ve;
+	pvEStore+=ROWSTRIDE*LANES;
+
+
+	// Update vf value
+        vtmp = subs_u8(vtmp, rfgapo);
+        vf = subs_u8(vf, rfgape);
+        vf = max(vf, vtmp);
+    }
+    return vf;
+}
+
+__device__
+void EEU8_lazyF_HIP(
+        uint8_t vf0,
+        const uint16_t iter,
+        const size_t colstride,
+        const uint8_t *pvScore,
+        uint8_t *pvHStore,
+        uint8_t *pvEStore,
+        uint8_t *pvFStore,
+        const uint8_t rfgape,
+        const uint8_t rdgapo)
+{
+    const int WARP_SIZE = 32;
+    int lane_id = threadIdx.x;
+    assert(WARP_SIZE=32);
+
+    uint8_t vf = __shfl_up(vf0, 1, WARP_SIZE);
+    if(lane_id==0) vf = 0;
+
+    pvScore += WARP_SIZE;
+
+    uint8_t vs1 = pvScore[lane_id];
+
+    uint8_t vtmp = pvFStore[lane_id];
+
+    vf = subs_u8(vf, vs1);
+
+    vf = max(vtmp, vf);
+
+    bool anygt = vf > vtmp;
+
+    unsigned mask = __ballot(anygt);
+
+    uint8_t vh = pvHStore[lane_id];
+    uint8_t ve = pvEStore[lane_id];
+
+    uint16_t j = 0;
+
+    while (mask)
+    {
+        pvFStore[lane_id] = vf;
+	pvFStore += ROWSTRIDE*WARP_SIZE;
+
+        vh = max(vh, vf);
+
+        pvHStore[lane_id] = vh;
+	pvHStore += ROWSTRIDE*WARP_SIZE;
+
+        uint8_t vh_gap = subs_u8(vh, rdgapo);
+        vh_gap = subs_u8(vh_gap, vs1);
+
+        ve = max(ve, vh_gap);
+
+        pvEStore[lane_id] = ve;
+	pvEStore += ROWSTRIDE*WARP_SIZE;
+
+        pvScore += 2*WARP_SIZE;
+
+        if (++j == iter)
+        {
+            pvScore -= iter * 2 *WARP_SIZE;
+            j = 0;
+
+            pvFStore -= colstride*WARP_SIZE;
+            pvHStore -= colstride*WARP_SIZE;
+            pvEStore -= colstride*WARP_SIZE;
+
+            vf = __shfl_up(vf, 1, WARP_SIZE);
+	    if(lane_id==0)vf=0;
+        }
+
+        vs1 = pvScore[lane_id];
+        vtmp = pvFStore[lane_id];
+
+        vf = subs_u8(vf, rfgape);
+        vf = subs_u8(vf, vs1);
+
+        vf = max(vtmp, vf);
+
+        anygt = vf > vtmp;
+
+        mask = __ballot(anygt);
+
+        vh = pvHStore[lane_id];
+        ve = pvEStore[lane_id];
+    }
+}
+
+
+
+__device__ 
+void EEU8_alignNucleotides_HIP(
+    const uint8_t  profbuf[],      // Query profile (pre-built)
+    const char     rf[],           // Reference sequence
+    const uint32_t rfd,          // Reference length
+    uint8_t        pmat[],         // DP Matrix (global memory)
+    const uint32_t iter,         // Number of segments (segments per column)
+    const uint32_t colstride,    // Distance between columns in pmat
+    const uint32_t lastWordIdx,
+    const int64_t  minsc,
+    const uint32_t nrow,
+    DpBtCandidate  btncand[],
+    uint8_t*      btnfilled_,
+    const int8_t   refGapOpen,
+    const int8_t   refGapExtend,
+    const int8_t   readGapOpen,
+    const int8_t   readGapExtend,
+    uint32_t*       lrmax_out    // Global max score, originally return value
+    )
+{
+    // Each thread handles one lane, must be 32
+    int WARP_SIZE = blockDim.x;
+    //if(WARP_SIZE!=32){fprintf(stderr, "Why is WARP_SIZE for EEU8_alignNucleotides_HIP not 32?\n");};
+    int lane_id = threadIdx.x % WARP_SIZE;
+
+    assert(WARP_SIZE==32);
+
+    //Fills rdgapo values with readGapOpen
+    uint8_t rfgapo = refGapOpen;
+    uint8_t rfgape = readGapExtend;
+    uint8_t rdgapo = refGapOpen;
+    uint8_t rdgape = readGapExtend;
+
+    // Initial values for the first column (H and E are 0)
+    // pmat layout: [col][segment][lane]
+    {
+	  uint8_t *pvHTmp = ((uint8_t*)pmat) + 32*SSEMatrixConsts::TMP;
+	  uint8_t *pvETmp = ((uint8_t*)pmat) + 32*SSEMatrixConsts::E;
+	
+	  for(size_t i = 0; i < iter; i++) {
+
+		pvETmp[lane_id] = 0;
+		pvHTmp[lane_id] = 0;
+		pvETmp += ROWSTRIDE*WARP_SIZE;
+		pvHTmp += ROWSTRIDE*WARP_SIZE;
+	  }
+    }
+    
+    // These are swapped just before the innermost loop
+    // In threads we want to index by vector[lane_id]
+    uint8_t *pvHLoad  = ((uint8_t*)pmat) + 32*SSEMatrixConsts::TMP;
+    uint8_t *pvHStore = ((uint8_t*)pmat) + 32*SSEMatrixConsts::H;
+    uint8_t *pvELoad  = ((uint8_t*)pmat) + 32*SSEMatrixConsts::E;
+    uint8_t *pvEStore = ((uint8_t*)pmat) + 32*colstride + 32*SSEMatrixConsts::E;
+    uint8_t *pvFStore = ((uint8_t*)pmat) + 32*SSEMatrixConsts::F;
+
+    // needs to to be shared amongst all threads in warp
+    uint8_t lrmax = MIN_U8;
+
+    // keep a local copy
+    uint16_t btnfilled = 0;
+
+    for (uint32_t i = 0; i < rfd; i++) {
+
+	  //https://rocm.docs.amd.com/projects/HIP/en/docs-6.0.2/reference/kernel_language.html
+	  // Both offset instructions are acceptable
+	  size_t off = 32*((size_t)__builtin_ctz((uint32_t)rf[i]) * iter * 2);
+	  //size_t off = 32*((size_t)(__ffs((uint32_t)rf[i]) - 1) * iter * 2); // 32 factor because original packs into 256
+
+	  // points into the query profile
+	  
+	  const uint8_t* pvScore = profbuf + off; 
+
+	  // Does one lane at a time
+	  uint8_t vf = EEU8_alignOne_HIP(iter,
+	      colstride,
+	      pvScore,
+	      pvHLoad, pvELoad,
+	      pvHStore, pvEStore, pvFStore,
+	      rfgapo, rfgape, rdgapo, rdgape);
+
+
+	  // known at compile time and is true
+	  if constexpr(NBYTES_PER_REG>1) {
+	    EEU8_lazyF_HIP(vf,
+		iter, colstride,
+		pvScore,
+		pvHStore, pvEStore, pvFStore,
+		rfgape, rdgapo);
+	  }
+
+	  pvHLoad = pvHStore;    // new pvHLoad = pvHStore
+
+	  // Note: we may not want to extract from the final row
+	  // Scores shared amongst all threads... so one single thread can do this
+
+	  // scalar portion taking scores from last column for traceback
+	  if(lane_id == 0){
+
+	    // We don't let lastWordIdx do this because warp may not be active?
+	    uint8_t lr = pvHLoad[lastWordIdx];
+	    TAlScore sc = (TAlScore)(lr - 0xff);
+	    if(lr > lrmax) {
+	      lrmax = lr;
+	    }
+	    if(sc >= minsc) {
+	      // back tracking candidate addition
+	      btncand[btnfilled].init(nrow-1, i, lr);
+	      btnfilled++;
+	    }
+	  }
+
+	  //DEBUG_THREADS(pvScore[lane_id], "pvScore");
+	  //DEBUG_THREADS(pvFStore[lane_id], "pvFStore");
+	  //DEBUG_GPU_POINTER(pvHLoad, "pvHLoad");
+	  //DEBUG_GPU_POINTER(pvHStore, "pvHStore");
+	  //DEBUG_GPU_POINTER(pvELoad, "pvELoad");
+	  //DEBUG_GPU_POINTER(pvEStore, "pvEStore");
+	  //DEBUG_GPU_POINTER(pvFStore, "pvFStore");
+
+	  pvHStore = pvHStore + WARP_SIZE*colstride;
+	  pvELoad  = pvELoad  + WARP_SIZE*colstride;
+	  pvEStore = pvEStore + WARP_SIZE*colstride;
+	  pvFStore = pvFStore + WARP_SIZE*colstride;
+
+	  //DEBUG_GPU_POINTER(pvHLoad, "pvHLoad");
+	  //DEBUG_GPU_POINTER(pvHStore, "pvHStore");
+	  //DEBUG_GPU_POINTER(pvELoad, "pvELoad");
+	  //DEBUG_GPU_POINTER(pvEStore, "pvEStore");
+	  //DEBUG_GPU_POINTER(pvFStore, "pvFStore");
+
+    }
+
+    // notice it isn't 0, but our last one.
+    if (lane_id == 0) {
+      *btnfilled_ = btnfilled;
+      *lrmax_out = lrmax;
+    }
+}
+
+#endif // HIP_KERNELS
 
 /**
  * Solve the current alignment problem using SSE instructions that operate on 16
@@ -414,7 +784,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	SSERegI *pvELoad  = pmat + SSEMatrixConsts::E;
 	SSERegI *pvEStore = pmat + colstride + SSEMatrixConsts::E;
 	SSERegI *pvFStore = pmat + SSEMatrixConsts::F;
-	
+
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
 
@@ -442,13 +812,15 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
 		// points into the query profile
 		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
-	
+
+
 		SSERegI vf = EEU8_alignOne(iter,
                         	colstride,
                         	pvScore,
                         	pvHLoad, pvELoad,
                         	pvHStore, pvEStore, pvFStore,
                         	rfgapo, rfgape, rdgapo, rdgape);
+
 
 		if constexpr(NBYTES_PER_REG>1) {
 			EEU8_lazyF(vf,
@@ -471,7 +843,6 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 			btncand[btnfilled].init(nrow-1, i, lr);
 			btnfilled++;
 		}
-
 		// pvHLoad are already where they need to be
 		
 		// Adjust the load and store vectors here.  
