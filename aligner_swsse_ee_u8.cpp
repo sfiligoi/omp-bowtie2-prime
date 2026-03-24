@@ -52,6 +52,7 @@
  *   to find and backtrace from good solutions.
  */
 
+// useful macros for debugging. Unused if not coded in.
 #define DEBUG_PRINT_AVX(avx_reg, name)            \
 {                                                                       \
 alignas(32) uint8_t tmp_debug[32];                                      \
@@ -106,7 +107,6 @@ __syncthreads();                                                        \
 #endif
 
 #ifdef HIP_KERNELS
-#include "devsupport/align_ee8.h"
 #include <hip/hip_runtime.h>
 #endif
 
@@ -694,107 +694,11 @@ void EEU8_alignNucleotides_HIP(
 
     }
 
-
     // notice it isn't 0, but our last one.
     if (lane_id == 0) {
       *btnfilled_ = btnfilled;
       *lrmax_out = lrmax;
     }
-}
-
-
-/*
- * Wrapper for EEU8_alignNucleotides_HIP
- * But handles the offsets and batch sizes
- *
- */
-__global__
-void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
-		const size_t nrow_[],
-		const size_t iter_[],
-		const size_t colstride_[],
-		const size_t lastWordIdx_[],
-		const size_t minsc_[],
-		const size_t rfd_[],
-		const SSERegI profbuf_[],
-		const char    rf_[],
-		const uint8_t gaps_[],
-		SSERegI          mat_[],
-		DpBtCandidate    btncand_[],
-		const int32_t  ref_lrmax_[],
-		const int32_t ref_btnfilled_[], // unused
-		uint32_t nerrs[]) {
-
-    const int bx = blockIdx.x; // parallel task (1 per gpu block)
-    const int elp_pp = (nels+ (npar-1))/npar; // round up
-    const int lane_id = threadIdx.x;// used for output and debugging in this wrapper function.
-
-
-    uint32_t nerrs_npar = 0;
-
-    // Equivalently the grid dimension
-    //int curBatchSize = std::min(elp_pp,nels-bx*elp_pp);
-
-    int offset = bx*elp_pp;
-
-    if (offset >= nels) return; // should never run
-
-
-
-    const int iend = std::min((bx+1)*elp_pp,nels);
-    for (int i=bx*elp_pp; i<iend; i++) {
-	    // leave each block to parallelize
-	    // where each block does 32 lanes.
-
-	    // Only curBatchSize amount indexed, but this is to compile and is calculated in the alignNucleotides kernel
-	    uint8_t btnfilled;
-	    uint32_t lrmax;
-
-
-	    const size_t nrow        = nrow_[i];
-	    const size_t iter        = iter_[i];
-	    const size_t colstride   = colstride_[i];
-	    const size_t lastWordIdx = lastWordIdx_[i];
-	    const size_t minsc       = minsc_[i];
-	    const size_t rfd         = rfd_[i];
-
-	    const SSERegI* profbuf   = profbuf_ + (i * size_t(MAX_PB_EL)); // why is this needed here?
-	    const char* rf           = rf_      + (i * size_t(MAX_RF_EL));
-	    const uint8_t* gaps      = gaps_    + (i * 4);
-
-	    // NOTE: Use globalIdx here too, otherwise every block in the batch 
-	    // writes to the same 'p'... not used yet
-	    SSERegI* mat             = mat_ + (bx * size_t(MAX_MAT_EL));
-	    DpBtCandidate* btncand   = btncand_ + (bx * size_t(MAX_RF_EL));
-
-
-	    // Updates btnfilled and lrmax
-	    EEU8_alignNucleotides_HIP(
-	        (uint8_t*)profbuf, rf, rfd,
-	        (uint8_t*)mat,
-	        iter, colstride, lastWordIdx,
-	        minsc, nrow,
-	        btncand, &btnfilled,
-	        gaps[0], gaps[1], gaps[2], gaps[3],
-	        &lrmax
-	    );
-
-#ifndef NO_CHECK_PRINT
-    __syncthreads();
-    if(lane_id == 0) {
-      const int globalIdx = i;
-      if (int(ref_lrmax_[globalIdx]) != int(lrmax)) {
-        printf("[%i]vs[%i] MISMATCH in lrmax (%i != %i)\n",globalIdx,i,int(lrmax), int(ref_lrmax_[globalIdx]));
-        nerrs_npar++;
-      } 
-    }
-    __syncthreads();
-#endif
-
-    }
-
-
-    if(lane_id==0) nerrs[bx] = nerrs_npar;
 }
 
 #endif // HIP_KERNELS
