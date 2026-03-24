@@ -251,10 +251,6 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 		vh = sse_or_siall(vh, vhilsw);
 		
 
-		//SSERegI* pvFStore_0 = pvFStore;
-		//for (uint16_t j = 0; j < iter; j++) {
-		//	DEBUG_PRINT_AVX(*(pvFStore_0+j*ROWSTRIDE), "pvFStoreB");
-		//}
 		// For each character in the reference text:
 		for(TIdxSize j = 0; j < iter; j++) {
 			SSERegI vs0 = sse_load_siall(pvScore);
@@ -268,7 +264,6 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			
 			// Store cells in F, calculated previously
 			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
-			//DEBUG_PRINT_AVX(vf, "vfAlignOne");
 			sse_store_siall(pvFStore, vf);
 			pvFStore += ROWSTRIDE;
 			
@@ -303,12 +298,7 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			vf = sse_subs_epu8(vf, rfgape);
 			vf = sse_max_epu8(vf, vtmp);
 		}
-		//for (uint16_t j = 0; j < iter; j++) {
-		//	DEBUG_PRINT_AVX(*(pvFStore_0+j*ROWSTRIDE), "pvFStoreA");
-		//}
-		//DEBUG_PRINT_POINTER(pvELoad, "pvEloadinAlignOne");
 
-		//DEBUG_PRINT_AVX(vf, "vf");
 		return vf;
 }
 
@@ -321,27 +311,16 @@ inline void EEU8_lazyF(const SSERegI vf0,
 			const SSERegI rfgape, const SSERegI rdgapo) {
 		const SSERegI vzero    = sse_setzero_siall();  // needed by sse_anygt_epu8
 
-		//DEBUG_PRINT_AVX(vf0, "vfB");
-
 		// vf from last row gets shifted down by one to overlay the first row
 		// rfgape has already been subtracted from it.
-		//DEBUG_PRINT_AVX(vf0, "vf0");
 		SSERegI vf = sse_slli_u8(vf0);
-		//DEBUG_PRINT_AVX(vf, "vfA");
 		
-		//DEBUG_PRINT_AVX(*(pvScore+1), "pvScore+1");
 		pvScore += 1;
 	        SSERegI vs1 = sse_load_siall(pvScore);
-		//DEBUG_PRINT_AVX(vs1, "vs1");
 		SSERegI vtmp = sse_load_siall(pvFStore);
-		//DEBUG_PRINT_AVX(vtmp, "vtmp");
 		
 		vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
-		//DEBUG_PRINT_AVX(vf, "vfSubvs1");
 		vf = sse_max_epu8(vtmp, vf);
-		//DEBUG_PRINT_AVX(vf, "vfmax");
-		//DEBUG_PRINT_AVX(vf, "vfA");
-		//DEBUG_PRINT_AVX(vtmp, "vtmp");
 		bool anygt;
 		
 		sse_anygt_epu8(vf,vtmp,anygt);
@@ -352,7 +331,6 @@ inline void EEU8_lazyF(const SSERegI vf0,
 		
 		// If any element of vtmp is greater than H - gap-open...
 		TIdxSize j = 0;
-		//printf("anygt is %d\n", anygt);
 		while(anygt) {
 			// Store this vf
 			sse_store_siall(pvFStore, vf);
@@ -395,24 +373,13 @@ inline void EEU8_lazyF(const SSERegI vf0,
 			vh = sse_load_siall(pvHStore);     // load next vh 
 			ve = sse_load_siall(pvEStore);     // load next ve
 		}
-		//printf("\n");
 }
 #endif
 
 #ifdef HIP_KERNELS
-/**
- * Solve the current alignment problem using SSE instructions that operate on 16
- * unsigned 8-bit values packed into a single 128-bit register.
- *
- * Select intput parameters:
- *   profbuf - buffer for query profile & temp vecs
- *   rf      - reference sequence
- *
- * Select output parameters:
- *   pmat    - SSE matrix for holding all E, F, H vectors
- *   btncand - cells we might backtrace from
- */
+
 // Helper for saturating subtraction (unsigned 8-bit)
+// No CDNA builtin.
 __device__ __forceinline__ uint8_t subs_u8(uint8_t a, uint8_t b) {
     int res = (int)a - (int)b;
     return (uint8_t)(res < 0 ? 0 : res);
@@ -450,11 +417,6 @@ uint8_t EEU8_alignOne_HIP(
     if (lane_id == 0)
         vh = 0xff;
 
-    //uint8_t* pvFStore_0 = pvFStore;
-    //for (uint16_t j = 0; j < iter; j++) {
-    //  DEBUG_THREADS(pvFStore_0[j*ROWSTRIDE*LANES+lane_id], "pvFStoreB");
-    //}
-    //DEBUG_THREADS(pvFStore[lane_id], "pvFStore_before");
     // For each character in the reference text:
     for (uint16_t j = 0; j < iter; j++)
     {
@@ -471,16 +433,9 @@ uint8_t EEU8_alignOne_HIP(
             pvELoad[lane_id];
 	pvELoad += ROWSTRIDE*LANES;
         vf = subs_u8(vf, vs1);
-	//DEBUG_THREADS(vf, "vfAlignOne");
+
         pvFStore[lane_id] = vf;
         pvFStore += ROWSTRIDE*LANES;
-	//debug_buff[lane_id]=vf;
-	//if(j == 0){
-	//    DEBUG_THREADS(pvFStore[lane_id], "pvFStoreAlignOneLoop0");
-	//}
-	//if(j == 1){
-	//    DEBUG_THREADS(pvFStore[lane_id], "pvFStoreAlignOneLoop1");
-	//}
 
 	// Factor in query profile (matches and mismatches)
         vh = subs_u8(vh, vs0);
@@ -513,9 +468,6 @@ uint8_t EEU8_alignOne_HIP(
         vf = subs_u8(vf, rfgape);
         vf = max(vf, vtmp);
     }
-    //for (uint16_t j = 0; j < iter; j++) {
-    //  DEBUG_THREADS(pvFStore_0[j*ROWSTRIDE*LANES+lane_id], "pvFStoreA");
-    //}
     return vf;
 }
 
@@ -534,29 +486,19 @@ void EEU8_lazyF_HIP(
     const int WARP_SIZE = 32;
     int lane_id = threadIdx.x;
     assert(WARP_SIZE=32);
-    //DEBUG_THREADS(vf0, "vf0");
 
-    //DEBUG_THREADS(vf0, "vfB");
     uint8_t vf = __shfl_up(vf0, 1, WARP_SIZE);
     if(lane_id==0) vf = 0;
-    //DEBUG_THREADS(vf, "vfShufl");
-    //DEBUG_THREADS(vf, "vfI");
-    //DEBUG_THREADS(vf, "vfA");
-    //DEBUG_THREADS(vf, "vfloop");
 
     pvScore += WARP_SIZE;
 
-    //DEBUG_THREADS(pvScore[lane_id], "pvScore+1");
     uint8_t vs1 = pvScore[lane_id];
-    //DEBUG_THREADS(vs1, "pvScore+1");
-    //DEBUG_THREADS(vs1, "vs1");
+
     uint8_t vtmp = pvFStore[lane_id];
-    //DEBUG_THREADS(vtmp, "vtmp");
 
     vf = subs_u8(vf, vs1);
-    //DEBUG_THREADS(vf, "vfSubvs1");
+
     vf = max(vtmp, vf);
-    //DEBUG_THREADS(vf, "vfmax");
 
     bool anygt = vf > vtmp;
 
@@ -619,7 +561,8 @@ void EEU8_lazyF_HIP(
 
 
 
-__device__ void EEU8_alignNucleotides_HIP(
+__device__ 
+void EEU8_alignNucleotides_HIP(
     const uint8_t  profbuf[],      // Query profile (pre-built)
     const char     rf[],           // Reference sequence
     const uint32_t rfd,          // Reference length
@@ -635,7 +578,7 @@ __device__ void EEU8_alignNucleotides_HIP(
     const int8_t   refGapExtend,
     const int8_t   readGapOpen,
     const int8_t   readGapExtend,
-    uint8_t*       lrmax_out    // Global max score, originally return value
+    uint32_t*       lrmax_out    // Global max score, originally return value
     )
 {
     // Each thread handles one lane, must be 32
@@ -688,14 +631,8 @@ __device__ void EEU8_alignNucleotides_HIP(
 	  //size_t off = 32*((size_t)(__ffs((uint32_t)rf[i]) - 1) * iter * 2); // 32 factor because original packs into 256
 
 	  // points into the query profile
-	  //if(lane_id==0)printf("Running main loop %d off:%zu\n", i,off);
 	  
 	  const uint8_t* pvScore = profbuf + off; 
-
-	  //DEBUG_GPU_POINTER(pvScore, "profbuf+off");
-	  //DEBUG_THREADS(pvScore[lane_id], "pvScore");
-	  //DEBUG_GPU_POINTER(pvFStore, "pvFStoreBAO");
-	  //DEBUG_THREADS(pvFStore[lane_id], "pvFStoreBeforeAlignOne");
 
 	  // Does one lane at a time
 	  uint8_t vf = EEU8_alignOne_HIP(iter,
@@ -704,16 +641,6 @@ __device__ void EEU8_alignNucleotides_HIP(
 	      pvHLoad, pvELoad,
 	      pvHStore, pvEStore, pvFStore,
 	      rfgapo, rfgape, rdgapo, rdgape);
-    //DEBUG_THREADS(vf, "vf_post");
-	  //DEBUG_THREADS(pvFStore[lane_id], "pvFStoreAfterAlignOne");
-		//DEBUG_GPU_POINTER(pvELoad, "pvEloadAfterAlignOne");
-
-	  //DEBUG_THREADS(vf, "vf");
-	  //DEBUG_THREADS(pvScore[lane_id], "pvScore");
-	  //DEBUG_THREADS(pvELoad, "pvELoad[0]");
-	  //DEBUG_GPU_POINTER(pvFStore, "pvFStoreAAO");
-	  //DEBUG_THREADS(pvHStore, "pvHStore");
-	  //DEBUG_THREADS(pvHLoad, "pvHLoad");
 
 
 	  // known at compile time and is true
@@ -732,22 +659,18 @@ __device__ void EEU8_alignNucleotides_HIP(
 
 	  // scalar portion taking scores from last column for traceback
 	  if(lane_id == 0){
-	    //printf("checkLastWord %d ", lastWordIdx);
 
 	    // We don't let lastWordIdx do this because warp may not be active?
 	    uint8_t lr = pvHLoad[lastWordIdx];
 	    TAlScore sc = (TAlScore)(lr - 0xff);
 	    if(lr > lrmax) {
-		    //printf("i:%d Updating lr %d \n", i, lr);
 	      lrmax = lr;
 	    }
 	    if(sc >= minsc) {
-	      // Yes, this is legit
-	    //printf("i:%d btncand[%d]=%d ", i, btnfilled,lr);
+	      // back tracking candidate addition
 	      btncand[btnfilled].init(nrow-1, i, lr);
 	      btnfilled++;
 	    }
-	    //printf("\n");
 	  }
 
 	  //DEBUG_THREADS(pvScore[lane_id], "pvScore");
@@ -774,7 +697,6 @@ __device__ void EEU8_alignNucleotides_HIP(
 
     // notice it isn't 0, but our last one.
     if (lane_id == 0) {
-      //printf("lrmax:%d\n",lrmax);
       *btnfilled_ = btnfilled;
       *lrmax_out = lrmax;
     }
@@ -810,11 +732,14 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
     uint32_t nerrs_npar = 0;
 
-    int curBatchSize = std::min(elp_pp,nels-bx*elp_pp);
+    // Equivalently the grid dimension
+    //int curBatchSize = std::min(elp_pp,nels-bx*elp_pp);
 
     int offset = bx*elp_pp;
 
     if (offset >= nels) return; // should never run
+
+
 
     const int iend = std::min((bx+1)*elp_pp,nels);
     for (int i=bx*elp_pp; i<iend; i++) {
@@ -823,7 +748,7 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
 	    // Only curBatchSize amount indexed, but this is to compile and is calculated in the alignNucleotides kernel
 	    uint8_t btnfilled;
-	    uint8_t lrmax;
+	    uint32_t lrmax;
 
 
 	    const size_t nrow        = nrow_[i];
@@ -844,15 +769,14 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
 
 	    // Updates btnfilled and lrmax
-	    __syncthreads();
 	    EEU8_alignNucleotides_HIP(
-		(uint8_t*)profbuf, rf, rfd,
-		(uint8_t*)mat,
-		iter, colstride, lastWordIdx,
-		minsc, nrow,
-		btncand, &btnfilled,
-		gaps[0], gaps[1], gaps[2], gaps[3],
-		&lrmax
+	        (uint8_t*)profbuf, rf, rfd,
+	        (uint8_t*)mat,
+	        iter, colstride, lastWordIdx,
+	        minsc, nrow,
+	        btncand, &btnfilled,
+	        gaps[0], gaps[1], gaps[2], gaps[3],
+	        &lrmax
 	    );
 
 #ifndef NO_CHECK_PRINT
@@ -875,6 +799,18 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
 #endif // HIP_KERNELS
 
+/**
+ * Solve the current alignment problem using SSE instructions that operate on 16
+ * unsigned 8-bit values packed into a single 128-bit register.
+ *
+ * Select intput parameters:
+ *   profbuf - buffer for query profile & temp vecs
+ *   rf      - reference sequence
+ *
+ * Select output parameters:
+ *   pmat    - SSE matrix for holding all E, F, H vectors
+ *   btncand - cells we might backtrace from
+ */
 template<typename TIdxSize>
 inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 					const char   rf[], const TIdxSize rfd,
@@ -945,12 +881,6 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	SSERegI *pvEStore = pmat + colstride + SSEMatrixConsts::E;
 	SSERegI *pvFStore = pmat + SSEMatrixConsts::F;
 
-	//DEBUG_PRINT_POINTER(pvHLoad, "pvHLoad");
-	//DEBUG_PRINT_POINTER(pvHStore, "pvHStore");
-	//DEBUG_PRINT_POINTER(pvELoad, "pvELoad");
-	//DEBUG_PRINT_POINTER(pvEStore, "pvEStore");
-	//DEBUG_PRINT_POINTER(pvFStore, "pvFStore");
-	
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
 
@@ -977,13 +907,8 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		// be numbers, not masks.
 		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
 		// points into the query profile
-	  //printf("Running main loop %d off:%zu\n", i,off);
 		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 
-	  //DEBUG_PRINT_AVX(*pvScore, "pvScore");
-	  //DEBUG_PRINT_AVX(*pvFStore, "pvFStoreBeforeAlignOne");
-		//DEBUG_PRINT_POINTER(pvScore, "profbuff+off");
-	//DEBUG_PRINT_POINTER(pvFStore, "pvFStoreBAO");
 
 		SSERegI vf = EEU8_alignOne(iter,
                         	colstride,
@@ -992,11 +917,6 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
                         	pvHStore, pvEStore, pvFStore,
                         	rfgapo, rfgape, rdgapo, rdgape);
 
-	//DEBUG_PRINT_POINTER(pvFStore, "pvFStoreAAO");
-		//DEBUG_PRINT_POINTER(pvELoad, "pvEloadAfterAlignOne");
-		//DEBUG_PRINT_AVX(vf, "vf_post");
-	  //DEBUG_PRINT_AVX(*pvFStore, "pvFStoreAfterAlignOne");
-	
 
 		if constexpr(NBYTES_PER_REG>1) {
 			EEU8_lazyF(vf,
@@ -1008,42 +928,24 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		// else, no need for lazyF
 		pvHLoad = pvHStore;    // new pvHLoad = pvHStore
 		
-	    //printf("checkLastWord %d ", lastWordIdx);
 		// Note: we may not want to extract from the final row
 		EEU8_TCScore lr = ((EEU8_TCScore*)(pvHLoad))[lastWordIdx];
 		TAlScore sc = (TAlScore)(lr - 0xff);
 		if(lr > lrmax) {
 			lrmax = lr;
-		    //printf("i:%d Updating lr %d \n", i, lr);
-		    //printf("Updating lr %d ", lr);
 		}
 		if(sc >= minsc) {
 			// Yes, this is legit
-			//printf("i:%d btncand[%d]=%d ", i, btnfilled,lr);
 			btncand[btnfilled].init(nrow-1, i, lr);
 			btnfilled++;
 		}
-	    //printf("\n");
-
 		// pvHLoad are already where they need to be
-	  //DEBUG_PRINT_AVX(*pvScore, "pvScore");
-	  //DEBUG_PRINT_AVX(*pvFStore, "pvFStore");
-	//DEBUG_PRINT_POINTER(pvHLoad, "pvHLoad");
-	//DEBUG_PRINT_POINTER(pvHStore, "pvHStore");
-	//DEBUG_PRINT_POINTER(pvELoad, "pvELoad");
-	//DEBUG_PRINT_POINTER(pvEStore, "pvEStore");
-	//DEBUG_PRINT_POINTER(pvFStore, "pvFStore");
 		
 		// Adjust the load and store vectors here.  
 		pvHStore = pvHStore + colstride;
 		pvELoad  = pvELoad  + colstride;
 		pvEStore = pvEStore + colstride;
 		pvFStore = pvFStore + colstride;
-	//DEBUG_PRINT_POINTER(pvHLoad, "pvHLoad");
-	//DEBUG_PRINT_POINTER(pvHStore, "pvHStore");
-	//DEBUG_PRINT_POINTER(pvELoad, "pvELoad");
-	//DEBUG_PRINT_POINTER(pvEStore, "pvEStore");
-	//DEBUG_PRINT_POINTER(pvFStore, "pvFStore");
 	}
 
 

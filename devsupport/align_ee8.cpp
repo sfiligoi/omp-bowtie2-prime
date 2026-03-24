@@ -101,7 +101,7 @@ int load_results(int nels,
 }
 
 #ifdef HIP_KERNELS
-/* Function exists to cound errors and handle some of the separation on batching
+/* Function exists to count errors and handle some of the separation on batching
  * @returns number of errors; zero if checking is disabled
  */
 int align_ee8_batchLaunch(const int npar, const int nels,
@@ -119,13 +119,13 @@ int align_ee8_batchLaunch(const int npar, const int nels,
                 const int32_t ref_lrmax_[],
                 const int32_t ref_btnfilled_[]) {
 
-      uint32_t nerrs[MAX_MAT_EL];// = 0;
+      uint32_t* nerrs = (uint32_t*)malloc(npar*sizeof(uint32_t));
 
-	// Handle all the proper indexing in this call.
+      // Handle all the proper indexing in this call.
       EEU8_alignNucleotidesBatch_HIP<<<npar, 32>>>(npar, nels,
-	    nrow_, iter_, colstride_, lastWordIdx_,minsc_, rfd_,
-	    profbuf_,rf_,gaps_,
-	    mat_,btncand_,
+	    nrow_, iter_, colstride_, lastWordIdx_, minsc_, rfd_,
+	    profbuf_, rf_, gaps_,
+	    mat_, btncand_,
 	    ref_lrmax_, ref_btnfilled_,
 	    nerrs);
       HIP_CHECK(hipDeviceSynchronize());
@@ -139,6 +139,7 @@ int align_ee8_batchLaunch(const int npar, const int nels,
          } 
       }
 #endif
+      free(nerrs);
       return nerr_acc;
 }
 #endif
@@ -168,10 +169,8 @@ int align_ee8_one(const int el, // for debuggging purpose
 
 	int nerrs = 0;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
-	//if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
 #ifndef NO_CHECK_PRINT
 	if (int(ref_lrmax) != int(lrmax)) fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",el,int(lrmax), int(ref_lrmax));
-	//if (int(ref_btnfilled) != int(btnfilled)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i != %i)\n",el,int(btnfilled), int(ref_btnfilled));
 #endif
 	return nerrs;
 }
@@ -220,7 +219,6 @@ void align_ee8(const int npar, const int nels,
 	 profbuf,rf,gaps,
 	 mat,btncand,
 	 ref_lrmax,ref_btnfilled);
-   //}
 #endif
 
    if (nerrs!=0) {
