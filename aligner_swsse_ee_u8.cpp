@@ -381,8 +381,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 // Helper for saturating subtraction (unsigned 8-bit)
 // No CDNA builtin.
 __device__ __forceinline__ uint8_t subs_u8(uint8_t a, uint8_t b) {
-    int res = (int)a - (int)b;
-    return (uint8_t)(res < 0 ? 0 : res);
+    return a-min(a,b);
 }
 
 
@@ -402,15 +401,17 @@ uint8_t EEU8_alignOne_HIP(
         const uint8_t rdgapo,
         const uint8_t rdgape)
 {
-    int lane_id = threadIdx.x;
+    int lane_id = threadIdx.x % 32;
     const int LANES = 32;
+    int lane_id_b = (threadIdx.x > 31) ? 1 : 0;
+    unsigned long long bitmask = (lane_id_b == 0) ? 0x0000000FFFFFFFFULL : 0xFFFFFFFF00000000ULL;
 
     uint8_t vf = 0;
 
     // load last H from previous column
     uint8_t vh = pvHLoad[(colstride - ROWSTRIDE) * LANES + lane_id];
 
-    vh = __shfl_up(vh, 1, LANES);
+    vh = __shfl_up_sync(bitmask, vh, 1, LANES);
 
     // in cpu the corresponding vh lane
     // is just orred with 0xff via vhilsw
@@ -484,10 +485,13 @@ void EEU8_lazyF_HIP(
         const uint8_t rdgapo)
 {
     const int WARP_SIZE = 32;
-    int lane_id = threadIdx.x;
-    assert(WARP_SIZE=32);
+    int lane_id = threadIdx.x % 32;
+    int lane_id_b = (threadIdx.x > 31) ? 1 : 0;
+    unsigned long long bitmask = (lane_id_b == 0) ? 0x0000000FFFFFFFFULL : 0xFFFFFFFF00000000ULL;
 
-    uint8_t vf = __shfl_up(vf0, 1, WARP_SIZE);
+    assert(WARP_SIZE==32);
+
+    uint8_t vf = __shfl_up_sync(bitmask, vf0, 1, WARP_SIZE);
     if(lane_id==0) vf = 0;
 
     pvScore += WARP_SIZE;
@@ -500,9 +504,9 @@ void EEU8_lazyF_HIP(
 
     vf = max(vtmp, vf);
 
-    bool anygt = vf > vtmp;
+    bool anygt = (vf > vtmp);
 
-    unsigned mask = __ballot(anygt);
+    unsigned long long mask = __ballot_sync(bitmask, anygt); // 32 predicate gets first lanes in thread
 
     uint8_t vh = pvHStore[lane_id];
     uint8_t ve = pvEStore[lane_id];
@@ -538,7 +542,7 @@ void EEU8_lazyF_HIP(
             pvHStore -= colstride*WARP_SIZE;
             pvEStore -= colstride*WARP_SIZE;
 
-            vf = __shfl_up(vf, 1, WARP_SIZE);
+            vf = __shfl_up_sync(bitmask, vf, 1, WARP_SIZE);
 	    if(lane_id==0)vf=0;
         }
 
@@ -550,9 +554,10 @@ void EEU8_lazyF_HIP(
 
         vf = max(vtmp, vf);
 
-        anygt = vf > vtmp;
+        anygt = (vf > vtmp);
 
-        mask = __ballot(anygt);
+        mask = __ballot_sync(bitmask, anygt);
+        //mask = __ballot(anygt);
 
         vh = pvHStore[lane_id];
         ve = pvEStore[lane_id];
@@ -582,11 +587,11 @@ void EEU8_alignNucleotides_HIP(
     )
 {
     // Each thread handles one lane, must be 32
-    int WARP_SIZE = blockDim.x;
+    int WARP_SIZE = 32;//blockDim.x;
     //if(WARP_SIZE!=32){fprintf(stderr, "Why is WARP_SIZE for EEU8_alignNucleotides_HIP not 32?\n");};
-    int lane_id = threadIdx.x % WARP_SIZE;
+    int lane_id = threadIdx.x % 32;
+    //int lane_id_g = (threadIdx.x>31) ? 1 : 0;
 
-    assert(WARP_SIZE==32);
 
     //Fills rdgapo values with readGapOpen
     uint8_t rfgapo = refGapOpen;
