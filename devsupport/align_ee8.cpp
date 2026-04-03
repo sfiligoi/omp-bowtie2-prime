@@ -2,6 +2,17 @@
  * Simple exerciser of aligner_swsse_ee_u8.cpp
  */
 
+// assumed CDNA where warp size is 64. 32 on Nvidia and RDNA
+#ifndef WARP_SIZE
+#define WARP_SIZE 64
+#endif
+#ifndef E_PER_WARP
+#define E_PER_WARP 2
+#endif
+#ifndef LANE_SIZE
+#define LANE_SIZE 32 // number of lanes used in this
+#endif
+
 #define SWSSE_INLINE_ONLY
 
 #include "../aligner_swsse_ee_u8.cpp"
@@ -131,8 +142,8 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
     const int bx = blockIdx.x; // parallel task (1 per gpu block)
     const int elp_pp = (nels+ (npar-1))/npar; // round up
-    int lane_id_b = (threadIdx.x > 31) ? 1 : 0;
-    const int lane_id = threadIdx.x % 32;// used for output and debugging in this wrapper function.
+    int lane_id_b = (threadIdx.x / LANE_SIZE);
+    const int lane_id = threadIdx.x % LANE_SIZE;// used for output and debugging in this wrapper function.
 
 
     uint32_t nerrs_npar = 0;
@@ -141,7 +152,7 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
     //int curBatchSize = std::min(elp_pp,nels-bx*elp_pp);
 
     const int iend = std::min((bx+1)*elp_pp,nels);
-    for (int i=bx*elp_pp+lane_id_b; i<iend; i+=2) {
+    for (int i=bx*elp_pp+lane_id_b; i<iend; i+=E_PER_WARP) {
 	    // leave each block to parallelize
 	    // where each block does 32 lanes.
 
@@ -163,8 +174,8 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
 	    // NOTE: Use globalIdx here too, otherwise every block in the batch 
 	    // writes to the same 'p'... not used yet
-	    SSERegI* mat             = mat_ + ((2*bx+lane_id_b) * size_t(MAX_MAT_EL));
-	    DpBtCandidate* btncand   = btncand_ + ((2*bx+lane_id_b) * size_t(MAX_RF_EL));
+	    SSERegI* mat             = mat_ + ((E_PER_WARP*bx+lane_id_b) * size_t(MAX_MAT_EL));
+	    DpBtCandidate* btncand   = btncand_ + ((E_PER_WARP*bx+lane_id_b) * size_t(MAX_RF_EL));
 
 
 	    // Updates btnfilled and lrmax
@@ -193,7 +204,6 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
     }
 
 
-    // 
     if (nerrs_npar > 0) {
        atomicAdd(&nerrs[bx], nerrs_npar);
     }
@@ -218,6 +228,10 @@ int align_ee8_batchLaunch(const int npar, const int nels,
                 const int32_t ref_lrmax_[],
                 const int32_t ref_btnfilled_[]) {
 
+      static_assert(WARP_SIZE % E_PER_WARP == 0, "WARP_SIZE must be divisible by E_PER_WARP");
+      constexpr int lanes = LANE_SIZE*E_PER_WARP;
+      static_assert(lanes <= WARP_SIZE, "Number of total names used in a block must be <= Hardware Warp Size");
+
       uint32_t* nerrs
 #ifndef NO_CHECK_PRINT
 	 = (uint32_t*)calloc(npar, sizeof(uint32_t));
@@ -226,7 +240,7 @@ int align_ee8_batchLaunch(const int npar, const int nels,
 #endif
 
       // Handle all the proper indexing in this call.
-      EEU8_alignNucleotidesBatch_HIP<<<npar, 64>>>(npar, nels,
+      EEU8_alignNucleotidesBatch_HIP<<<npar, lanes>>>(npar, nels,
 	    nrow_, iter_, colstride_, lastWordIdx_, minsc_, rfd_,
 	    profbuf_, rf_, gaps_,
 	    mat_, btncand_,
@@ -336,7 +350,7 @@ int load_and_align_ee8(const int npar, const int nels) {
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
-   SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL*2]; // *2 since we are using 32 threads independently in 64 threads
+   SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL*E_PER_WARP];
    char    *rf = new char[size_t(MAX_RF_EL)*nels];
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];
@@ -345,7 +359,7 @@ int load_and_align_ee8(const int npar, const int nels) {
    size_t  *minsc = new size_t[nels];
    size_t  *rfd = new size_t[nels];
    uint8_t *gaps = new uint8_t[4*nels];
-   DpBtCandidate    *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar*2]; // *2 for the same reason as before.
+   DpBtCandidate    *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar*E_PER_WARP];
 
    auto t1 = std::chrono::high_resolution_clock::now();
    // test tool, don't worry about perfect cleanup

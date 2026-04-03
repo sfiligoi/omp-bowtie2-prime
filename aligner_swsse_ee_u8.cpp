@@ -401,17 +401,18 @@ uint8_t EEU8_alignOne_HIP(
         const uint8_t rdgapo,
         const uint8_t rdgape)
 {
-    int lane_id = threadIdx.x % 32;
-    const int LANES = 32;
-    int lane_id_b = (threadIdx.x > 31) ? 1 : 0;
-    unsigned long long bitmask = (lane_id_b == 0) ? 0x0000000FFFFFFFFULL : 0xFFFFFFFF00000000ULL;
+    int lane_id = threadIdx.x % LANE_SIZE;
+    int lane_id_b = threadIdx.x / LANE_SIZE;
+    unsigned long long bitmask = (1ULL << (LANE_SIZE+1)) - 1;
+    static_assert((LANE_SIZE+1)<WARP_SIZE);
+    bitmask = bitmask << (LANE_SIZE*lane_id_b);
 
     uint8_t vf = 0;
 
     // load last H from previous column
-    uint8_t vh = pvHLoad[(colstride - ROWSTRIDE) * LANES + lane_id];
+    uint8_t vh = pvHLoad[(colstride - ROWSTRIDE) * LANE_SIZE + lane_id];
 
-    vh = __shfl_up_sync(bitmask, vh, 1, LANES);
+    vh = __shfl_up_sync(bitmask, vh, 1, LANE_SIZE);
 
     // in cpu the corresponding vh lane
     // is just orred with 0xff via vhilsw
@@ -421,22 +422,22 @@ uint8_t EEU8_alignOne_HIP(
     // For each character in the reference text:
     for (uint16_t j = 0; j < iter; j++)
     {
-        //uint8_t vs0 = pvScore[2*j*LANES+lane_id];
+        //uint8_t vs0 = pvScore[2*j*LANE_SIZE+lane_id];
         uint8_t vs0 = pvScore[lane_id];
-	pvScore+=LANES;
+	pvScore+=LANE_SIZE;
 
-        //uint8_t vs1 = pvScore[(2*j+1)*LANES+lane_id];
+        //uint8_t vs1 = pvScore[(2*j+1)*LANE_SIZE+lane_id];
         uint8_t vs1 = pvScore[lane_id];
-	pvScore+=LANES;
+	pvScore+=LANE_SIZE;
 
 	// Store cells in F, calculated previously
         uint8_t ve =
             pvELoad[lane_id];
-	pvELoad += ROWSTRIDE*LANES;
+	pvELoad += ROWSTRIDE*LANE_SIZE;
         vf = subs_u8(vf, vs1);
 
         pvFStore[lane_id] = vf;
-        pvFStore += ROWSTRIDE*LANES;
+        pvFStore += ROWSTRIDE*LANE_SIZE;
 
 	// Factor in query profile (matches and mismatches)
         vh = subs_u8(vh, vs0);
@@ -447,7 +448,7 @@ uint8_t EEU8_alignOne_HIP(
 
 	// Save the new vH values
         pvHStore[lane_id] = vh;
-	pvHStore += ROWSTRIDE*LANES;
+	pvHStore += ROWSTRIDE*LANE_SIZE;
 
 
 	// Update vE value
@@ -459,9 +460,9 @@ uint8_t EEU8_alignOne_HIP(
 
 	// Save E values
         vh = pvHLoad[lane_id];
-	pvHLoad+=ROWSTRIDE*LANES;
+	pvHLoad+=ROWSTRIDE*LANE_SIZE;
         pvEStore[lane_id] = ve;
-	pvEStore+=ROWSTRIDE*LANES;
+	pvEStore+=ROWSTRIDE*LANE_SIZE;
 
 
 	// Update vf value
@@ -484,17 +485,16 @@ void EEU8_lazyF_HIP(
         const uint8_t rfgape,
         const uint8_t rdgapo)
 {
-    const int WARP_SIZE = 32;
-    int lane_id = threadIdx.x % 32;
-    int lane_id_b = (threadIdx.x > 31) ? 1 : 0;
-    unsigned long long bitmask = (lane_id_b == 0) ? 0x0000000FFFFFFFFULL : 0xFFFFFFFF00000000ULL;
+    int lane_id = threadIdx.x % LANE_SIZE;
+    int lane_id_b = threadIdx.x / LANE_SIZE;
+    unsigned long long bitmask = (1ULL << (LANE_SIZE+1)) - 1;
+    static_assert((LANE_SIZE+1)<WARP_SIZE);
+    bitmask = bitmask << (LANE_SIZE*lane_id_b);
 
-    assert(WARP_SIZE==32);
-
-    uint8_t vf = __shfl_up_sync(bitmask, vf0, 1, WARP_SIZE);
+    uint8_t vf = __shfl_up_sync(bitmask, vf0, 1, LANE_SIZE);
     if(lane_id==0) vf = 0;
 
-    pvScore += WARP_SIZE;
+    pvScore += LANE_SIZE;
 
     uint8_t vs1 = pvScore[lane_id];
 
@@ -516,12 +516,12 @@ void EEU8_lazyF_HIP(
     while (mask)
     {
         pvFStore[lane_id] = vf;
-	pvFStore += ROWSTRIDE*WARP_SIZE;
+	pvFStore += ROWSTRIDE*LANE_SIZE;
 
         vh = max(vh, vf);
 
         pvHStore[lane_id] = vh;
-	pvHStore += ROWSTRIDE*WARP_SIZE;
+	pvHStore += ROWSTRIDE*LANE_SIZE;
 
         uint8_t vh_gap = subs_u8(vh, rdgapo);
         vh_gap = subs_u8(vh_gap, vs1);
@@ -529,20 +529,20 @@ void EEU8_lazyF_HIP(
         ve = max(ve, vh_gap);
 
         pvEStore[lane_id] = ve;
-	pvEStore += ROWSTRIDE*WARP_SIZE;
+	pvEStore += ROWSTRIDE*LANE_SIZE;
 
-        pvScore += 2*WARP_SIZE;
+        pvScore += 2*LANE_SIZE;
 
         if (++j == iter)
         {
-            pvScore -= iter * 2 *WARP_SIZE;
+            pvScore -= iter * 2 *LANE_SIZE;
             j = 0;
 
-            pvFStore -= colstride*WARP_SIZE;
-            pvHStore -= colstride*WARP_SIZE;
-            pvEStore -= colstride*WARP_SIZE;
+            pvFStore -= colstride*LANE_SIZE;
+            pvHStore -= colstride*LANE_SIZE;
+            pvEStore -= colstride*LANE_SIZE;
 
-            vf = __shfl_up_sync(bitmask, vf, 1, WARP_SIZE);
+            vf = __shfl_up_sync(bitmask, vf, 1, LANE_SIZE);
 	    if(lane_id==0)vf=0;
         }
 
@@ -586,11 +586,7 @@ void EEU8_alignNucleotides_HIP(
     uint32_t*       lrmax_out    // Global max score, originally return value
     )
 {
-    // Each thread handles one lane, must be 32
-    int WARP_SIZE = 32;//blockDim.x;
-    //if(WARP_SIZE!=32){fprintf(stderr, "Why is WARP_SIZE for EEU8_alignNucleotides_HIP not 32?\n");};
-    int lane_id = threadIdx.x % 32;
-    //int lane_id_g = (threadIdx.x>31) ? 1 : 0;
+    int lane_id = threadIdx.x % LANE_SIZE;
 
 
     //Fills rdgapo values with readGapOpen
@@ -602,25 +598,25 @@ void EEU8_alignNucleotides_HIP(
     // Initial values for the first column (H and E are 0)
     // pmat layout: [col][segment][lane]
     {
-	  uint8_t *pvHTmp = ((uint8_t*)pmat) + 32*SSEMatrixConsts::TMP;
-	  uint8_t *pvETmp = ((uint8_t*)pmat) + 32*SSEMatrixConsts::E;
+	  uint8_t *pvHTmp = ((uint8_t*)pmat) + LANE_SIZE*SSEMatrixConsts::TMP;
+	  uint8_t *pvETmp = ((uint8_t*)pmat) + LANE_SIZE*SSEMatrixConsts::E;
 	
 	  for(size_t i = 0; i < iter; i++) {
 
 		pvETmp[lane_id] = 0;
 		pvHTmp[lane_id] = 0;
-		pvETmp += ROWSTRIDE*WARP_SIZE;
-		pvHTmp += ROWSTRIDE*WARP_SIZE;
+		pvETmp += ROWSTRIDE*LANE_SIZE;
+		pvHTmp += ROWSTRIDE*LANE_SIZE;
 	  }
     }
     
     // These are swapped just before the innermost loop
     // In threads we want to index by vector[lane_id]
-    uint8_t *pvHLoad  = ((uint8_t*)pmat) + 32*SSEMatrixConsts::TMP;
-    uint8_t *pvHStore = ((uint8_t*)pmat) + 32*SSEMatrixConsts::H;
-    uint8_t *pvELoad  = ((uint8_t*)pmat) + 32*SSEMatrixConsts::E;
-    uint8_t *pvEStore = ((uint8_t*)pmat) + 32*colstride + 32*SSEMatrixConsts::E;
-    uint8_t *pvFStore = ((uint8_t*)pmat) + 32*SSEMatrixConsts::F;
+    uint8_t *pvHLoad  = ((uint8_t*)pmat) + LANE_SIZE*SSEMatrixConsts::TMP;
+    uint8_t *pvHStore = ((uint8_t*)pmat) + LANE_SIZE*SSEMatrixConsts::H;
+    uint8_t *pvELoad  = ((uint8_t*)pmat) + LANE_SIZE*SSEMatrixConsts::E;
+    uint8_t *pvEStore = ((uint8_t*)pmat) + LANE_SIZE*colstride + LANE_SIZE*SSEMatrixConsts::E;
+    uint8_t *pvFStore = ((uint8_t*)pmat) + LANE_SIZE*SSEMatrixConsts::F;
 
     // needs to to be shared amongst all threads in warp
     uint8_t lrmax = MIN_U8;
@@ -632,7 +628,7 @@ void EEU8_alignNucleotides_HIP(
 
 	  //https://rocm.docs.amd.com/projects/HIP/en/docs-6.0.2/reference/kernel_language.html
 	  // Both offset instructions are acceptable
-	  size_t off = 32*((size_t)__builtin_ctz((uint32_t)rf[i]) * iter * 2);
+	  size_t off = LANE_SIZE*((size_t)__builtin_ctz((uint32_t)rf[i]) * iter * 2);
 	  //size_t off = 32*((size_t)(__ffs((uint32_t)rf[i]) - 1) * iter * 2); // 32 factor because original packs into 256
 
 	  // points into the query profile
@@ -686,10 +682,10 @@ void EEU8_alignNucleotides_HIP(
 	  //DEBUG_GPU_POINTER(pvEStore, "pvEStore");
 	  //DEBUG_GPU_POINTER(pvFStore, "pvFStore");
 
-	  pvHStore = pvHStore + WARP_SIZE*colstride;
-	  pvELoad  = pvELoad  + WARP_SIZE*colstride;
-	  pvEStore = pvEStore + WARP_SIZE*colstride;
-	  pvFStore = pvFStore + WARP_SIZE*colstride;
+	  pvHStore = pvHStore + LANE_SIZE*colstride;
+	  pvELoad  = pvELoad  + LANE_SIZE*colstride;
+	  pvEStore = pvEStore + LANE_SIZE*colstride;
+	  pvFStore = pvFStore + LANE_SIZE*colstride;
 
 	  //DEBUG_GPU_POINTER(pvHLoad, "pvHLoad");
 	  //DEBUG_GPU_POINTER(pvHStore, "pvHStore");
