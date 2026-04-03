@@ -143,13 +143,12 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
     const int bx = blockIdx.x; // parallel task (1 per gpu block)
     const int elp_pp = (nels+ (npar-1))/npar; // round up
     int lane_id_b = (threadIdx.x / LANE_SIZE);
-    const int lane_id = threadIdx.x % LANE_SIZE;// used for output and debugging in this wrapper function.
+    //const int lane_id = threadIdx.x % LANE_SIZE;// used for output and debugging in this wrapper function.
 
 
     uint32_t nerrs_npar = 0;
 
     // Equivalently the grid dimension
-    //int curBatchSize = std::min(elp_pp,nels-bx*elp_pp);
 
     const int iend = std::min((bx+1)*elp_pp,nels);
     for (int i=bx*elp_pp+lane_id_b; i<iend; i+=E_PER_WARP) {
