@@ -53,10 +53,10 @@ CXX := amdclang++
 # Enable HIP. Use CXX=amdclang++ or CXX=hipcc 
 # Warning with hybrid OPENMP Compilations
 CXXFLAGS += -std=c++20 --offload-arch=native -mavx2 -faligned-new -DSSE_AVX2
-CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__ -DHIP_ENABLE_WARP_SYNC_BUILTINS -DNO_CHECK_PRINT
+CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__ -DHIP_ENABLE_WARP_SYNC_BUILTINS
 
-# choose lane size for GPU
-#CXXFLAGS += -DE_PER_WARP=2  -DLANE_SIZE=32
+# choose lane size for GPU, right now only E_PER_WARP={1,2}
+CXXFLAGS += -DE_PER_WARP=2  -DLANE_SIZE=32
 
 #
 # NVIDIA HPC SDK flags options
