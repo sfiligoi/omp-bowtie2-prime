@@ -27,6 +27,13 @@
 #include "aligner_result.h"
 
 
+// If compiler can't compile HIP Kernels __host__ __device__ compatibility will be ignored
+#if defined(HIP_KERNELS)
+  #define AMD_HOST_DEV __host__ __device__
+#else
+  #define AMD_HOST_DEV
+#endif
+
 /**
  * Encapsulates a backtrace stack frame.  Includes enough information that we
  * can "pop" back up to this frame and choose to make a different backtracking
@@ -104,6 +111,7 @@ struct DpBtCandidate {
 	
 	void reset() { init(0, 0, 0); }
 	
+	AMD_HOST_DEV
 	void init(size_t row_, size_t col_, TAlScore score_) {
 		row = row_;
 		col = col_;
