@@ -131,7 +131,8 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
     const int bx = blockIdx.x; // parallel task (1 per gpu block)
     const int elp_pp = (nels+ (npar-1))/npar; // round up
-    const int lane_id = threadIdx.x;// used for output and debugging in this wrapper function.
+    int lane_id_b = (threadIdx.x > 31) ? 1 : 0;
+    const int lane_id = threadIdx.x % 32;// used for output and debugging in this wrapper function.
 
 
     uint32_t nerrs_npar = 0;
@@ -139,14 +140,10 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
     // Equivalently the grid dimension
     //int curBatchSize = std::min(elp_pp,nels-bx*elp_pp);
 
-    int offset = bx*elp_pp;
-
-    if (offset >= nels) return; // should never run
-
-
+    if(threadIdx.x <= 31) return;
 
     const int iend = std::min((bx+1)*elp_pp,nels);
-    for (int i=bx*elp_pp; i<iend; i++) {
+    for (int i=bx*elp_pp+lane_id_b; i<iend; i+=2) {
 	    // leave each block to parallelize
 	    // where each block does 32 lanes.
 
@@ -168,8 +165,8 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
 	    // NOTE: Use globalIdx here too, otherwise every block in the batch 
 	    // writes to the same 'p'... not used yet
-	    SSERegI* mat             = mat_ + (bx * size_t(MAX_MAT_EL));
-	    DpBtCandidate* btncand   = btncand_ + (bx * size_t(MAX_RF_EL));
+	    SSERegI* mat             = mat_ + ((2*bx+lane_id_b) * size_t(MAX_MAT_EL));
+	    DpBtCandidate* btncand   = btncand_ + ((2*bx+lane_id_b) * size_t(MAX_RF_EL));
 
 
 	    // Updates btnfilled and lrmax
@@ -198,7 +195,10 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
     }
 
 
-    if(lane_id==0) nerrs[bx] = nerrs_npar;
+    // 
+    if (nerrs_npar > 0) {
+       atomicAdd(&nerrs[bx], nerrs_npar);
+    }
 }
 
 
@@ -220,10 +220,15 @@ int align_ee8_batchLaunch(const int npar, const int nels,
                 const int32_t ref_lrmax_[],
                 const int32_t ref_btnfilled_[]) {
 
-      uint32_t* nerrs = (uint32_t*)malloc(npar*sizeof(uint32_t));
+      uint32_t* nerrs
+#ifndef NO_CHECK_PRINT
+	 = (uint32_t*)calloc(npar, sizeof(uint32_t));
+#else
+	 = (uint32_t*)malloc(npar*sizeof(uint32_t)); // left here for compatibility, but values are probably bogus
+#endif
 
       // Handle all the proper indexing in this call.
-      EEU8_alignNucleotidesBatch_HIP<<<npar, 32>>>(npar, nels,
+      EEU8_alignNucleotidesBatch_HIP<<<npar, 64>>>(npar, nels,
 	    nrow_, iter_, colstride_, lastWordIdx_, minsc_, rfd_,
 	    profbuf_, rf_, gaps_,
 	    mat_, btncand_,
@@ -333,7 +338,7 @@ int load_and_align_ee8(const int npar, const int nels) {
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
-   SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL];
+   SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL*2]; // *2 since we are using 32 threads independently in 64 threads
    char    *rf = new char[size_t(MAX_RF_EL)*nels];
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];
@@ -342,7 +347,7 @@ int load_and_align_ee8(const int npar, const int nels) {
    size_t  *minsc = new size_t[nels];
    size_t  *rfd = new size_t[nels];
    uint8_t *gaps = new uint8_t[4*nels];
-   DpBtCandidate    *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar];
+   DpBtCandidate    *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar*2]; // *2 for the same reason as before.
 
    auto t1 = std::chrono::high_resolution_clock::now();
    // test tool, don't worry about perfect cleanup
