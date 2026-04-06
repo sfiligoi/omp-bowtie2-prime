@@ -57,7 +57,7 @@ CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__ -DHIP_ENABLE_WARP_SYNC_B
 
 # choose lane size for GPU, right now only E_PER_WARP={1,2}
 #CXXFLAGS += -DNO_CHECK_PRINT # test_align_ee8 target will say SUCCESS regardless
-CXXFLAGS += -DE_PER_WARP=1  -DLANE_SIZE=32
+CXXFLAGS += -DE_PER_WARP=2  -DLANE_SIZE=32
 
 #
 # NVIDIA HPC SDK flags options
