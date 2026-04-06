@@ -55,6 +55,10 @@ CXX := amdclang++
 CXXFLAGS += -std=c++20 --offload-arch=native -mavx2 -faligned-new -DSSE_AVX2
 CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__ -DHIP_ENABLE_WARP_SYNC_BUILTINS
 
+# choose lane size for GPU, right now only E_PER_WARP={1,2}
+#CXXFLAGS += -DNO_CHECK_PRINT # test_align_ee8 target will say SUCCESS regardless
+CXXFLAGS += -DE_PER_WARP=2  -DLANE_SIZE=32
+
 #
 # NVIDIA HPC SDK flags options
 # Note: It needs -DASM_PREFETCH in CPU mode to emit prefetch instruction 
