@@ -140,7 +140,7 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 		const int32_t ref_btnfilled_[], // unused
 		uint32_t nerrs[]) {
 
-    const int bx = blockIdx.x; // parallel task (1 per gpu block)
+    const int p = blockIdx.x; // parallel task (1 per gpu block)
     const int elp_pp = (nels+ (npar-1))/npar; // round up
     int lane_id_b = (threadIdx.x / LANE_SIZE);
     const int lane_id = threadIdx.x % LANE_SIZE;// used for output and debugging in this wrapper function.
@@ -150,8 +150,8 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
     // Equivalently the grid dimension
 
-    const int iend = std::min((bx+1)*elp_pp,nels);
-    for (int i=bx*elp_pp+lane_id_b; i<iend; i+=E_PER_WARP) {
+    const int iend = std::min((p+1)*elp_pp,nels);
+    for (int i=p*elp_pp+lane_id_b; i<iend; i+=E_PER_WARP) {
 	    // leave each block to parallelize
 	    // where each block does 32 lanes.
 
@@ -173,8 +173,8 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
 	    // NOTE: Use globalIdx here too, otherwise every block in the batch 
 	    // writes to the same 'p'... not used yet
-	    SSERegI* mat             = mat_ + ((E_PER_WARP*bx+lane_id_b) * size_t(MAX_MAT_EL));
-	    DpBtCandidate* btncand   = btncand_ + ((E_PER_WARP*bx+lane_id_b) * size_t(MAX_RF_EL));
+	    SSERegI* mat             = mat_ + ((E_PER_WARP*p+lane_id_b) * size_t(MAX_MAT_EL));
+	    DpBtCandidate* btncand   = btncand_ + ((E_PER_WARP*p+lane_id_b) * size_t(MAX_RF_EL));
 
 
 	    // Updates btnfilled and lrmax
@@ -204,7 +204,7 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
 
     if (nerrs_npar > 0) {
-       atomicAdd(&nerrs[bx], nerrs_npar);
+       atomicAdd(&nerrs[p], nerrs_npar);
     }
 }
 
