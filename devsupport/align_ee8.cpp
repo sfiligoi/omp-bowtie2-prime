@@ -136,75 +136,60 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 		const uint8_t gaps_[],
 		SSERegI          mat_[],
 		DpBtCandidate    btncand_[],
-		const int32_t  ref_lrmax_[],
-		const int32_t ref_btnfilled_[], // unused
-		uint32_t nerrs[]) {
+		int32_t  lrmax_[]) {
 
     const int p = blockIdx.x; // parallel task (1 per gpu block)
     const int elp_pp = (nels+ (npar-1))/npar; // round up
     int lane_id_b = (threadIdx.x / LANE_SIZE);
     const int lane_id = threadIdx.x % LANE_SIZE;// used for output and debugging in this wrapper function.
 
-
-    uint32_t nerrs_npar = 0;
-
     // Equivalently the grid dimension
 
     const int iend = std::min((p+1)*elp_pp,nels);
     for (int i=p*elp_pp+lane_id_b; i<iend; i+=E_PER_WARP) {
-	    // leave each block to parallelize
-	    // where each block does 32 lanes.
+       // leave each block to parallelize
+       // where each block does 32 lanes.
 
-	    // Only curBatchSize amount indexed, but this is to compile and is calculated in the alignNucleotides kernel
-	    uint8_t btnfilled;
-	    uint32_t lrmax;
-
-
-	    const size_t nrow        = nrow_[i];
-	    const size_t iter        = iter_[i];
-	    const size_t colstride   = colstride_[i];
-	    const size_t lastWordIdx = lastWordIdx_[i];
-	    const size_t minsc       = minsc_[i];
-	    const size_t rfd         = rfd_[i];
-
-	    const SSERegI* profbuf   = profbuf_ + (i * size_t(MAX_PB_EL)); // why is this needed here?
-	    const char* rf           = rf_      + (i * size_t(MAX_RF_EL));
-	    const uint8_t* gaps      = gaps_    + (i * 4);
-
-	    // NOTE: Use globalIdx here too, otherwise every block in the batch 
-	    // writes to the same 'p'... not used yet
-	    SSERegI* mat             = mat_ + ((E_PER_WARP*p+lane_id_b) * size_t(MAX_MAT_EL));
-	    DpBtCandidate* btncand   = btncand_ + ((E_PER_WARP*p+lane_id_b) * size_t(MAX_RF_EL));
+       // Only curBatchSize amount indexed, but this is to compile and is calculated in the alignNucleotides kernel
+       uint8_t btnfilled;
+       uint32_t lrmax;
 
 
-	    // Updates btnfilled and lrmax
-	    EEU8_alignNucleotides_HIP(
-	        (uint8_t*)profbuf, rf, rfd,
-	        (uint8_t*)mat,
-	        iter, colstride, lastWordIdx,
-	        minsc, nrow,
-	        btncand, &btnfilled,
-	        gaps[0], gaps[1], gaps[2], gaps[3],
-	        &lrmax
-	    );
+       const size_t nrow        = nrow_[i];
+       const size_t iter        = iter_[i];
+       const size_t colstride   = colstride_[i];
+       const size_t lastWordIdx = lastWordIdx_[i];
+       const size_t minsc       = minsc_[i];
+       const size_t rfd         = rfd_[i];
 
-#ifndef NO_CHECK_PRINT
-    __syncthreads();
-    if(lane_id == 0) {
-      const int globalIdx = i;
-      if (int(ref_lrmax_[globalIdx]) != int(lrmax)) {
-        printf("[%i]vs[%i] MISMATCH in lrmax (%i != %i)\n",globalIdx,i,int(lrmax), int(ref_lrmax_[globalIdx]));
-        nerrs_npar++;
-      } 
-    }
-    __syncthreads();
-#endif
+       const SSERegI* profbuf   = profbuf_ + (i * size_t(MAX_PB_EL)); // why is this needed here?
+       const char* rf           = rf_      + (i * size_t(MAX_RF_EL));
+       const uint8_t* gaps      = gaps_    + (i * 4);
 
-    }
+       // NOTE: Use globalIdx here too, otherwise every block in the batch 
+       // writes to the same 'p'... not used yet
+       SSERegI* mat             = mat_ + ((E_PER_WARP*p+lane_id_b) * size_t(MAX_MAT_EL));
+       DpBtCandidate* btncand   = btncand_ + ((E_PER_WARP*p+lane_id_b) * size_t(MAX_RF_EL));
 
 
-    if (nerrs_npar > 0) {
-       atomicAdd(&nerrs[p], nerrs_npar);
+       // Updates btnfilled and lrmax
+       EEU8_alignNucleotides_HIP(
+	     (uint8_t*)profbuf, rf, rfd,
+	     (uint8_t*)mat,
+	     iter, colstride, lastWordIdx,
+	     minsc, nrow,
+	     btncand, &btnfilled,
+	     gaps[0], gaps[1], gaps[2], gaps[3],
+	     &lrmax
+	     );
+
+       // write back local lrmax to global memory
+       __syncthreads();
+       if(lane_id == 0) {
+	  lrmax_[i] = lrmax;
+       }
+       __syncthreads();
+
     }
 }
 
@@ -231,33 +216,27 @@ int align_ee8_batchLaunch(const int npar, const int nels,
       constexpr int lanes = LANE_SIZE*E_PER_WARP;
       static_assert(lanes <= WARP_SIZE, "Number of total names used in a block must be <= Hardware Warp Size");
 
-      uint32_t* nerrs
-#ifndef NO_CHECK_PRINT
-	 = (uint32_t*)calloc(npar, sizeof(uint32_t));
-#else
-	 = (uint32_t*)malloc(npar*sizeof(uint32_t)); // left here for compatibility, but values are probably bogus
-#endif
+      int32_t* lrmax = (int32_t*)malloc(nels*sizeof(int32_t));
+      int nerrs = 0;
 
       // Handle all the proper indexing in this call.
       EEU8_alignNucleotidesBatch_HIP<<<npar, lanes>>>(npar, nels,
 	    nrow_, iter_, colstride_, lastWordIdx_, minsc_, rfd_,
 	    profbuf_, rf_, gaps_,
 	    mat_, btncand_,
-	    ref_lrmax_, ref_btnfilled_,
-	    nerrs);
+	    lrmax);
       HIP_CHECK(hipDeviceSynchronize());
 
-      uint32_t nerr_acc = 0;
 #ifndef NO_CHECK_PRINT
-      for(int p = 0; p<npar; p++){
-         if (nerrs[p] > 0) {
-            fprintf(stderr, "NPar Task [%i] MISMATCH %i errors\n",p,nerrs[p]);
-            nerr_acc+=nerrs[p];
+      for(int i = 0; i<nels; i++){
+	 if (int(ref_lrmax_[i]) != lrmax[i]) {
+	    printf("[%i] MISMATCH in lrmax (%i != %i)\n",i,int(lrmax[i]), int(ref_lrmax_[i]));
+	    nerrs++;
          } 
       }
 #endif
-      free(nerrs);
-      return nerr_acc;
+      free(lrmax);
+      return nerrs;
 }
 #endif
 
