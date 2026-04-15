@@ -250,7 +250,6 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 		// Fill topmost (least sig) cell with high value
 		vh = sse_or_siall(vh, vhilsw);
 		
-
 		// For each character in the reference text:
 		for(TIdxSize j = 0; j < iter; j++) {
 			SSERegI vs0 = sse_load_siall(pvScore);
@@ -260,7 +259,6 @@ inline SSERegI EEU8_alignOne(const TIdxSize iter,
 			// Load cells from E, calculated previously
 			SSERegI ve = sse_load_siall(pvELoad);
 			pvELoad += ROWSTRIDE;
-
 			
 			// Store cells in F, calculated previously
 			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
@@ -322,7 +320,6 @@ inline void EEU8_lazyF(const SSERegI vf0,
 		vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
 		vf = sse_max_epu8(vtmp, vf);
 		bool anygt;
-		
 		sse_anygt_epu8(vf,vtmp,anygt);
 	
 		// Load after computing cmp, so the result is ready by the time it is tested in while
@@ -785,7 +782,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	SSERegI *pvELoad  = pmat + SSEMatrixConsts::E;
 	SSERegI *pvEStore = pmat + colstride + SSEMatrixConsts::E;
 	SSERegI *pvFStore = pmat + SSEMatrixConsts::F;
-
+	
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
 
@@ -813,15 +810,13 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
 		// points into the query profile
 		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
-
-
+	
 		SSERegI vf = EEU8_alignOne(iter,
                         	colstride,
                         	pvScore,
                         	pvHLoad, pvELoad,
                         	pvHStore, pvEStore, pvFStore,
                         	rfgapo, rfgape, rdgapo, rdgape);
-
 
 		if constexpr(NBYTES_PER_REG>1) {
 			EEU8_lazyF(vf,
@@ -844,6 +839,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 			btncand[btnfilled].init(nrow-1, i, lr);
 			btnfilled++;
 		}
+
 		// pvHLoad are already where they need to be
 		
 		// Adjust the load and store vectors here.  

@@ -6,18 +6,26 @@
 #ifndef WARP_SIZE
 #define WARP_SIZE 64
 #endif
-#ifndef E_PER_WARP
-#define E_PER_WARP 2
-#endif
-#ifndef LANE_SIZE
-#define LANE_SIZE 32 // number of lanes used in this
-#endif
+
+#ifndef SSE_SCALAR
+ #ifndef E_PER_WARP
+  #define E_PER_WARP 2
+ #endif
+ #ifndef LANE_SIZE
+  #define LANE_SIZE 32 // number of lanes used in this
+ #endif
+#else // enabled SSE_SCALAR
+ #define E_PER_WARP 1
+ #define LANE_SIZE 1
+#endif // SSE_SCALAR
 
 #define SWSSE_INLINE_ONLY
 
 #include "../aligner_swsse_ee_u8.cpp"
 
-#define tread(data,size,n, file) if (fread(data,size,n,file)!=n) {fprintf(stderr, "Read failed\n"); return 3;}
+#define MAX_PB_EL   128*(32/NBYTES_PER_REG)
+#define MAX_RF_EL   192*(32/NBYTES_PER_REG)
+#define MAX_MAT_EL  4096*(32/NBYTES_PER_REG)
 
 #ifdef HIP_KERNELS
 #include <hip/hip_runtime.h>
@@ -35,13 +43,7 @@
 }
 #endif
 
-#ifdef HIP_KERNELS
-#include <hip/hip_runtime.h>
-#endif
-
-#define MAX_PB_EL   128
-#define MAX_RF_EL   192
-#define MAX_MAT_EL  4096
+#define tread(data,size,n, file) if (fread(data,size,n,file)!=n) {fprintf(stderr, "Read failed\n"); return 3;}
 
 int load_data(int nels,
 		size_t nrow[],

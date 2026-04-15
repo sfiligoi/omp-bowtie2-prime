@@ -44,20 +44,27 @@ CXX := amdclang++
 # CXX := hipcc
 
 # CPU-only
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2
 
 #
 # GPU-enabled
-#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2 -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
+CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -faligned-new -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
 
-# Enable HIP. Use CXX=amdclang++ or CXX=hipcc 
+# Enable HIP. Use CXX=amdclang++ or CXX=hipcc
 # Warning with hybrid OPENMP Compilations
-CXXFLAGS += -std=c++20 --offload-arch=native -mavx2 -faligned-new -DSSE_AVX2
+CXXFLAGS += -std=c++20 --offload-arch=native -faligned-new
 CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__ -DHIP_ENABLE_WARP_SYNC_BUILTINS
 
-# choose lane size for GPU, right now only E_PER_WARP={1,2}
 #CXXFLAGS += -DNO_CHECK_PRINT # test_align_ee8 target will say SUCCESS regardless
-CXXFLAGS += -DE_PER_WARP=2  -DLANE_SIZE=32
+
+# choose lane size for GPU
+#CXXFLAGS += -DE_PER_WARP={1,2}   -DLANE_SIZE=32 -mavx2 -DSSE_AVX2
+#CXXFLAGS += -DE_PER_WARP={1,2,4} -DLANE_SIZE=16 -mavx  -DSSE_AVX
+
+#CXXFLAGS += -DE_PER_WARP=1       -DLANE_SIZE=1
+CXXFLAGS += -DSSE_SCALAR  # interpretted on GPU as -DE_PER_WARP=1      -DLANE_SIZE=1 
+
 
 #
 # NVIDIA HPC SDK flags options
