@@ -640,16 +640,6 @@ void EEU8_alignNucleotides_HIP(
 	      pvHStore, pvEStore, pvFStore,
 	      rfgapo, rfgape, rdgapo, rdgape);
 
-
-	  // known at compile time and is true
-	  if constexpr(NBYTES_PER_REG>1) {
-	    EEU8_lazyF_HIP(vf,
-		iter, colstride,
-		pvScore,
-		pvHStore, pvEStore, pvFStore,
-		rfgape, rdgapo);
-	  }
-
 	  pvHLoad = pvHStore;    // new pvHLoad = pvHStore
 
 	  // Note: we may not want to extract from the final row
@@ -697,6 +687,204 @@ void EEU8_alignNucleotides_HIP(
       *btnfilled_ = btnfilled;
       *lrmax_out = lrmax;
     }
+}
+
+
+// Used instead of SSC_SCALAR is used
+__device__ 
+void EEU8_alignNucleotidesScalar_HIP(
+    const uint8_t  profbuf[],      // Query profile (pre-built)
+    const char     rf[],           // Reference sequence
+    const uint32_t rfd,          // Reference length
+    uint8_t        pmat[],         // DP Matrix (global memory)
+    const uint32_t iter,         // Number of segments (segments per column)
+    const uint32_t colstride,    // Distance between columns in pmat
+    const uint32_t lastWordIdx,
+    const int64_t  minsc,
+    const uint32_t nrow,
+    DpBtCandidate  btncand[],
+    uint8_t*      btnfilled_,
+    const int8_t   refGapOpen,
+    const int8_t   refGapExtend,
+    const int8_t   readGapOpen,
+    const int8_t   readGapExtend,
+    uint32_t*       lrmax_out    // Global max score, originally return value
+    )
+{
+    // make sure out query size fits in a column
+    static_assert(ROWSTRIDE*LANE_SIZE<=MAX_QUERY_SIZE);
+
+    //Fills rdgapo values with readGapOpen
+    uint8_t rfgapo = refGapOpen;
+    uint8_t rfgape = readGapExtend;
+    uint8_t rdgapo = refGapOpen;
+    uint8_t rdgape = readGapExtend;
+
+    //// Keeping shared memory is better
+    __shared__ uint8_t pvHLoadData[MAX_QUERY_SIZE];
+    __shared__ uint8_t pvHStoreData[MAX_QUERY_SIZE];
+    __shared__ uint8_t pvELoadData[MAX_QUERY_SIZE];
+    __shared__ uint8_t pvEStoreData[MAX_QUERY_SIZE];
+    __shared__ uint8_t pvFStoreData[MAX_QUERY_SIZE];
+    
+    // Initial values for the first column (H and E are 0)
+    // pmat layout: [col][segment][lane]
+    //{
+    //  for(size_t i = 0; i < ROWSTRIDE*LANE_SIZE; i++) {
+    //    pvELoadData[i] = 0;
+    //    pvHLoadData[i] = 0;
+    //  }
+    //}
+    {
+	  uint8_t *pvHTmp = pvHLoadData;
+	  uint8_t *pvETmp = pvELoadData;
+	
+	  for(size_t i = 0; i < iter; i++) {
+
+		pvETmp[ROWSTRIDE*i] = 0;
+		pvHTmp[ROWSTRIDE*i] = 0;
+	  }
+    }
+    
+    // These are swapped just before the innermost loop
+    // In threads we want to index by vector[lane_id]
+    //uint8_t *pvHLoad  = ((uint8_t*)pmat) + LANE_SIZE*SSEMatrixConsts::TMP;
+    //uint8_t *pvHStore = ((uint8_t*)pmat) + LANE_SIZE*SSEMatrixConsts::H;
+    //uint8_t *pvELoad  = ((uint8_t*)pmat) + LANE_SIZE*SSEMatrixConsts::E;
+    //uint8_t *pvEStore = ((uint8_t*)pmat) + LANE_SIZE*colstride + LANE_SIZE*SSEMatrixConsts::E;
+    //uint8_t *pvFStore = ((uint8_t*)pmat) + LANE_SIZE*SSEMatrixConsts::F;
+
+
+    uint8_t *pvHLoad  = pvHLoadData;
+    uint8_t *pvHStore = pvHStoreData;
+    uint8_t *pvELoad  = pvELoadData;
+    uint8_t *pvEStore = pvEStoreData;
+    uint8_t *pvFStore = pvFStoreData;
+
+    // needs to to be shared amongst all threads in warp
+    uint8_t lrmax = MIN_U8;
+
+    // keep a local copy
+    uint16_t btnfilled = 0;
+
+    for (uint32_t i = 0; i < rfd; i++) {
+
+	  //https://rocm.docs.amd.com/projects/HIP/en/docs-6.0.2/reference/kernel_language.html
+	  // Both offset instructions are acceptable
+	  size_t off = LANE_SIZE*((size_t)__builtin_ctz((uint32_t)rf[i]) * iter * 2);
+	  //size_t off = 32*((size_t)(__ffs((uint32_t)rf[i]) - 1) * iter * 2); // 32 factor because original packs into 256
+
+	  // points into the query profile
+	  
+	  const uint8_t* pvScore = profbuf + off; 
+
+	  // Does one lane at a time
+	  uint8_t vf;
+	  {
+		  int lane_id = threadIdx.x % LANE_SIZE;
+		  int lane_id_b = threadIdx.x / LANE_SIZE;
+		  unsigned long long bitmask = (1ULL << (LANE_SIZE+1)) - 1;
+		  static_assert((LANE_SIZE+1)<WARP_SIZE);
+		  bitmask = bitmask << (LANE_SIZE*lane_id_b);
+		  uint8_t vf = 0;
+
+		  // TODO move away from pointer arithmetic
+		  uint8_t* pvScoreTmp = (uint8_t*)pvScore;
+		  uint8_t* pvELoadTmp = pvELoad;
+		  uint8_t* pvHLoadTmp = pvHLoad;
+		  uint8_t* pvHStoreTmp = pvHStore;
+		  uint8_t* pvEStoreTmp = pvEStore;
+
+		  // load last H from previous column
+		  uint8_t vh = pvHLoad[(colstride - ROWSTRIDE) * LANE_SIZE + lane_id];
+
+		  vh = __shfl_up_sync(bitmask, vh, 1, LANE_SIZE);
+
+		  // in cpu the corresponding vh lane
+		  // is just orred with 0xff via vhilsw
+		  if (lane_id == 0)
+			  vh = 0xff;
+
+		  // For each character in the reference text:
+		  for (uint16_t j = 0; j < iter; j++)
+		  {
+			  //uint8_t vs0 = pvScore[2*j*LANE_SIZE+lane_id];
+			  uint8_t vs0 = pvScoreTmp[lane_id];
+			  pvScoreTmp+=LANE_SIZE;
+
+			  //uint8_t vs1 = pvScore[(2*j+1)*LANE_SIZE+lane_id];
+			  uint8_t vs1 = pvScoreTmp[lane_id];
+			  pvScoreTmp+=LANE_SIZE;
+
+			  // Store cells in F, calculated previously
+			  uint8_t ve =
+				  pvELoadTmp[lane_id];
+			  pvELoadTmp += ROWSTRIDE*LANE_SIZE;
+
+			  vf = subs_u8(vf, vs1);
+
+			  // Factor in query profile (matches and mismatches)
+			  vh = subs_u8(vh, vs0);
+
+			  // Update H, factoring in E and F
+			  vh = max(vh, ve);
+			  vh = max(vh, vf);
+
+			  // Save the new vH values
+			  pvHStoreTmp[lane_id] = vh;
+			  pvHStoreTmp += ROWSTRIDE*LANE_SIZE;
+
+			  // Update vE value
+			  uint8_t vtmp = vh;
+			  vh = subs_u8(vh, rdgapo);
+			  vh = subs_u8(vh, vs1); // veto some read gap opens
+			  ve = subs_u8(ve, rdgape);
+			  ve = max(ve, vh);
+
+			  // Save E values
+			  vh = pvHLoadTmp[lane_id];
+			  pvHLoadTmp+=ROWSTRIDE*LANE_SIZE;
+			  pvEStoreTmp[lane_id] = ve;
+			  pvEStoreTmp+=ROWSTRIDE*LANE_SIZE;
+
+
+			  // Update vf value
+			  vtmp = subs_u8(vtmp, rfgapo);
+			  vf = subs_u8(vf, rfgape);
+			  vf = max(vf, vtmp);
+		  }
+	  }
+
+
+	  uint8_t* tmp = pvHLoad;
+	  pvHLoad = pvHStore;    // new pvHLoad = pvHStore
+
+	  // Note: we may not want to extract from the final row
+	  // Scores shared amongst all threads... so one single thread can do this
+
+	  // We don't let lastWordIdx do this because warp may not be active?
+	  uint8_t lr = pvHLoad[lastWordIdx];
+	  TAlScore sc = (TAlScore)(lr - 0xff);
+	  if(lr > lrmax) {
+	    lrmax = lr;
+	  }
+	  if(sc >= minsc) {
+	    // back tracking candidate addition
+	    btncand[btnfilled].init(nrow-1, i, lr);
+	    btnfilled++;
+	  }
+	  
+
+
+	  pvHStore = tmp;
+	  tmp = pvELoad;
+	  pvELoad  = pvEStore;
+	  pvEStore = tmp;
+
+    }
+
+    *btnfilled_ = btnfilled;
+    *lrmax_out = lrmax;
 }
 
 #endif // HIP_KERNELS

@@ -17,6 +17,7 @@
 #else // enabled SSE_SCALAR
  #define E_PER_WARP 1
  #define LANE_SIZE 1
+ #define MAX_QUERY_SIZE 604 // empirical value at the moment
 #endif // SSE_SCALAR
 
 #define SWSSE_INLINE_ONLY
@@ -175,6 +176,7 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 
 
        // Updates btnfilled and lrmax
+#ifndef SSE_SCALAR
        EEU8_alignNucleotides_HIP(
 	     (uint8_t*)profbuf, rf, rfd,
 	     (uint8_t*)mat,
@@ -184,6 +186,17 @@ void EEU8_alignNucleotidesBatch_HIP(int npar, int nels,
 	     gaps[0], gaps[1], gaps[2], gaps[3],
 	     &lrmax
 	     );
+#else
+       EEU8_alignNucleotidesScalar_HIP(
+	     (uint8_t*)profbuf, rf, rfd,
+	     (uint8_t*)mat,
+	     iter, colstride, lastWordIdx,
+	     minsc, nrow,
+	     btncand, &btnfilled,
+	     gaps[0], gaps[1], gaps[2], gaps[3],
+	     &lrmax
+	     );
+#endif
 
        // write back local lrmax to global memory
        __syncthreads();
