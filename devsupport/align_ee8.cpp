@@ -2,6 +2,24 @@
  * Simple exerciser of aligner_swsse_ee_u8.cpp
  */
 
+// assumed CDNA where warp size is 64. 32 on Nvidia and RDNA
+#ifndef WARP_SIZE
+#define WARP_SIZE 64
+#endif
+
+#ifndef SSE_SCALAR
+ #ifndef E_PER_WARP
+  #define E_PER_WARP 2
+ #endif
+ #ifndef LANE_SIZE
+  #define LANE_SIZE 32 // number of lanes used in this
+ #endif
+#else // enabled SSE_SCALAR
+ #define E_PER_WARP 1
+ #define LANE_SIZE 1
+ #define MAX_QUERY_SIZE 604 // empirical value at the moment
+#endif // SSE_SCALAR
+
 #define SWSSE_INLINE_ONLY
 
 #include "../aligner_swsse_ee_u8.cpp"
@@ -162,7 +180,7 @@ int load_and_align_ee8(const int npar, const int nels) {
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
-   SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL];
+   SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL*E_PER_WARP];
    char    *rf = new char[size_t(MAX_RF_EL)*nels];
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];
@@ -171,7 +189,7 @@ int load_and_align_ee8(const int npar, const int nels) {
    size_t  *minsc = new size_t[nels];
    size_t  *rfd = new size_t[nels];
    uint8_t *gaps = new uint8_t[4*nels];
-   DpBtCandidate    *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar];
+   DpBtCandidate    *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar*E_PER_WARP];
 
    auto t1 = std::chrono::high_resolution_clock::now();
    // test tool, don't worry about perfect cleanup
