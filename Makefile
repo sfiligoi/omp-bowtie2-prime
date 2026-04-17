@@ -44,17 +44,17 @@ CXX := amdclang++
 # CXX := hipcc
 
 # CPU-only
-#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR
+CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2
 
 #
 # GPU-enabled
-CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -faligned-new -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -faligned-new -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
 
 # Enable HIP. Use CXX=amdclang++ or CXX=hipcc
 # Warning with hybrid OPENMP Compilations
-CXXFLAGS += -std=c++20 --offload-arch=native -faligned-new
-CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__ -DHIP_ENABLE_WARP_SYNC_BUILTINS
+#CXXFLAGS += -std=c++20 --offload-arch=native -faligned-new
+#CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__ -DHIP_ENABLE_WARP_SYNC_BUILTINS
 
 #CXXFLAGS += -DNO_CHECK_PRINT # test_align_ee8 target will say SUCCESS regardless
 
@@ -63,7 +63,7 @@ CXXFLAGS += -x hip -DHIP_KERNELS -D__HIP_PLATFORM_AMD__ -DHIP_ENABLE_WARP_SYNC_B
 #CXXFLAGS += -DE_PER_WARP={1,2,4} -DLANE_SIZE=16 -mavx  -DSSE_AVX
 
 #CXXFLAGS += -DE_PER_WARP=1       -DLANE_SIZE=1
-CXXFLAGS += -DSSE_SCALAR  # interpretted on GPU as -DE_PER_WARP=1      -DLANE_SIZE=1 
+#CXXFLAGS += -DSSE_SCALAR  # interpretted on GPU as -DE_PER_WARP=1      -DLANE_SIZE=1 
 
 
 #

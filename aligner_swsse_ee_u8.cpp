@@ -1042,6 +1042,194 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	return lrmax;
 }
 
+
+/**
+ * Like the previous alignNucleotides, but the Scalar version allows to forfeit some extra strutures
+ *
+ * Select intput parameters:
+ *   profbuf - buffer for query profile & temp vecs
+ *   rf      - reference sequence
+ *
+ * Select output parameters:
+ *   pmat    - SSE matrix for holding all E, F, H vectors
+ *   btncand - cells we might backtrace from
+ */
+template<typename TIdxSize>
+inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
+					const char   rf[], const TIdxSize rfd,
+					SSERegI pmat[],
+					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
+					const TAlScore minsc, const size_t nrow,
+					DpBtCandidate btncand[], TIdxSize& btnfilled_,
+					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
+	// Set all elts to reference gap open penalty
+	SSERegI rfgapo   = sse_setzero_siall();
+	SSERegI rfgape   = sse_setzero_siall();
+	SSERegI rdgapo   = sse_setzero_siall();
+	SSERegI rdgape   = sse_setzero_siall();
+
+	assert_gt(refGapOpen, 0);
+	sse_fill_i8(refGapOpen, rfgapo);
+	
+	// Set all elts to reference gap extension penalty
+	assert_gt(refGapExtend, 0);
+	assert_leq(refGapExtend, refGapOpen);
+	sse_fill_i8(refGapExtend, rfgape);
+
+	// Set all elts to read gap open penalty
+	assert_gt(readGapOpen, 0);
+	sse_fill_i8(readGapOpen, rdgapo);
+	
+	// Set all elts to read gap extension penalty
+	assert_gt(readGapExtend, 0);
+	assert_leq(readGapExtend, readGapOpen);
+	sse_fill_i8(readGapExtend, rdgape);
+
+	assert_eq(ROWSTRIDE, colstride / iter);
+
+	// Initialize the H and E vectors in the first matrix column
+	{
+	  SSERegI *pvHTmp = pmat + SSEMatrixConsts::TMP;
+	  SSERegI *pvETmp = pmat + SSEMatrixConsts::E;
+	  SSERegI vlo      = sse_setzero_siall();
+	
+	  for(size_t i = 0; i < iter; i++) {
+		sse_store_siall(pvETmp, vlo);
+		sse_store_siall(pvHTmp, vlo); // start high in end-to-end mode
+		pvETmp += ROWSTRIDE;
+		pvHTmp += ROWSTRIDE;
+	  }
+	}
+
+	// These are swapped just before the innermost loop
+	SSERegI *pvHLoad  = pmat + SSEMatrixConsts::TMP;
+	SSERegI *pvHStore = pmat + SSEMatrixConsts::H;
+	SSERegI *pvELoad  = pmat + SSEMatrixConsts::E;
+	SSERegI *pvEStore = pmat + colstride + SSEMatrixConsts::E;
+	
+	// Maximum score in final row
+	EEU8_TCScore lrmax = MIN_U8;
+
+	// keep a local copy
+	TIdxSize btnfilled = 0;
+
+	// Fill in the table as usual but instead of using the same gap-penalty
+	// vector for each iteration of the inner loop, load words out of a
+	// pre-calculated gap vector parallel to the query profile.  The pre-
+	// calculated gap vectors enforce the gap barrier constraint by making it
+	// infinitely costly to introduce a gap in barrier rows.
+	//
+	// AND use a separate loop to fill in the first row of the table, enforcing
+	// the st_ constraints in the process.  This is awkward because it
+	// separates the processing of the first row from the others and might make
+	// it difficult to use the first-row results in the next row, but it might
+	// be the simplest and least disruptive way to deal with the st_ constraint.
+
+	for(TIdxSize i = 0; i < rfd; i++) {
+		
+		// Fetch the appropriate query profile.  Note that elements of rf must
+		// be numbers, not masks.
+		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
+		// points into the query profile
+		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
+	
+		SSERegI vf       = sse_setzero_siall();
+		// scalar version of EEU8_alignOne()
+		{
+		  // vhilsw: topmost (least sig) word set to 0xff, all other words=0
+		  SSERegI vhilsw   = sse_setzero_siall();
+		  sse_set_low_u8(0xff, vhilsw);	
+	
+		  // Set all cells to low value
+
+		  // Load H vector from the final row of the previous column
+		  SSERegI vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
+		  // Shift N bytes down so that topmost (least sig) cell gets 0
+		  vh = sse_slli_u8(vh);
+		  // Fill topmost (least sig) cell with high value
+		  vh = sse_or_siall(vh, vhilsw);
+
+		  SSERegI* pvScoreTmp  = (SSERegI*)pvScore;
+		  SSERegI* pvELoadTmp  = pvELoad;
+		  SSERegI* pvHLoadTmp  = pvHLoad;
+		  SSERegI* pvHStoreTmp = pvHStore;
+		  SSERegI* pvEStoreTmp = pvEStore;
+
+		  // For each character in the reference text:
+		  for(TIdxSize j = 0; j < iter; j++) {
+		  	SSERegI vs0 = sse_load_siall(pvScoreTmp);
+                          pvScore++;
+		  	SSERegI vs1 = sse_load_siall(pvScoreTmp);
+                          pvScore++;
+		  	// Load cells from E, calculated previously
+		  	SSERegI ve = sse_load_siall(pvELoadTmp);
+		  	pvELoadTmp += ROWSTRIDE;
+		  	
+		  	// Store cells in F, calculated previously
+		  	vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
+		  	
+		  	// Factor in query profile (matches and mismatches)
+		  	vh = sse_subs_epu8(vh, vs0);
+		  	
+		  	// Update H, factoring in E and F
+		  	vh = sse_max_epu8(vh, ve);
+		  	vh = sse_max_epu8(vh, vf);
+		  	
+		  	// Save the new vH values
+		  	sse_store_siall(pvHStoreTmp, vh);
+		  	pvHStoreTmp += ROWSTRIDE;
+		  	
+		  	// Update vE value
+		  	SSERegI vtmp = vh;
+		  	vh = sse_subs_epu8(vh, rdgapo);
+		  	vh = sse_subs_epu8(vh, vs1); // veto some read gap opens
+		  	ve = sse_subs_epu8(ve, rdgape);
+		  	ve = sse_max_epu8(ve, vh);
+
+		  	// Load the next h value
+		  	vh = sse_load_siall(pvHLoadTmp);
+		  	pvHLoadTmp += ROWSTRIDE;
+		  	
+		  	// Save E values
+		  	sse_store_siall(pvEStoreTmp, ve);
+		  	pvEStoreTmp += ROWSTRIDE;
+		  	
+		  	// Update vf value
+		  	vtmp = sse_subs_epu8(vtmp, rfgapo);
+		  	vf = sse_subs_epu8(vf, rfgape);
+		  	vf = sse_max_epu8(vf, vtmp);
+		  }
+		}
+
+		// else, no need for lazyF
+		SSERegI* pTmp = pvHLoad; // for swapping pointers
+		pvHLoad = pvHStore;    // new pvHLoad = pvHStore
+		
+		// Note: we may not want to extract from the final row
+		EEU8_TCScore lr = ((EEU8_TCScore*)(pvHLoad))[lastWordIdx];
+		TAlScore sc = (TAlScore)(lr - 0xff);
+		if(lr > lrmax) {
+			lrmax = lr;
+		}
+		if(sc >= minsc) {
+			// Yes, this is legit
+			btncand[btnfilled].init(nrow-1, i, lr);
+			btnfilled++;
+		}
+
+		// Adjust the load and store vectors here.  
+		
+		pvHStore = pTmp;
+		pTmp  = pvELoad;
+		pvELoad  = pvEStore;
+		pvEStore = pTmp;
+	}
+
+
+	btnfilled_ = btnfilled;  // pass it out
+	return lrmax;
+}
+
 #ifndef SWSSE_INLINE_ONLY
 /**
  * Align read 'rd' to reference using read & reference information given
@@ -1121,12 +1309,21 @@ bool SwAligner::alignEnd2EndSseU8(
 	uint16_t btnfilled = 0;
 	btncand_.resizeNoCopy(rflen_); // cannot be bigger that this
 
+#ifdef SSE_SCALAR
+	const EEU8_TCScore lrmax = EEU8_alignNucleotidesScalar<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
+					d.mat_.ptr(),
+                                        iter, d.mat_.colstride(), lastWordIdx,
+					minsc_, dpRows(),
+					btncand_.ptr(), btnfilled,
+					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+#else
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
 					d.mat_.ptr(),
                                         iter, d.mat_.colstride(), lastWordIdx,
 					minsc_, dpRows(),
 					btncand_.ptr(), btnfilled,
 					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+#endif
 	btncand_.trim(btnfilled);
 	state_ = STATE_ALIGNED;
 	cural_ = 0;
