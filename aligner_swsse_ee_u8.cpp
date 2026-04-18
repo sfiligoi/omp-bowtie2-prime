@@ -577,7 +577,6 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		// points into the query profile
 		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 	
-		SSERegI vf       = sse_setzero_siall();
 		// scalar version of EEU8_alignOne()
 		{
 		  // vhilsw: topmost (least sig) word set to 0xff, all other words=0
@@ -585,6 +584,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  sse_set_low_u8(0xff, vhilsw);	
 	
 		  // Set all cells to low value
+		  SSERegI vf       = sse_setzero_siall();
 
 		  // Load H vector from the final row of the previous column
 		  SSERegI vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
@@ -602,15 +602,15 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  // For each character in the reference text:
 		  for(TIdxSize j = 0; j < iter; j++) {
 		  	SSERegI vs0 = sse_load_siall(pvScoreTmp);
-                          pvScore++;
+                          pvScoreTmp++;
 		  	SSERegI vs1 = sse_load_siall(pvScoreTmp);
-                          pvScore++;
+                          pvScoreTmp++;
 		  	// Load cells from E, calculated previously
 		  	SSERegI ve = sse_load_siall(pvELoadTmp);
 		  	pvELoadTmp += ROWSTRIDE;
-		  	
-		  	// Store cells in F, calculated previously
-		  	vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
+
+			// Store cells in F, calculated previously
+			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
 		  	
 		  	// Factor in query profile (matches and mismatches)
 		  	vh = sse_subs_epu8(vh, vs0);
@@ -662,11 +662,9 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		}
 
 		// Adjust the load and store vectors here.  
-		
-		pvHStore = pTmp;
-		pTmp  = pvELoad;
-		pvELoad  = pvEStore;
-		pvEStore = pTmp;
+		pvHStore = pvHStore + colstride;
+		pvELoad  = pvELoad  + colstride;
+		pvEStore = pvEStore + colstride;
 	}
 
 
