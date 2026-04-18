@@ -119,12 +119,21 @@ int align_ee8_one(const int el, // for debuggging purpose
                 const int32_t ref_lrmax,
                 const int32_t ref_btnfilled) {
 	uint16_t btnfilled = 0;
+#ifndef SSE_SCALAR
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
                                         iter, colstride, lastWordIdx,
 					minsc, nrow,
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
+#else
+	const EEU8_TCScore lrmax = EEU8_alignNucleotidesScalar<uint16_t>(profbuf, rf, rfd,
+					mat,
+                                        iter, colstride, lastWordIdx,
+					minsc, nrow,
+					btncand, btnfilled,
+					gaps[0],gaps[1],gaps[2],gaps[3]);
+#endif
 	int nerrs = 0;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
 	if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
