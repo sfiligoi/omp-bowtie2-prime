@@ -17,7 +17,7 @@ int load_data(int nels,
 		size_t iter[],
 		size_t colstride[],
 		size_t lastWordIdx[],
-		size_t minsc[],
+		int32_t minsc[],
 		size_t rfd[],
                 SSERegI profbuf[],
 		char    rf[],
@@ -91,7 +91,7 @@ int align_ee8_one(const int el, // for debuggging purpose
 		const size_t iter,
 		const size_t colstride,
 		const size_t lastWordIdx,
-		const size_t minsc,
+		const int32_t minsc,
 		const size_t rfd,
                 const SSERegI *profbuf,
 		const char    *rf,
@@ -123,7 +123,7 @@ void align_ee8(const int npar, const int nels,
 		const size_t iter[],
 		const size_t colstride[],
 		const size_t lastWordIdx[],
-		const size_t minsc[],
+		const int32_t minsc[],
 		const size_t rfd[],
                 const SSERegI profbuf[],
 		const char    rf[],
@@ -168,7 +168,7 @@ int load_and_align_ee8(const int npar, const int nels) {
    size_t  *iter = new size_t[nels];
    size_t  *colstride = new size_t[nels];
    size_t  *lastWordIdx = new size_t[nels];
-   size_t  *minsc = new size_t[nels];
+   int32_t  *minsc = new int32_t[nels];
    size_t  *rfd = new size_t[nels];
    uint8_t *gaps = new uint8_t[4*nels];
    DpBtCandidate    *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar];
