@@ -109,10 +109,10 @@ int align_ee8_one(const int el, // for debuggging purpose
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 	int nerrs = 0;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
-	//if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
+	if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
 #ifndef NO_CHECK_PRINT
 	if (int(ref_lrmax) != int(lrmax)) fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",el,int(lrmax), int(ref_lrmax));
-	//if (int(ref_btnfilled) != int(btnfilled)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i != %i)\n",el,int(btnfilled), int(ref_btnfilled));
+	if (int(ref_btnfilled) != int(btnfilled)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i != %i)\n",el,int(btnfilled), int(ref_btnfilled));
 #endif
 	return nerrs;
 }
