@@ -531,22 +531,9 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 
 	assert_eq(ROWSTRIDE, colstride / iter);
 
-	// Initialize the H and E vectors in the first matrix column
-	{
-	  SSERegI *pvHTmp = pmat + SSEMatrixConsts::TMP;
-	  SSERegI *pvETmp = pmat + SSEMatrixConsts::E;
-	  SSERegI vlo      = sse_setzero_siall();
-	
-	  for(size_t i = 0; i < iter; i++) {
-		sse_store_siall(pvETmp, vlo);
-		sse_store_siall(pvHTmp, vlo); // start high in end-to-end mode
-		pvETmp += ROWSTRIDE;
-		pvHTmp += ROWSTRIDE;
-	  }
-	}
-
 	// These are swapped just before the innermost loop
-	SSERegI *pvHLoad  = pmat + SSEMatrixConsts::TMP;
+	//SSERegI *pvHLoad  = pmat + SSEMatrixConsts::TMP;
+	SSERegI *pvHLoad  = NULL;
 	SSERegI *pvHStore = pmat + SSEMatrixConsts::H;
 	SSERegI *pvELoad  = pmat + SSEMatrixConsts::E;
 	SSERegI *pvEStore = pmat + colstride + SSEMatrixConsts::E;
@@ -586,12 +573,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  // Set all cells to low value
 		  SSERegI vf       = sse_setzero_siall();
 
-		  // Load H vector from the final row of the previous column
-		  SSERegI vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
-		  // Shift N bytes down so that topmost (least sig) cell gets 0
-		  vh = sse_slli_u8(vh);
-		  // Fill topmost (least sig) cell with high value
-		  vh = sse_or_siall(vh, vhilsw);
+		  // in scalar mode, we always start high
+		  SSERegI vh = vhilsw; //0xff
 
 		  SSERegI* pvScoreTmp  = (SSERegI*)pvScore;
 		  SSERegI* pvELoadTmp  = pvELoad;
@@ -606,7 +589,12 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  	SSERegI vs1 = sse_load_siall(pvScoreTmp);
                           pvScoreTmp++;
 		  	// Load cells from E, calculated previously
-		  	SSERegI ve = sse_load_siall(pvELoadTmp);
+			SSERegI ve;
+			if (i==0) {
+				ve = sse_setzero_siall();
+			} else {
+			  	ve = sse_load_siall(pvELoadTmp); // j*ROWSTRIDE+E 
+			}
 		  	pvELoadTmp += ROWSTRIDE;
 
 			// Store cells in F, calculated previously
@@ -620,7 +608,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  	vh = sse_max_epu8(vh, vf);
 		  	
 		  	// Save the new vH values
-		  	sse_store_siall(pvHStoreTmp, vh);
+		  	sse_store_siall(pvHStoreTmp, vh); //j*ROWSTRIDE+H
 		  	pvHStoreTmp += ROWSTRIDE;
 		  	
 		  	// Update vE value
@@ -631,11 +619,15 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  	ve = sse_max_epu8(ve, vh);
 
 		  	// Load the next h value
-		  	vh = sse_load_siall(pvHLoadTmp);
+			if (i==0) {
+				vh = sse_setzero_siall(); // start high in end-to-end mode
+			} else {
+		  		vh = sse_load_siall(pvHLoadTmp); //j*ROWSTRIDE+H - colstride
+			}
 		  	pvHLoadTmp += ROWSTRIDE;
 		  	
 		  	// Save E values
-		  	sse_store_siall(pvEStoreTmp, ve);
+		  	sse_store_siall(pvEStoreTmp, ve); //J*ROWSTRIDE+E + colstride
 		  	pvEStoreTmp += ROWSTRIDE;
 		  	
 		  	// Update vf value
@@ -645,8 +637,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  }
 		}
 
-		// else, no need for lazyF
-		SSERegI* pTmp = pvHLoad; // for swapping pointers
+		// H
 		pvHLoad = pvHStore;    // new pvHLoad = pvHStore
 		
 		// Note: we may not want to extract from the final row
