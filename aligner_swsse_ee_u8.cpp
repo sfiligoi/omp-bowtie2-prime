@@ -513,8 +513,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 					DpBtCandidate btncand[], TIdxSize& btnfilled_,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
 	// Set all elts to reference gap open penalty
-	SSERegI pvE[MAX_QUERY_SIZE*2];
-	SSERegI pvH[MAX_QUERY_SIZE*2];
+	uint8_t pvE[MAX_QUERY_SIZE*2];
+	uint8_t pvH[MAX_QUERY_SIZE*2];
 	// equivalently the max query size is the size of the column in scalar mode
 	// so variable 'iter' can be used
 	uint32_t pvOffset = MAX_QUERY_SIZE;
