@@ -532,11 +532,10 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 	assert_eq(ROWSTRIDE, colstride / iter);
 
 	// These are swapped just before the innermost loop
-	//SSERegI *pvHLoad  = pmat + SSEMatrixConsts::TMP;
 	SSERegI *pvHLoad  = NULL;
+	SSERegI *pvELoad  = NULL;
 	SSERegI *pvHStore = pmat + SSEMatrixConsts::H;
-	SSERegI *pvELoad  = pmat + SSEMatrixConsts::E;
-	SSERegI *pvEStore = pmat + colstride + SSEMatrixConsts::E;
+	SSERegI *pvEStore = pmat + SSEMatrixConsts::E;
 	
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
@@ -652,9 +651,10 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 			btnfilled++;
 		}
 
-		// Adjust the load and store vectors here.  
+		pvELoad = pvEStore;
+
+		// Adjust the store vectors here.  
 		pvHStore = pvHStore + colstride;
-		pvELoad  = pvELoad  + colstride;
 		pvEStore = pvEStore + colstride;
 	}
 
