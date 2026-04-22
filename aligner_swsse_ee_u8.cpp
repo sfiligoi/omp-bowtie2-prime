@@ -77,6 +77,13 @@
 
 typedef uint8_t EEU8_TCScore;
 
+
+// Helper for saturating subtraction (unsigned 8-bit)
+// since there is no such thing in standard C++.
+constexpr uint8_t subs_u8(uint8_t a, uint8_t b) {
+    return a-std::min(a,b);
+}
+
 /**
  * Build query profile look up tables for the read.  The query profile look
  * up table is organized as a 1D array indexed by [i][j] where i is the
@@ -507,50 +514,26 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 					DpBtCandidate btncand[], TIdxSize& btnfilled_,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
 	// Set all elts to reference gap open penalty
-	SSERegI rfgapo   = sse_setzero_siall();
-	SSERegI rfgape   = sse_setzero_siall();
-	SSERegI rdgapo   = sse_setzero_siall();
-	SSERegI rdgape   = sse_setzero_siall();
 
 	assert_gt(refGapOpen, 0);
-	sse_fill_i8(refGapOpen, rfgapo);
+	uint8_t rfgapo = uint8_t(refGapOpen);
 	
 	// Set all elts to reference gap extension penalty
 	assert_gt(refGapExtend, 0);
 	assert_leq(refGapExtend, refGapOpen);
-	sse_fill_i8(refGapExtend, rfgape);
+	uint8_t rfgape = uint8_t(refGapExtend);
 
 	// Set all elts to read gap open penalty
 	assert_gt(readGapOpen, 0);
-	sse_fill_i8(readGapOpen, rdgapo);
+	uint8_t rdgapo = uint8_t(readGapOpen);
 	
 	// Set all elts to read gap extension penalty
 	assert_gt(readGapExtend, 0);
 	assert_leq(readGapExtend, readGapOpen);
-	sse_fill_i8(readGapExtend, rdgape);
+	uint8_t rdgape = uint8_t(readGapExtend);
 
 	assert_eq(ROWSTRIDE, colstride / iter);
 
-	// Initialize the H and E vectors in the first matrix column
-	{
-	  SSERegI *pvHTmp = pmat + SSEMatrixConsts::TMP;
-	  SSERegI *pvETmp = pmat + SSEMatrixConsts::E;
-	  SSERegI vlo      = sse_setzero_siall();
-	
-	  for(size_t i = 0; i < iter; i++) {
-		sse_store_siall(pvETmp, vlo);
-		sse_store_siall(pvHTmp, vlo); // start high in end-to-end mode
-		pvETmp += ROWSTRIDE;
-		pvHTmp += ROWSTRIDE;
-	  }
-	}
-
-	// These are swapped just before the innermost loop
-	SSERegI *pvHLoad  = pmat + SSEMatrixConsts::TMP;
-	SSERegI *pvHStore = pmat + SSEMatrixConsts::H;
-	SSERegI *pvELoad  = pmat + SSEMatrixConsts::E;
-	SSERegI *pvEStore = pmat + colstride + SSEMatrixConsts::E;
-	
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
 
@@ -575,82 +558,72 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		// be numbers, not masks.
 		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
 		// points into the query profile
-		const SSERegI *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
+		//const uint8_t *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 	
 		// scalar version of EEU8_alignOne()
 		{
 		  // vhilsw: topmost (least sig) word set to 0xff, all other words=0
-		  SSERegI vhilsw   = sse_setzero_siall();
-		  sse_set_low_u8(0xff, vhilsw);	
+		  uint8_t vhilsw   = 0xff;
 	
 		  // Set all cells to low value
-		  SSERegI vf       = sse_setzero_siall();
+		  uint8_t vf       = 0;
 
-		  // Load H vector from the final row of the previous column
-		  SSERegI vh = sse_load_siall(pvHLoad + colstride - ROWSTRIDE);
-		  // Shift N bytes down so that topmost (least sig) cell gets 0
-		  vh = sse_slli_u8(vh);
-		  // Fill topmost (least sig) cell with high value
-		  vh = sse_or_siall(vh, vhilsw);
-
-		  SSERegI* pvScoreTmp  = (SSERegI*)pvScore;
-		  SSERegI* pvELoadTmp  = pvELoad;
-		  SSERegI* pvHLoadTmp  = pvHLoad;
-		  SSERegI* pvHStoreTmp = pvHStore;
-		  SSERegI* pvEStoreTmp = pvEStore;
+		  // in scalar mode, we always start high
+		  uint8_t vh = vhilsw; //0xff
 
 		  // For each character in the reference text:
 		  for(TIdxSize j = 0; j < iter; j++) {
-		  	SSERegI vs0 = sse_load_siall(pvScoreTmp);
-                          pvScoreTmp++;
-		  	SSERegI vs1 = sse_load_siall(pvScoreTmp);
-                          pvScoreTmp++;
+		  	uint8_t vs0 = profbuf[off+2*j];    // pvScore[2*j]
+		  	uint8_t vs1 = profbuf[off+2*j+1];
+
 		  	// Load cells from E, calculated previously
-		  	SSERegI ve = sse_load_siall(pvELoadTmp);
-		  	pvELoadTmp += ROWSTRIDE;
+			uint8_t ve;
+			if (i==0) {
+				ve = 0;
+			} else {
+			  	ve = pmat[(i-1)*colstride + j*ROWSTRIDE+SSEMatrixConsts::E];
+			}
 
 			// Store cells in F, calculated previously
-			vf = sse_subs_epu8(vf, vs1); // veto some ref gap extensions
+			vf = subs_u8(vf, vs1); // veto some ref gap extensions
 		  	
 		  	// Factor in query profile (matches and mismatches)
-		  	vh = sse_subs_epu8(vh, vs0);
+		  	vh = subs_u8(vh, vs0);
 		  	
 		  	// Update H, factoring in E and F
-		  	vh = sse_max_epu8(vh, ve);
-		  	vh = sse_max_epu8(vh, vf);
+		  	vh = std::max(vh, ve);
+		  	vh = std::max(vh, vf);
 		  	
 		  	// Save the new vH values
-		  	sse_store_siall(pvHStoreTmp, vh);
-		  	pvHStoreTmp += ROWSTRIDE;
+		  	pmat[i*colstride + j*ROWSTRIDE+SSEMatrixConsts::H] = vh;
 		  	
 		  	// Update vE value
-		  	SSERegI vtmp = vh;
-		  	vh = sse_subs_epu8(vh, rdgapo);
-		  	vh = sse_subs_epu8(vh, vs1); // veto some read gap opens
-		  	ve = sse_subs_epu8(ve, rdgape);
-		  	ve = sse_max_epu8(ve, vh);
+		  	uint8_t vtmp = vh;
+		  	vh = subs_u8(vh, rdgapo);
+		  	vh = subs_u8(vh, vs1); // veto some read gap opens
+		  	ve = subs_u8(ve, rdgape);
+		  	ve = std::max(ve, vh);
 
 		  	// Load the next h value
-		  	vh = sse_load_siall(pvHLoadTmp);
-		  	pvHLoadTmp += ROWSTRIDE;
+			if (i==0) {
+				vh = 0; // start high in end-to-end mode
+			} else {
+		  		vh = pmat[(i-1)*colstride + j*ROWSTRIDE+SSEMatrixConsts::H];
+			}
 		  	
 		  	// Save E values
-		  	sse_store_siall(pvEStoreTmp, ve);
-		  	pvEStoreTmp += ROWSTRIDE;
+		  	pmat[i*colstride + j*ROWSTRIDE+SSEMatrixConsts::E] = ve;
 		  	
 		  	// Update vf value
-		  	vtmp = sse_subs_epu8(vtmp, rfgapo);
-		  	vf = sse_subs_epu8(vf, rfgape);
-		  	vf = sse_max_epu8(vf, vtmp);
+		  	vtmp = subs_u8(vtmp, rfgapo);
+		  	vf = subs_u8(vf, rfgape);
+		  	vf = std::max(vf, vtmp);
 		  }
 		}
 
-		// else, no need for lazyF
-		SSERegI* pTmp = pvHLoad; // for swapping pointers
-		pvHLoad = pvHStore;    // new pvHLoad = pvHStore
-		
 		// Note: we may not want to extract from the final row
-		EEU8_TCScore lr = ((EEU8_TCScore*)(pvHLoad))[lastWordIdx];
+		//       EEU8_TCScore == uint8_t == uint8_t
+		EEU8_TCScore lr = pmat[i*colstride + SSEMatrixConsts::H + lastWordIdx];
 		TAlScore sc = (TAlScore)(lr - 0xff);
 		if(lr > lrmax) {
 			lrmax = lr;
@@ -661,10 +634,6 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 			btnfilled++;
 		}
 
-		// Adjust the load and store vectors here.  
-		pvHStore = pvHStore + colstride;
-		pvELoad  = pvELoad  + colstride;
-		pvEStore = pvEStore + colstride;
 	}
 
 
