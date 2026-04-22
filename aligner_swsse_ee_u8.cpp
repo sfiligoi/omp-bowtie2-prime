@@ -582,7 +582,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 			if (i==0) {
 				ve = sse_setzero_siall();
 			} else {
-			  	ve = sse_load_siall(pmat + (i-1)*colstride + j*ROWSTRIDE+SSEMatrixConsts::E);
+			  	ve = pmat[(i-1)*colstride + j*ROWSTRIDE+SSEMatrixConsts::E];
 			}
 
 			// Store cells in F, calculated previously
@@ -596,7 +596,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  	vh = sse_max_epu8(vh, vf);
 		  	
 		  	// Save the new vH values
-		  	sse_store_siall(pmat + i*colstride + j*ROWSTRIDE+SSEMatrixConsts::H, vh);
+		  	pmat[i*colstride + j*ROWSTRIDE+SSEMatrixConsts::H] = vh;
 		  	
 		  	// Update vE value
 		  	SSERegI vtmp = vh;
@@ -609,11 +609,11 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 			if (i==0) {
 				vh = sse_setzero_siall(); // start high in end-to-end mode
 			} else {
-		  		vh = sse_load_siall(pmat + (i-1)*colstride + j*ROWSTRIDE+SSEMatrixConsts::H);
+		  		vh = pmat[(i-1)*colstride + j*ROWSTRIDE+SSEMatrixConsts::H];
 			}
 		  	
 		  	// Save E values
-		  	sse_store_siall(pmat + i*colstride + j*ROWSTRIDE+SSEMatrixConsts::E, ve);
+		  	pmat[i*colstride + j*ROWSTRIDE+SSEMatrixConsts::E] = ve;
 		  	
 		  	// Update vf value
 		  	vtmp = sse_subs_epu8(vtmp, rfgapo);
@@ -622,9 +622,9 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  }
 		}
 
-	        SSERegI* pvHLoad = pmat + i*colstride + SSEMatrixConsts::H;
 		// Note: we may not want to extract from the final row
-		EEU8_TCScore lr = ((EEU8_TCScore*)(pvHLoad))[lastWordIdx];
+		//       EEU8_TCScore == SSERegI == uint8_t
+		EEU8_TCScore lr = pmat[i*colstride + SSEMatrixConsts::H + lastWordIdx];
 		TAlScore sc = (TAlScore)(lr - 0xff);
 		if(lr > lrmax) {
 			lrmax = lr;
