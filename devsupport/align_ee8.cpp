@@ -2,6 +2,24 @@
  * Simple exerciser of aligner_swsse_ee_u8.cpp
  */
 
+// assumed CDNA where warp size is 64. 32 on Nvidia and RDNA
+#ifndef WARP_SIZE
+#define WARP_SIZE 64
+#endif
+
+#ifndef SSE_FAST_SCALAR
+ #ifndef E_PER_WARP
+  #define E_PER_WARP 2
+ #endif
+ #ifndef LANE_SIZE
+  #define LANE_SIZE 32 // number of lanes used in this
+ #endif
+#else // enabled SSE_FAST_SCALAR
+ #define E_PER_WARP 1
+ #define LANE_SIZE 1
+ #define MAX_QUERY_SIZE 604 // empirical value at the moment
+#endif // SSE_FAST_SCALAR
+
 #define SWSSE_INLINE_ONLY
 
 #include "../aligner_swsse_ee_u8.cpp"
@@ -101,12 +119,20 @@ int align_ee8_one(const int el, // for debuggging purpose
                 const int32_t ref_lrmax,
                 const int32_t ref_btnfilled) {
 	uint16_t btnfilled = 0;
+#ifndef SSE_FAST_SCALAR
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
                                         iter, colstride, lastWordIdx,
 					minsc, nrow,
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
+#else
+	const EEU8_TCScore lrmax = EEU8_alignNucleotidesScalar<uint16_t>(profbuf, rf, rfd,
+                                        iter, colstride, lastWordIdx,
+					minsc, nrow,
+					btncand, btnfilled,
+					gaps[0],gaps[1],gaps[2],gaps[3]);
+#endif
 	int nerrs = 0;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
 	if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
@@ -162,7 +188,11 @@ int load_and_align_ee8(const int npar, const int nels) {
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
+#ifndef FAST_SSE_SCALAR // matrix won't be used in fast scalar
    SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL];
+#else
+   SSERegI *mat = nullptr;
+#endif
    char    *rf = new char[size_t(MAX_RF_EL)*nels];
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];

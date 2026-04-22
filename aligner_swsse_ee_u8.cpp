@@ -77,6 +77,13 @@
 
 typedef uint8_t EEU8_TCScore;
 
+
+// Helper for saturating subtraction (unsigned 8-bit)
+// since there is no such thing in standard C++.
+constexpr uint8_t subs_u8(uint8_t a, uint8_t b) {
+    return a-std::min(a,b);
+}
+
 /**
  * Build query profile look up tables for the read.  The query profile look
  * up table is organized as a 1D array indexed by [i][j] where i is the
@@ -486,6 +493,156 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	return lrmax;
 }
 
+
+/**
+ * Like the previous alignNucleotides, but the Scalar version allows to forfeit some extra strutures
+ *
+ * Select intput parameters:
+ *   profbuf - buffer for query profile & temp vecs
+ *   rf      - reference sequence
+ *
+ * Select output parameters:
+ *   pmat    - SSE matrix for holding all E, F, H vectors
+ *   btncand - cells we might backtrace from
+ */
+template<typename TIdxSize>
+inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
+					const char   rf[], const TIdxSize rfd,
+					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
+					const TAlScore minsc, const size_t nrow,
+					DpBtCandidate btncand[], TIdxSize& btnfilled_,
+					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
+	// Set all elts to reference gap open penalty
+	uint8_t pvE[MAX_QUERY_SIZE*2];
+	uint8_t pvH[MAX_QUERY_SIZE*2];
+	// equivalently the max query size is the size of the column in scalar mode
+	// so variable 'iter' can be used
+	uint32_t pvOffset = MAX_QUERY_SIZE;
+
+	assert_gt(refGapOpen, 0);
+	uint8_t rfgapo = uint8_t(refGapOpen);
+	
+	// Set all elts to reference gap extension penalty
+	assert_gt(refGapExtend, 0);
+	assert_leq(refGapExtend, refGapOpen);
+	uint8_t rfgape = uint8_t(refGapExtend);
+
+	// Set all elts to read gap open penalty
+	assert_gt(readGapOpen, 0);
+	uint8_t rdgapo = uint8_t(readGapOpen);
+	
+	// Set all elts to read gap extension penalty
+	assert_gt(readGapExtend, 0);
+	assert_leq(readGapExtend, readGapOpen);
+	uint8_t rdgape = uint8_t(readGapExtend);
+
+	assert_eq(ROWSTRIDE, colstride / iter);
+
+	// Maximum score in final row
+	EEU8_TCScore lrmax = MIN_U8;
+
+	// keep a local copy
+	TIdxSize btnfilled = 0;
+
+	// Initialize the H and E vectors in the first matrix column
+	for(size_t i = 0; i < iter; i++) {
+	      pvE[i] = 0;
+	      pvH[i] = 0;
+	}
+
+	// Fill in the table as usual but instead of using the same gap-penalty
+	// vector for each iteration of the inner loop, load words out of a
+	// pre-calculated gap vector parallel to the query profile.  The pre-
+	// calculated gap vectors enforce the gap barrier constraint by making it
+	// infinitely costly to introduce a gap in barrier rows.
+	//
+	// AND use a separate loop to fill in the first row of the table, enforcing
+	// the st_ constraints in the process.  This is awkward because it
+	// separates the processing of the first row from the others and might make
+	// it difficult to use the first-row results in the next row, but it might
+	// be the simplest and least disruptive way to deal with the st_ constraint.
+
+	for(TIdxSize i = 0; i < rfd; i++) {
+		
+		// Fetch the appropriate query profile.  Note that elements of rf must
+		// be numbers, not masks.
+		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
+		// points into the query profile
+		//const uint8_t *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
+	
+		// scalar version of EEU8_alignOne()
+		{
+		  // vhilsw: topmost (least sig) word set to 0xff, all other words=0
+		  uint8_t vhilsw   = 0xff;
+	
+		  // Set all cells to low value
+		  uint8_t vf       = 0;
+
+		  // in scalar mode, we always start high
+		  uint8_t vh = vhilsw; //0xff
+
+		  // For each character in the reference text:
+		  for(TIdxSize j = 0; j < iter; j++) {
+		  	uint8_t vs0 = profbuf[off+2*j];    // pvScore[2*j]
+		  	uint8_t vs1 = profbuf[off+2*j+1];
+
+		  	// Load cells from E, calculated previously
+			uint8_t ve;
+			ve =  pvE[(i%2)*pvOffset+j];
+
+			// Store cells in F, calculated previously
+			vf = subs_u8(vf, vs1); // veto some ref gap extensions
+		  	
+		  	// Factor in query profile (matches and mismatches)
+		  	vh = subs_u8(vh, vs0);
+		  	
+		  	// Update H, factoring in E and F
+		  	vh = std::max(vh, ve);
+		  	vh = std::max(vh, vf);
+		  	
+		  	// Save the new vH values
+			pvH[((i+1)%2)*pvOffset+j] = vh;
+		  	
+		  	// Update vE value
+		  	uint8_t vtmp = vh;
+		  	vh = subs_u8(vh, rdgapo);
+		  	vh = subs_u8(vh, vs1); // veto some read gap opens
+		  	ve = subs_u8(ve, rdgape);
+		  	ve = std::max(ve, vh);
+
+		  	// Load the next h value
+			vh = pvH[(i%2)*pvOffset + j];
+		  	
+		  	// Save E values
+		  	pvE[((i+1)%2)*pvOffset + j] = ve;
+		  	
+		  	// Update vf value
+		  	vtmp = subs_u8(vtmp, rfgapo);
+		  	vf = subs_u8(vf, rfgape);
+		  	vf = std::max(vf, vtmp);
+		  }
+		}
+
+		// Note: we may not want to extract from the final row
+		//       EEU8_TCScore == uint8_t == uint8_t
+		EEU8_TCScore lr = pvH[((i+1)%2)*pvOffset+ iter - 1];
+		TAlScore sc = (TAlScore)(lr - 0xff);
+		if(lr > lrmax) {
+			lrmax = lr;
+		}
+		if(sc >= minsc) {
+			// Yes, this is legit
+			btncand[btnfilled].init(nrow-1, i, lr);
+			btnfilled++;
+		}
+
+	}
+
+
+	btnfilled_ = btnfilled;  // pass it out
+	return lrmax;
+}
+
 #ifndef SWSSE_INLINE_ONLY
 /**
  * Align read 'rd' to reference using read & reference information given
@@ -565,12 +722,21 @@ bool SwAligner::alignEnd2EndSseU8(
 	uint16_t btnfilled = 0;
 	btncand_.resizeNoCopy(rflen_); // cannot be bigger that this
 
+#ifdef SSE_FAST_SCALAR
+	const EEU8_TCScore lrmax = EEU8_alignNucleotidesScalar<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
+					d.mat_.ptr(),
+                                        iter, d.mat_.colstride(), lastWordIdx,
+					minsc_, dpRows(),
+					btncand_.ptr(), btnfilled,
+					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+#else
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
 					d.mat_.ptr(),
                                         iter, d.mat_.colstride(), lastWordIdx,
 					minsc_, dpRows(),
 					btncand_.ptr(), btnfilled,
 					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+#endif
 	btncand_.trim(btnfilled);
 	state_ = STATE_ALIGNED;
 	cural_ = 0;
