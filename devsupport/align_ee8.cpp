@@ -7,18 +7,18 @@
 #define WARP_SIZE 64
 #endif
 
-#ifndef SSE_SCALAR
+#ifndef SSE_FAST_SCALAR
  #ifndef E_PER_WARP
   #define E_PER_WARP 2
  #endif
  #ifndef LANE_SIZE
   #define LANE_SIZE 32 // number of lanes used in this
  #endif
-#else // enabled SSE_SCALAR
+#else // enabled SSE_FAST_SCALAR
  #define E_PER_WARP 1
  #define LANE_SIZE 1
  #define MAX_QUERY_SIZE 604 // empirical value at the moment
-#endif // SSE_SCALAR
+#endif // SSE_FAST_SCALAR
 
 #define SWSSE_INLINE_ONLY
 
@@ -119,7 +119,7 @@ int align_ee8_one(const int el, // for debuggging purpose
                 const int32_t ref_lrmax,
                 const int32_t ref_btnfilled) {
 	uint16_t btnfilled = 0;
-#ifndef SSE_SCALAR
+#ifndef SSE_FAST_SCALAR
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
                                         iter, colstride, lastWordIdx,
@@ -128,7 +128,6 @@ int align_ee8_one(const int el, // for debuggging purpose
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 #else
 	const EEU8_TCScore lrmax = EEU8_alignNucleotidesScalar<uint16_t>(profbuf, rf, rfd,
-					mat,
                                         iter, colstride, lastWordIdx,
 					minsc, nrow,
 					btncand, btnfilled,
@@ -189,7 +188,11 @@ int load_and_align_ee8(const int npar, const int nels) {
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
-   SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL*E_PER_WARP];
+#ifndef FAST_SSE_SCALAR // matrix won't be used in fast scalar
+   SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL];
+#else
+   SSERegI *mat = nullptr;
+#endif
    char    *rf = new char[size_t(MAX_RF_EL)*nels];
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];
@@ -198,7 +201,7 @@ int load_and_align_ee8(const int npar, const int nels) {
    size_t  *minsc = new size_t[nels];
    size_t  *rfd = new size_t[nels];
    uint8_t *gaps = new uint8_t[4*nels];
-   DpBtCandidate    *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar*E_PER_WARP];
+   DpBtCandidate    *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar];
 
    auto t1 = std::chrono::high_resolution_clock::now();
    // test tool, don't worry about perfect cleanup
