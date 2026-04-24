@@ -495,22 +495,20 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 
 
 /**
- * Like the previous alignNucleotides, but the Scalar version allows to forfeit some extra strutures
+ * Like the previous alignNucleotides, but the Scalar version allows to forfeit some extra strutures.
+ * Note that this version does not return the E, F, H vectors.
+ * If those are needed, e.g. when (lrmax - 0xff)>=minsc, i.e. btnfilled>0, use the regular, full version.
  *
  * Select intput parameters:
  *   profbuf - buffer for query profile & temp vecs
  *   rf      - reference sequence
  *
- * Select output parameters:
- *   pmat    - SSE matrix for holding all E, F, H vectors
- *   btncand - cells we might backtrace from
  */
 template<typename TIdxSize>
 inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 					const char   rf[], const TIdxSize rfd,
 					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
-					const TAlScore minsc, const size_t nrow,
-					DpBtCandidate btncand[], TIdxSize& btnfilled_,
+					const size_t nrow,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
 	// Set all elts to reference gap open penalty
 	uint8_t pvE[MAX_QUERY_SIZE*2];
@@ -540,9 +538,6 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
-
-	// keep a local copy
-	TIdxSize btnfilled = 0;
 
 	// Initialize the H and E vectors in the first matrix column
 	for(size_t i = 0; i < iter; i++) {
@@ -626,20 +621,11 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		// Note: we may not want to extract from the final row
 		//       EEU8_TCScore == uint8_t == uint8_t
 		EEU8_TCScore lr = pvH[((i+1)%2)*pvOffset+ iter - 1];
-		TAlScore sc = (TAlScore)(lr - 0xff);
 		if(lr > lrmax) {
 			lrmax = lr;
 		}
-		if(sc >= minsc) {
-			// Yes, this is legit
-			btncand[btnfilled].init(nrow-1, i, lr);
-			btnfilled++;
-		}
-
 	}
 
-
-	btnfilled_ = btnfilled;  // pass it out
 	return lrmax;
 }
 
