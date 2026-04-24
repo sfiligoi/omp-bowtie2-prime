@@ -51,6 +51,7 @@ CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_FAST_SCALAR -D
 #
 # GPU-enabled
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2 -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_FAST_SCALAR -DSSE_SCALAR -DNO_CHECK_PRINT -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm
 
 # Enable HIP. Use CXX=amdclang++ or CXX=hipcc 
 # Warning with hybrid OPENMP Compilations
