@@ -504,18 +504,12 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
  *   rf      - reference sequence
  *
  */
-template<typename TIdxSize>
-inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
+template<typename TIdxSize=uint16_t, uint16_t MAX_ITER=151>
+inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 					const char   rf[], const TIdxSize rfd,
 					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
 					const size_t nrow,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
-	// Set all elts to reference gap open penalty
-	uint8_t pvE[MAX_QUERY_SIZE*2];
-	uint8_t pvH[MAX_QUERY_SIZE*2];
-	// equivalently the max query size is the size of the column in scalar mode
-	// so variable 'iter' can be used
-	uint32_t pvOffset = MAX_QUERY_SIZE;
 
 	assert_gt(refGapOpen, 0);
 	uint8_t rfgapo = uint8_t(refGapOpen);
@@ -539,11 +533,10 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
 
+	// Set all elts to reference gap open penalty
 	// Initialize the H and E vectors in the first matrix column
-	for(size_t i = 0; i < iter; i++) {
-	      pvE[i] = 0;
-	      pvH[i] = 0;
-	}
+	uint8_t pvE[MAX_ITER] = {0};
+	uint8_t pvH[MAX_ITER] = {0};
 
 	// Fill in the table as usual but instead of using the same gap-penalty
 	// vector for each iteration of the inner loop, load words out of a
@@ -582,8 +575,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  	uint8_t vs1 = profbuf[off+2*j+1];
 
 		  	// Load cells from E, calculated previously
-			uint8_t ve;
-			ve =  pvE[(i%2)*pvOffset+j];
+			uint8_t ve = pvE[j];
 
 			// Store cells in F, calculated previously
 			vf = subs_u8(vf, vs1); // veto some ref gap extensions
@@ -596,22 +588,22 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 		  	vh = std::max(vh, vf);
 		  	
 		  	// Save the new vH values
-			pvH[((i+1)%2)*pvOffset+j] = vh;
+		  	uint8_t vtmp = vh;
 		  	
 		  	// Update vE value
-		  	uint8_t vtmp = vh;
 		  	vh = subs_u8(vh, rdgapo);
 		  	vh = subs_u8(vh, vs1); // veto some read gap opens
 		  	ve = subs_u8(ve, rdgape);
 		  	ve = std::max(ve, vh);
 
 		  	// Load the next h value
-			vh = pvH[(i%2)*pvOffset + j];
+			vh = pvH[j];
 		  	
-		  	// Save E values
-		  	pvE[((i+1)%2)*pvOffset + j] = ve;
+		  	// Save E and H values for next i round
+		  	pvE[j] = ve;
+		  	pvH[j] = vtmp;
 		  	
-		  	// Update vf value
+		  	// Update vf value for next round
 		  	vtmp = subs_u8(vtmp, rfgapo);
 		  	vf = subs_u8(vf, rfgape);
 		  	vf = std::max(vf, vtmp);
@@ -620,7 +612,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const SSERegI profbuf[],
 
 		// Note: we may not want to extract from the final row
 		//       EEU8_TCScore == uint8_t == uint8_t
-		EEU8_TCScore lr = pvH[((i+1)%2)*pvOffset+ iter - 1];
+		EEU8_TCScore lr = pvH[iter - 1];
 		if(lr > lrmax) {
 			lrmax = lr;
 		}
