@@ -507,7 +507,6 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 template<typename TIdxSize=uint16_t, uint16_t MAX_ITER=151>
 inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 					const char   rf[], const TIdxSize rfd,
-					const TIdxSize iter_, const size_t colstride, const size_t lastWordIdx,
 					const size_t nrow,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
         class TPackedEH {
@@ -541,8 +540,6 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 	assert_gt(readGapExtend, 0);
 	assert_leq(readGapExtend, readGapOpen);
 	uint8_t rdgape = uint8_t(readGapExtend);
-
-	assert_eq(ROWSTRIDE, colstride / iter);
 
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
