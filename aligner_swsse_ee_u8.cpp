@@ -510,6 +510,18 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
 					const size_t nrow,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
+        class TPackedEH {
+	private:
+		uint16_t val;
+	public:
+		constexpr TPackedEH() : val(0) {};
+		constexpr TPackedEH(const TPackedEH& other) : val(other.val) {}
+
+		constexpr void set(uint8_t E, uint8_t H) { val = (uint16_t(H)<<8) + uint16_t(E);}
+
+		constexpr uint8_t get_E() const {return uint8_t(val); }
+		constexpr uint8_t get_H() const {return uint8_t(val>>8); }
+	};
 
 	assert_gt(refGapOpen, 0);
 	uint8_t rfgapo = uint8_t(refGapOpen);
@@ -534,9 +546,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 	EEU8_TCScore lrmax = MIN_U8;
 
 	// Set all elts to reference gap open penalty
-	// Initialize the H and E vectors in the first matrix column
-	uint8_t pvE[MAX_ITER] = {0};
-	uint8_t pvH[MAX_ITER] = {0};
+	// iAutomatic initialize the H and E vectors in the first matrix column
+	TPackedEH bufEH[MAX_ITER];
 
 	// Fill in the table as usual but instead of using the same gap-penalty
 	// vector for each iteration of the inner loop, load words out of a
@@ -575,8 +586,9 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  	uint8_t vs1 = profbuf[off+2*j+1];
 
 		  	// Load cells from E and H, calculated previously
-			uint8_t ve = pvE[j];
-		  	uint8_t vh_next = pvH[j];
+			TPackedEH old_eh(bufEH[j]);
+			uint8_t ve = old_eh.get_E();
+		  	uint8_t vh_next = old_eh.get_H();
 
 			// Store cells in F, calculated previously
 			vf = subs_u8(vf, vs1); // veto some ref gap extensions
@@ -598,8 +610,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  	ve = std::max(ve, vh);
 
 		  	// Save E and H values for next i round
-		  	pvE[j] = ve;
-		  	pvH[j] = vtmp;
+		  	bufEH[j].set(ve,vtmp);
 		  	
 		  	// Update vf value for next round
 		  	vtmp = subs_u8(vtmp, rfgapo);
@@ -611,7 +622,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 
 		// Note: we may not want to extract from the final row
 		//       EEU8_TCScore == uint8_t == uint8_t
-		EEU8_TCScore lr = pvH[iter - 1];
+		EEU8_TCScore lr = bufEH[iter - 1].get_H();
 		if(lr > lrmax) {
 			lrmax = lr;
 		}
