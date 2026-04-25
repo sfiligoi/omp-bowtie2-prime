@@ -101,6 +101,7 @@ int align_ee8_one(const int el, // for debuggging purpose
                 const int32_t ref_lrmax,
                 const int32_t ref_btnfilled) {
 #ifndef SSE_FAST_SCALAR
+	uint16_t btnfilled = 0;
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
                                         iter, colstride, lastWordIdx,
