@@ -574,8 +574,9 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  	uint8_t vs0 = profbuf[off+2*j];    // pvScore[2*j]
 		  	uint8_t vs1 = profbuf[off+2*j+1];
 
-		  	// Load cells from E, calculated previously
+		  	// Load cells from E and H, calculated previously
 			uint8_t ve = pvE[j];
+		  	uint8_t vh_next = pvH[j];
 
 			// Store cells in F, calculated previously
 			vf = subs_u8(vf, vs1); // veto some ref gap extensions
@@ -596,9 +597,6 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  	ve = subs_u8(ve, rdgape);
 		  	ve = std::max(ve, vh);
 
-		  	// Load the next h value
-			vh = pvH[j];
-		  	
 		  	// Save E and H values for next i round
 		  	pvE[j] = ve;
 		  	pvH[j] = vtmp;
@@ -607,6 +605,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  	vtmp = subs_u8(vtmp, rfgapo);
 		  	vf = subs_u8(vf, rfgape);
 		  	vf = std::max(vf, vtmp);
+			vh = vh_next;
 		  }
 		}
 
