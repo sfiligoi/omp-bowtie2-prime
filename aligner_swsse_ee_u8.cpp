@@ -507,7 +507,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 template<typename TIdxSize=uint16_t, uint16_t MAX_ITER=151>
 inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 					const char   rf[], const TIdxSize rfd,
-					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
+					const TIdxSize iter_, const size_t colstride, const size_t lastWordIdx,
 					const size_t nrow,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
         class TPackedEH {
@@ -522,6 +522,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		constexpr uint8_t get_E() const {return uint8_t(val); }
 		constexpr uint8_t get_H() const {return uint8_t(val>>8); }
 	};
+
+        constexpr uint16_t iter = MAX_ITER;
 
 	assert_gt(refGapOpen, 0);
 	uint8_t rfgapo = uint8_t(refGapOpen);
@@ -580,7 +582,12 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  // in scalar mode, we always start high
 		  uint8_t vh = vhilsw; //0xff
 
-		  // For each character in the reference text:
+		  // For each character in the reference text
+#ifdef OMPGPU
+		  // Full unrolling allows bufEH to be mapped to the GPU register file
+		  // Only downsides for the CPUs, that have fewer registers
+#pragma omp unroll full
+#endif
 		  for(TIdxSize j = 0; j < iter; j++) {
 		  	uint8_t vs0 = profbuf[off+2*j];    // pvScore[2*j]
 		  	uint8_t vs1 = profbuf[off+2*j+1];
