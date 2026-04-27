@@ -531,6 +531,38 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		constexpr uint8_t get_H_odd() const {return uint8_t(val>>24); }
 	};
 
+        class TPackedScore {
+	private:
+		uint32_t val;
+	public:
+		constexpr TPackedScore() : val(0) {};
+		// Note: j must be even
+		constexpr TPackedScore(const uint8_t *pvScore, const uint16_t j) { val = ((uint32_t *)(pvScore+(2*j)))[0]; }
+
+		constexpr TPackedScore(const TPackedScore& other) : val(other.val) {}
+		constexpr TPackedScore& operator=(const TPackedScore& other) { val = other.val; return *this;}
+
+		constexpr uint8_t get_vs0_even() const {return uint8_t(val); }
+		constexpr uint8_t get_vs1_even() const {return uint8_t(val>>8); }
+		constexpr uint8_t get_vs0_odd() const {return uint8_t(val>>16); }
+		constexpr uint8_t get_vs1_odd() const {return uint8_t(val>>24); }
+	};
+
+        class TPackedScoreHalf {
+	private:
+		uint16_t val;
+	public:
+		constexpr TPackedScoreHalf() : val(0) {};
+		// Note: j must be even
+		constexpr TPackedScoreHalf(const uint8_t *pvScore, const uint16_t j) { val = ((uint16_t *)(pvScore+(2*j)))[0]; }
+
+		constexpr TPackedScoreHalf(const TPackedScoreHalf& other) : val(other.val) {}
+		constexpr TPackedScoreHalf& operator=(const TPackedScoreHalf& other) { val = other.val; return *this;}
+
+		constexpr uint8_t get_vs0_even() const {return uint8_t(val); }
+		constexpr uint8_t get_vs1_even() const {return uint8_t(val>>8); }
+	};
+
         constexpr uint16_t iter = MAX_ITER;
 
 	assert_gt(refGapOpen, 0);
@@ -575,7 +607,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		// be numbers, not masks.
 		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
 		// points into the query profile
-		//const uint8_t *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
+		const uint8_t *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
 	
 		// scalar version of EEU8_alignOne()
 		{
@@ -597,21 +629,19 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  for(TIdxSize j2 = 0; j2 < (iter-1); j2+=2) {
 		    // Load cells from E and H, calculated previously
 		    TPackedEH full_eh(bufEH[j2/2]);
+		    // Load the scores
+		    const TPackedScore full_score(pvScore,j2);
 		    // Even step
 		    {
-			const uint16_t j = j2;
-		  	uint8_t vs0 = profbuf[off+2*j];    // pvScore[2*j]
-		  	uint8_t vs1 = profbuf[off+2*j+1];
-
 		  	// Load cells from E and H, calculated previously
 			uint8_t ve = full_eh.get_E_even();
 		  	uint8_t vh_next = full_eh.get_H_even();
 
 			// Store cells in F, calculated previously
-			vf = subs_u8(vf, vs1); // veto some ref gap extensions
+			vf = subs_u8(vf, full_score.get_vs1_even()); // veto some ref gap extensions
 		  	
 		  	// Factor in query profile (matches and mismatches)
-		  	vh = subs_u8(vh, vs0);
+		  	vh = subs_u8(vh, full_score.get_vs0_even());
 		  	
 		  	// Update H, factoring in E and F
 		  	vh = std::max(vh, ve);
@@ -622,7 +652,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  	
 		  	// Update vE value
 		  	vh = subs_u8(vh, rdgapo);
-		  	vh = subs_u8(vh, vs1); // veto some read gap opens
+		  	vh = subs_u8(vh, full_score.get_vs1_even()); // veto some read gap opens
 		  	ve = subs_u8(ve, rdgape);
 		  	ve = std::max(ve, vh);
 
@@ -637,19 +667,15 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		    }
 		    // Odd step
 		    {
-			const uint16_t j = j2+1;
-		  	uint8_t vs0 = profbuf[off+2*j];    // pvScore[2*j]
-		  	uint8_t vs1 = profbuf[off+2*j+1];
-
 		  	// Load cells from E and H, calculated previously
 			uint8_t ve = full_eh.get_E_odd();
 		  	uint8_t vh_next = full_eh.get_H_odd();
 
 			// Store cells in F, calculated previously
-			vf = subs_u8(vf, vs1); // veto some ref gap extensions
+			vf = subs_u8(vf, full_score.get_vs1_odd()); // veto some ref gap extensions
 		  	
 		  	// Factor in query profile (matches and mismatches)
-		  	vh = subs_u8(vh, vs0);
+		  	vh = subs_u8(vh, full_score.get_vs0_odd());
 		  	
 		  	// Update H, factoring in E and F
 		  	vh = std::max(vh, ve);
@@ -660,7 +686,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  	
 		  	// Update vE value
 		  	vh = subs_u8(vh, rdgapo);
-		  	vh = subs_u8(vh, vs1); // veto some read gap opens
+		  	vh = subs_u8(vh, full_score.get_vs1_odd()); // veto some read gap opens
 		  	ve = subs_u8(ve, rdgape);
 		  	ve = std::max(ve, vh);
 
@@ -678,20 +704,19 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  }
 		  if constexpr((iter%2)!=0) {
 			// Last Even step
-			const uint16_t j = iter-1;
-		  	uint8_t vs0 = profbuf[off+2*j];    // pvScore[2*j]
-		  	uint8_t vs1 = profbuf[off+2*j+1];
-
 		  	// Load cells from E and H, calculated previously
-			TPackedEH full_eh(bufEH[iter/2]);
+			const TPackedEH full_eh(bufEH[iter/2]);
+		        // Load the scores
+		        const TPackedScoreHalf full_score(pvScore, iter-1);
+
 			uint8_t ve = full_eh.get_E_even();
 			// no next round, do not need vh_next
 
 			// Store cells in F, calculated previously
-			vf = subs_u8(vf, vs1); // veto some ref gap extensions
+			vf = subs_u8(vf, full_score.get_vs1_even()); // veto some ref gap extensions
 		  	
 		  	// Factor in query profile (matches and mismatches)
-		  	vh = subs_u8(vh, vs0);
+		  	vh = subs_u8(vh, full_score.get_vs0_even());
 		  	
 		  	// Update H, factoring in E and F
 		  	vh = std::max(vh, ve);
@@ -702,7 +727,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  	
 		  	// Update vE value
 		  	vh = subs_u8(vh, rdgapo);
-		  	vh = subs_u8(vh, vs1); // veto some read gap opens
+		  	vh = subs_u8(vh, full_score.get_vs1_even()); // veto some read gap opens
 		  	ve = subs_u8(ve, rdgape);
 		  	ve = std::max(ve, vh);
 
