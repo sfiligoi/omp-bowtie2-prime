@@ -499,14 +499,19 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
  * Note that this version does not return the E, F, H vectors.
  * If those are needed, e.g. when (lrmax - 0xff)>=minsc, i.e. btnfilled>0, use the regular, full version.
  *
+ * Note: This version is meant to be used in batched mode, with data from several elements packed together.
+ *       The TScoreVec and TRFVec types defines how many are actually packed, and must be consistent.
+ *
  * Select intput parameters:
  *   profbuf - buffer for query profile & temp vecs
  *   rf      - reference sequence
+ *   vec_id  - element in the the vecotr buffers
  *
  */
-template<typename TIdxSize=uint16_t, uint16_t MAX_ITER=151>
-inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
-					const char   rf[], const TIdxSize rfd,
+template<typename TIdxSize=uint16_t, uint16_t MAX_ITER=151, typename TScoreVec, typename TRFVec>
+inline EEU8_TCScore EEU8_alignNucleotidesScalar(const int vec_id,
+					const TScoreVec profbuf[],
+					const TRFVec rf[], const TIdxSize rfd,
 					const size_t nrow,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
         class TPackedEH {
@@ -537,7 +542,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 	public:
 		constexpr TPackedScore() : val(0) {};
 		// Note: j must be even
-		constexpr TPackedScore(const uint8_t *pvScore, const uint16_t j) { val = ((uint32_t *)(pvScore+(2*j)))[0]; }
+		constexpr TPackedScore(const TScoreVec *pvScore, const uint16_t j, const int vec_id) { val = ((uint32_t *)(pvScore+(j/2)))[vec_id]; }
 
 		constexpr TPackedScore(const TPackedScore& other) : val(other.val) {}
 		constexpr TPackedScore& operator=(const TPackedScore& other) { val = other.val; return *this;}
@@ -548,20 +553,9 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		constexpr uint8_t get_vs1_odd() const {return uint8_t(val>>24); }
 	};
 
-        class TPackedScoreHalf {
-	private:
-		uint16_t val;
-	public:
-		constexpr TPackedScoreHalf() : val(0) {};
-		// Note: j must be even
-		constexpr TPackedScoreHalf(const uint8_t *pvScore, const uint16_t j) { val = ((uint16_t *)(pvScore+(2*j)))[0]; }
-
-		constexpr TPackedScoreHalf(const TPackedScoreHalf& other) : val(other.val) {}
-		constexpr TPackedScoreHalf& operator=(const TPackedScoreHalf& other) { val = other.val; return *this;}
-
-		constexpr uint8_t get_vs0_even() const {return uint8_t(val); }
-		constexpr uint8_t get_vs1_even() const {return uint8_t(val>>8); }
-	};
+	// TScoreVec is packed uint32 (4xuint8)
+	// TRFVec is packed uint8
+	static_assert(sizeof(TScoreVec)==(4*sizeof(TRFVec)), "Inconsistent TScoreVec and TRFVec");
 
         constexpr uint16_t iter = MAX_ITER;
 
@@ -605,14 +599,15 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		
 		// Fetch the appropriate query profile.  Note that elements of rf must
 		// be numbers, not masks.
-		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
+		const uint8_t my_rf = ((uint8_t *)(rf+i))[vec_id];
+		size_t off = (size_t)std::countr_zero( my_rf ) * ((iter+1)/2);
 		// points into the query profile
-		const uint8_t *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
+		const TScoreVec *pvScore = profbuf + off; // understood by TPackedScore
 	
 		// scalar version of EEU8_alignOne()
 		{
 		  // vhilsw: topmost (least sig) word set to 0xff, all other words=0
-		  uint8_t vhilsw   = 0xff;
+		  constexpr uint8_t vhilsw   = 0xff;
 	
 		  // Set all cells to low value
 		  uint8_t vf       = 0;
@@ -630,7 +625,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		    // Load cells from E and H, calculated previously
 		    TPackedEH full_eh(bufEH[j2/2]);
 		    // Load the scores
-		    const TPackedScore full_score(pvScore,j2);
+		    const TPackedScore full_score(pvScore, j2, vec_id);
 		    // Even step
 		    {
 		  	// Load cells from E and H, calculated previously
@@ -707,7 +702,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
 		  	// Load cells from E and H, calculated previously
 			const TPackedEH full_eh(bufEH[iter/2]);
 		        // Load the scores
-		        const TPackedScoreHalf full_score(pvScore, iter-1);
+		        const TPackedScore full_score(pvScore, iter-1, vec_id);
 
 			uint8_t ve = full_eh.get_E_even();
 			// no next round, do not need vh_next
