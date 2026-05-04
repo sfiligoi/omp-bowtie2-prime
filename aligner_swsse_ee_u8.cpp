@@ -497,7 +497,9 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 /**
  * Like the previous alignNucleotides, but the Scalar version allows to forfeit some extra strutures.
  * Note that this version does not return the E, F, H vectors.
- * If those are needed, e.g. when (lrmax - 0xff)>=minsc, i.e. btnfilled>0, use the regular, full version.
+ * Only lrmax is computed and returned.
+ *
+ * If the vectors are needed, e.g. when (lrmax - 0xff)>=minsc, i.e. btnfilled>0, use the regular, full version.
  *
  * Select intput parameters:
  *   profbuf - buffer for query profile & temp vecs
@@ -505,7 +507,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
  *
  */
 template<typename TIdxSize=uint16_t, uint16_t MAX_ITER=151>
-inline EEU8_TCScore EEU8_alignNucleotidesScalar(const uint8_t profbuf[],
+inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 					const char   rf[], const TIdxSize rfd,
 					const size_t nrow,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
@@ -829,13 +831,24 @@ bool SwAligner::alignEnd2EndSseU8(
 	uint16_t btnfilled = 0;
 	btncand_.resizeNoCopy(rflen_); // cannot be bigger that this
 
-#ifdef SSE_FAST_SCALAR
-	const EEU8_TCScore lrmax = EEU8_alignNucleotidesScalar<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
+#if 0
+	// When SSE_FAST_SCALAR
+	// TODO: Consider the use of EEU8_alignNucleotidesLRScalar
+	EEU8_TCScore lrmax = 255;
+	if ((iter!=151) {
+	        lrmax= EEU8_alignNucleotidesLRScalar<uint16_t,151>(d.profbuf_.ptr(), rf_, rflen_,
+					dpRows(),
+					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+	}
+	TAlScore sc = (TAlScore)(lrmax - 0xff);
+        if (sc>=minsc_)) {
+		lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
 					d.mat_.ptr(),
                                         iter, d.mat_.colstride(), lastWordIdx,
 					minsc_, dpRows(),
 					btncand_.ptr(), btnfilled,
 					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+	}
 #else
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
 					d.mat_.ptr(),

@@ -44,9 +44,9 @@ CXX := amdclang++
 # CXX := hipcc
 
 # CPU-only
-CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_FAST_SCALAR -DSSE_SCALAR
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_FAST_SCALAR -DSSE_SCALAR
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR
-#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2
+CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2
 
 #
 # GPU-enabled
