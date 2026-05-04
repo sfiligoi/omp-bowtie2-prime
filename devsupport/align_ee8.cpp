@@ -100,7 +100,7 @@ int align_ee8_one(const int el, // for debuggging purpose
 		DpBtCandidate    *btncand,
                 const int32_t ref_lrmax,
                 const int32_t ref_btnfilled) {
-#ifndef SSE_FAST_SCALAR
+#ifndef PRE_LR_SCALAR
 	uint16_t btnfilled = 0;
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
@@ -117,7 +117,7 @@ int align_ee8_one(const int el, // for debuggging purpose
 #endif
 	int nerrs = 0;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
-#ifndef SSE_FAST_SCALAR
+#ifndef PRE_LR_SCALAR
 	if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
 #else
 	TAlScore sc = (TAlScore)(lrmax - 0xff);
@@ -125,13 +125,13 @@ int align_ee8_one(const int el, // for debuggging purpose
 #endif
 #ifndef NO_CHECK_PRINT
 	if (int(ref_lrmax) != int(lrmax)) fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",el,int(lrmax), int(ref_lrmax));
-#ifndef SSE_FAST_SCALAR
+#ifndef PRE_LR_SCALAR
 	if (int(ref_btnfilled) != int(btnfilled)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i != %i)\n",el,int(btnfilled), int(ref_btnfilled));
 #else
 	if ((ref_btnfilled!=0) != (sc>=minsc)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i) vs sc %i minsc %i)\n",el,int(ref_btnfilled), int(sc), int(minsc));
 #endif
 #endif
-	// TODO: In case of SSE_FAST_SCALAR, we should also likely want to test the complete align on the elements that need it
+	// TODO: In case of PRE_LR_SCALAR, we should also likely want to test the complete align on the elements that need it
 	//       But that's probably better done in a separate test
 	return nerrs;
 }

@@ -832,7 +832,7 @@ bool SwAligner::alignEnd2EndSseU8(
 	btncand_.resizeNoCopy(rflen_); // cannot be bigger that this
 
 #if 0
-	// When SSE_FAST_SCALAR
+	// When PRE_LR_SCALAR
 	// TODO: Consider the use of EEU8_alignNucleotidesLRScalar
 	EEU8_TCScore lrmax = 255;
 	if ((iter!=151) {
