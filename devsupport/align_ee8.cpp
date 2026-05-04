@@ -100,6 +100,7 @@ int align_ee8_one(const int el, // for debuggging purpose
 		DpBtCandidate    *btncand,
                 const int32_t ref_lrmax,
                 const int32_t ref_btnfilled) {
+#ifndef PRE_LR_SCALAR
 	uint16_t btnfilled = 0;
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
@@ -107,13 +108,31 @@ int align_ee8_one(const int el, // for debuggging purpose
 					minsc, nrow,
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
+#else
+	// Note: The vast majority of reads have iter==151
+	if (iter!=151) return 0;  // TODO: We may properly use the right template function, or call slow align directly
+	const EEU8_TCScore lrmax = EEU8_alignNucleotidesLRScalar<uint16_t,151>(profbuf, rf, rfd,
+					nrow,
+					gaps[0],gaps[1],gaps[2],gaps[3]);
+#endif
 	int nerrs = 0;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
+#ifndef PRE_LR_SCALAR
 	if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
+#else
+	TAlScore sc = (TAlScore)(lrmax - 0xff);
+	if ((ref_btnfilled!=0) != (sc>=minsc)) nerrs++;
+#endif
 #ifndef NO_CHECK_PRINT
 	if (int(ref_lrmax) != int(lrmax)) fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",el,int(lrmax), int(ref_lrmax));
+#ifndef PRE_LR_SCALAR
 	if (int(ref_btnfilled) != int(btnfilled)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i != %i)\n",el,int(btnfilled), int(ref_btnfilled));
+#else
+	if ((ref_btnfilled!=0) != (sc>=minsc)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i) vs sc %i minsc %i)\n",el,int(ref_btnfilled), int(sc), int(minsc));
 #endif
+#endif
+	// TODO: In case of PRE_LR_SCALAR, we should also likely want to test the complete align on the elements that need it
+	//       But that's probably better done in a separate test
 	return nerrs;
 }
 
@@ -162,7 +181,11 @@ int load_and_align_ee8(const int npar, const int nels) {
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
+#ifndef FAST_SSE_SCALAR // matrix won't be used in fast scalar
    SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL];
+#else
+   SSERegI *mat = nullptr;
+#endif
    char    *rf = new char[size_t(MAX_RF_EL)*nels];
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];

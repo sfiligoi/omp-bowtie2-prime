@@ -77,6 +77,13 @@
 
 typedef uint8_t EEU8_TCScore;
 
+
+// Helper for saturating subtraction (unsigned 8-bit)
+// since there is no such thing in standard C++.
+constexpr uint8_t subs_u8(uint8_t a, uint8_t b) {
+    return a-std::min(a,b);
+}
+
 /**
  * Build query profile look up tables for the read.  The query profile look
  * up table is organized as a 1D array indexed by [i][j] where i is the
@@ -486,6 +493,265 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	return lrmax;
 }
 
+
+/**
+ * Like the previous alignNucleotides, but the Scalar version allows to forfeit some extra strutures.
+ * Note that this version does not return the E, F, H vectors.
+ * Only lrmax is computed and returned.
+ *
+ * If the vectors are needed, e.g. when (lrmax - 0xff)>=minsc, i.e. btnfilled>0, use the regular, full version.
+ *
+ * Select intput parameters:
+ *   profbuf - buffer for query profile & temp vecs
+ *   rf      - reference sequence
+ *
+ */
+template<typename TIdxSize=uint16_t, uint16_t MAX_ITER=151>
+inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
+					const char   rf[], const TIdxSize rfd,
+					const size_t nrow,
+					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
+        class TPackedEH {
+	private:
+		uint32_t val;
+	public:
+		constexpr TPackedEH() : val(0) {};
+		constexpr TPackedEH(const TPackedEH& other) : val(other.val) {}
+		constexpr TPackedEH& operator=(const TPackedEH& other) { val = other.val; return *this;}
+
+		constexpr void set(uint8_t E_even, uint8_t H_even, uint8_t E_odd, uint8_t H_odd) { val =(uint32_t(H_odd)<<24) | (uint32_t(E_odd)<<16) |  (uint32_t(H_even)<<8) | uint32_t(E_even);}
+		constexpr void set(uint8_t E_even, uint8_t H_even) { val = (uint32_t(H_even)<<8) | uint32_t(E_even);}
+
+		// preserve odd, update even (low 16 bits)
+		constexpr void set_even(uint8_t E, uint8_t H) { val = (val & uint32_t(0xffff0000U)) | ((uint32_t(H)<<8) | uint32_t(E));}
+		// preserve even, update odd (high 16 bits)
+		constexpr void set_odd(uint8_t E, uint8_t H) { val = (val & uint32_t(0xffffU)) | ((uint32_t(H)<<24) | (uint32_t(E)<<16));}
+
+		constexpr uint8_t get_E_even() const {return uint8_t(val); }
+		constexpr uint8_t get_H_even() const {return uint8_t(val>>8); }
+		constexpr uint8_t get_E_odd() const {return uint8_t(val>>16); }
+		constexpr uint8_t get_H_odd() const {return uint8_t(val>>24); }
+	};
+
+        class TPackedScore {
+	private:
+		uint32_t val;
+	public:
+		constexpr TPackedScore() : val(0) {};
+		// Note: j must be even
+		constexpr TPackedScore(const uint8_t *pvScore, const uint16_t j) { val = ((uint32_t *)(pvScore+(2*j)))[0]; }
+
+		constexpr TPackedScore(const TPackedScore& other) : val(other.val) {}
+		constexpr TPackedScore& operator=(const TPackedScore& other) { val = other.val; return *this;}
+
+		constexpr uint8_t get_vs0_even() const {return uint8_t(val); }
+		constexpr uint8_t get_vs1_even() const {return uint8_t(val>>8); }
+		constexpr uint8_t get_vs0_odd() const {return uint8_t(val>>16); }
+		constexpr uint8_t get_vs1_odd() const {return uint8_t(val>>24); }
+	};
+
+        class TPackedScoreHalf {
+	private:
+		uint16_t val;
+	public:
+		constexpr TPackedScoreHalf() : val(0) {};
+		// Note: j must be even
+		constexpr TPackedScoreHalf(const uint8_t *pvScore, const uint16_t j) { val = ((uint16_t *)(pvScore+(2*j)))[0]; }
+
+		constexpr TPackedScoreHalf(const TPackedScoreHalf& other) : val(other.val) {}
+		constexpr TPackedScoreHalf& operator=(const TPackedScoreHalf& other) { val = other.val; return *this;}
+
+		constexpr uint8_t get_vs0_even() const {return uint8_t(val); }
+		constexpr uint8_t get_vs1_even() const {return uint8_t(val>>8); }
+	};
+
+        constexpr uint16_t iter = MAX_ITER;
+
+	assert_gt(refGapOpen, 0);
+	uint8_t rfgapo = uint8_t(refGapOpen);
+	
+	// Set all elts to reference gap extension penalty
+	assert_gt(refGapExtend, 0);
+	assert_leq(refGapExtend, refGapOpen);
+	uint8_t rfgape = uint8_t(refGapExtend);
+
+	// Set all elts to read gap open penalty
+	assert_gt(readGapOpen, 0);
+	uint8_t rdgapo = uint8_t(readGapOpen);
+	
+	// Set all elts to read gap extension penalty
+	assert_gt(readGapExtend, 0);
+	assert_leq(readGapExtend, readGapOpen);
+	uint8_t rdgape = uint8_t(readGapExtend);
+
+	// Maximum score in final row
+	EEU8_TCScore lrmax = MIN_U8;
+
+	// Set all elts to reference gap open penalty
+	// iAutomatic initialize the H and E vectors in the first matrix column
+	TPackedEH bufEH[(iter+1)/2];
+
+	// Fill in the table as usual but instead of using the same gap-penalty
+	// vector for each iteration of the inner loop, load words out of a
+	// pre-calculated gap vector parallel to the query profile.  The pre-
+	// calculated gap vectors enforce the gap barrier constraint by making it
+	// infinitely costly to introduce a gap in barrier rows.
+	//
+	// AND use a separate loop to fill in the first row of the table, enforcing
+	// the st_ constraints in the process.  This is awkward because it
+	// separates the processing of the first row from the others and might make
+	// it difficult to use the first-row results in the next row, but it might
+	// be the simplest and least disruptive way to deal with the st_ constraint.
+
+	for(TIdxSize i = 0; i < rfd; i++) {
+		
+		// Fetch the appropriate query profile.  Note that elements of rf must
+		// be numbers, not masks.
+		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
+		// points into the query profile
+		const uint8_t *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
+	
+		// scalar version of EEU8_alignOne()
+		{
+		  // vhilsw: topmost (least sig) word set to 0xff, all other words=0
+		  uint8_t vhilsw   = 0xff;
+	
+		  // Set all cells to low value
+		  uint8_t vf       = 0;
+
+		  // in scalar mode, we always start high
+		  uint8_t vh = vhilsw; //0xff
+
+		  // For each character in the reference text
+#ifdef OMPGPU
+		  // Full unrolling allows bufEH to be mapped to the GPU register file
+		  // Only downsides for the CPUs, that have fewer registers
+#pragma omp unroll full
+#endif
+		  for(TIdxSize j2 = 0; j2 < (iter-1); j2+=2) {
+		    // Load cells from E and H, calculated previously
+		    TPackedEH full_eh(bufEH[j2/2]);
+		    // Load the scores
+		    const TPackedScore full_score(pvScore,j2);
+		    // Even step
+		    {
+		  	// Load cells from E and H, calculated previously
+			uint8_t ve = full_eh.get_E_even();
+		  	uint8_t vh_next = full_eh.get_H_even();
+
+			// Store cells in F, calculated previously
+			vf = subs_u8(vf, full_score.get_vs1_even()); // veto some ref gap extensions
+		  	
+		  	// Factor in query profile (matches and mismatches)
+		  	vh = subs_u8(vh, full_score.get_vs0_even());
+		  	
+		  	// Update H, factoring in E and F
+		  	vh = std::max(vh, ve);
+		  	vh = std::max(vh, vf);
+		  	
+		  	// Save the new vH values
+		  	uint8_t vtmp = vh;
+		  	
+		  	// Update vE value
+		  	vh = subs_u8(vh, rdgapo);
+		  	vh = subs_u8(vh, full_score.get_vs1_even()); // veto some read gap opens
+		  	ve = subs_u8(ve, rdgape);
+		  	ve = std::max(ve, vh);
+
+		  	// Save E and H values for next i round
+		  	full_eh.set_even(ve,vtmp);
+		  	
+		  	// Update vf value for next round
+		  	vtmp = subs_u8(vtmp, rfgapo);
+		  	vf = subs_u8(vf, rfgape);
+		  	vf = std::max(vf, vtmp);
+			vh = vh_next;
+		    }
+		    // Odd step
+		    {
+		  	// Load cells from E and H, calculated previously
+			uint8_t ve = full_eh.get_E_odd();
+		  	uint8_t vh_next = full_eh.get_H_odd();
+
+			// Store cells in F, calculated previously
+			vf = subs_u8(vf, full_score.get_vs1_odd()); // veto some ref gap extensions
+		  	
+		  	// Factor in query profile (matches and mismatches)
+		  	vh = subs_u8(vh, full_score.get_vs0_odd());
+		  	
+		  	// Update H, factoring in E and F
+		  	vh = std::max(vh, ve);
+		  	vh = std::max(vh, vf);
+		  	
+		  	// Save the new vH values
+		  	uint8_t vtmp = vh;
+		  	
+		  	// Update vE value
+		  	vh = subs_u8(vh, rdgapo);
+		  	vh = subs_u8(vh, full_score.get_vs1_odd()); // veto some read gap opens
+		  	ve = subs_u8(ve, rdgape);
+		  	ve = std::max(ve, vh);
+
+		  	// Save E and H values for next i round
+		  	full_eh.set_odd(ve,vtmp);
+		  	
+		  	// Update vf value for next round
+		  	vtmp = subs_u8(vtmp, rfgapo);
+		  	vf = subs_u8(vf, rfgape);
+		  	vf = std::max(vf, vtmp);
+			vh = vh_next;
+		    }
+		    // save the packed result back for the next i loop
+		    bufEH[j2/2] = full_eh;
+		  }
+		  if constexpr((iter%2)!=0) {
+			// Last Even step
+		  	// Load cells from E and H, calculated previously
+			const TPackedEH full_eh(bufEH[iter/2]);
+		        // Load the scores
+		        const TPackedScoreHalf full_score(pvScore, iter-1);
+
+			uint8_t ve = full_eh.get_E_even();
+			// no next round, do not need vh_next
+
+			// Store cells in F, calculated previously
+			vf = subs_u8(vf, full_score.get_vs1_even()); // veto some ref gap extensions
+		  	
+		  	// Factor in query profile (matches and mismatches)
+		  	vh = subs_u8(vh, full_score.get_vs0_even());
+		  	
+		  	// Update H, factoring in E and F
+		  	vh = std::max(vh, ve);
+		  	vh = std::max(vh, vf);
+		  	
+		  	// Save the new vH values
+		  	uint8_t vtmp = vh;
+		  	
+		  	// Update vE value
+		  	vh = subs_u8(vh, rdgapo);
+		  	vh = subs_u8(vh, full_score.get_vs1_even()); // veto some read gap opens
+		  	ve = subs_u8(ve, rdgape);
+		  	ve = std::max(ve, vh);
+
+		  	// Save E and H values for next i round
+		  	bufEH[iter/2].set(ve,vtmp);
+		  	
+		  	// no next round
+		  }
+		}
+
+		// Note: we may not want to extract from the final row
+		//       EEU8_TCScore == uint8_t == uint8_t
+		// Was: EEU8_TCScore lr = bufEH2[iter - 1].get_H();
+		EEU8_TCScore lr = ((iter%2)!=0) ? bufEH[iter/2].get_H_even() : bufEH[(iter-1)/2].get_H_odd();
+		if(lr > lrmax) {
+			lrmax = lr;
+		}
+	}
+
+	return lrmax;
+}
+
 #ifndef SWSSE_INLINE_ONLY
 /**
  * Align read 'rd' to reference using read & reference information given
@@ -565,12 +831,32 @@ bool SwAligner::alignEnd2EndSseU8(
 	uint16_t btnfilled = 0;
 	btncand_.resizeNoCopy(rflen_); // cannot be bigger that this
 
+#if 0
+	// When PRE_LR_SCALAR
+	// TODO: Consider the use of EEU8_alignNucleotidesLRScalar
+	EEU8_TCScore lrmax = 255;
+	if ((iter!=151) {
+	        lrmax= EEU8_alignNucleotidesLRScalar<uint16_t,151>(d.profbuf_.ptr(), rf_, rflen_,
+					dpRows(),
+					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+	}
+	TAlScore sc = (TAlScore)(lrmax - 0xff);
+        if (sc>=minsc_)) {
+		lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
+					d.mat_.ptr(),
+                                        iter, d.mat_.colstride(), lastWordIdx,
+					minsc_, dpRows(),
+					btncand_.ptr(), btnfilled,
+					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+	}
+#else
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(d.profbuf_.ptr(), rf_, rflen_,
 					d.mat_.ptr(),
                                         iter, d.mat_.colstride(), lastWordIdx,
 					minsc_, dpRows(),
 					btncand_.ptr(), btnfilled,
 					sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+#endif
 	btncand_.trim(btnfilled);
 	state_ = STATE_ALIGNED;
 	cural_ = 0;
