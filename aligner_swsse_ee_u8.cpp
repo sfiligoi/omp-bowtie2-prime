@@ -506,7 +506,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
  *   rf      - reference sequence
  *
  */
-template<typename TIdxSize=uint16_t, uint16_t MAX_ITER=151>
+template<typename TIdxSize=uint16_t, uint16_t MAX_ITER=151, uint16_t MAX_RB=5>
 inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 					const char   rf[], const TIdxSize rfd,
 					const size_t nrow,
@@ -538,6 +538,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 		uint32_t val;
 	public:
 		constexpr TPackedScore() : val(0) {};
+		constexpr TPackedScore(const uint32_t packed_val) : val(packed_val) {};
 		// Note: j must be even
 		constexpr TPackedScore(const uint8_t *pvScore, const uint16_t j) { val = ((uint32_t *)(pvScore+(2*j)))[0]; }
 
@@ -548,6 +549,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 		constexpr uint8_t get_vs1_even() const {return uint8_t(val>>8); }
 		constexpr uint8_t get_vs0_odd() const {return uint8_t(val>>16); }
 		constexpr uint8_t get_vs1_odd() const {return uint8_t(val>>24); }
+
+		constexpr uint32_t operator()() const {return val;}
 	};
 
         class TPackedScoreHalf {
@@ -563,6 +566,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 
 		constexpr uint8_t get_vs0_even() const {return uint8_t(val); }
 		constexpr uint8_t get_vs1_even() const {return uint8_t(val>>8); }
+
+		constexpr uint16_t operator()() const {return val;}
 	};
 
         constexpr uint16_t iter = MAX_ITER;
@@ -584,6 +589,26 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 	assert_leq(readGapExtend, readGapOpen);
 	uint8_t rdgape = uint8_t(readGapExtend);
 
+	// Load the procbuf in local memeory
+	// as we will read over it many times
+	uint32_t loc_procbuf[MAX_RB][(MAX_ITER+1)/2];
+	for (int ir=0; ir<MAX_RB; ir++) {
+		size_t off = (size_t)( ir ) * iter * 2;
+		// points into the query profile
+		const uint8_t *pvScore = profbuf + off;
+		for(TIdxSize j = 0; j < ((iter-1)/2); j++) {
+			const TPackedScore full_score(pvScore,j*2);
+			loc_procbuf[ir][j] = full_score();
+		}
+		if constexpr((iter%2)!=0) {
+			// Last Even step
+		        const TPackedScoreHalf full_score(pvScore, iter-1);
+			loc_procbuf[ir][(iter-1)/2] = full_score();
+		}
+	}
+
+	//
+	//
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
 
@@ -607,9 +632,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 		
 		// Fetch the appropriate query profile.  Note that elements of rf must
 		// be numbers, not masks.
-		size_t off = (size_t)std::countr_zero( uint8_t(rf[i]) ) * iter * 2;
-		// points into the query profile
-		const uint8_t *pvScore = profbuf + off; // even elts = query profile, odd = gap barrier
+		const size_t ir = (size_t)std::countr_zero( uint8_t(rf[i]) );
 	
 		// scalar version of EEU8_alignOne()
 		{
@@ -628,11 +651,11 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 		  // Only downsides for the CPUs, that have fewer registers
 #pragma omp unroll full
 #endif
-		  for(TIdxSize j2 = 0; j2 < (iter-1); j2+=2) {
+		  for(TIdxSize j = 0; j < ((iter-1)/2); j++) {
 		    // Load cells from E and H, calculated previously
-		    TPackedEH full_eh(bufEH[j2/2]);
+		    TPackedEH full_eh(bufEH[j]);
 		    // Load the scores
-		    const TPackedScore full_score(pvScore,j2);
+		    const TPackedScore full_score(loc_procbuf[ir][j]);
 		    // Even step
 		    {
 		  	// Load cells from E and H, calculated previously
@@ -702,14 +725,15 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 			vh = vh_next;
 		    }
 		    // save the packed result back for the next i loop
-		    bufEH[j2/2] = full_eh;
+		    bufEH[j] = full_eh;
 		  }
 		  if constexpr((iter%2)!=0) {
 			// Last Even step
 		  	// Load cells from E and H, calculated previously
 			const TPackedEH full_eh(bufEH[iter/2]);
 		        // Load the scores
-		        const TPackedScoreHalf full_score(pvScore, iter-1);
+			// Use the Full Packed class for consistency
+		        const TPackedScore full_score(loc_procbuf[ir][(iter-1)/2]);
 
 			uint8_t ve = full_eh.get_E_even();
 			// no next round, do not need vh_next
