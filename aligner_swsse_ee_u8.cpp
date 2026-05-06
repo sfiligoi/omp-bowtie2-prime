@@ -535,39 +535,42 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 
         class TPackedScore {
 	private:
-		uint32_t val;
+		uint16_t val;
+		// Decode nibble: 0x0->0x00, 0x1->0x01, 0xf->0xff
+		static constexpr uint8_t decode4(uint8_t nibble) { return (nibble <= 1) ? nibble : 0xff; }
 	public:
 		constexpr TPackedScore() : val(0) {};
-		constexpr TPackedScore(const uint32_t packed_val) : val(packed_val) {};
-		// Note: j must be even
-		constexpr TPackedScore(const uint8_t *pvScore, const uint16_t j) { val = ((uint32_t *)(pvScore+(2*j)))[0]; }
+		constexpr TPackedScore(const uint16_t packed_val) : val(packed_val) {};
 
 		constexpr TPackedScore(const TPackedScore& other) : val(other.val) {}
 		constexpr TPackedScore& operator=(const TPackedScore& other) { val = other.val; return *this;}
 
-		constexpr uint8_t get_vs0_even() const {return uint8_t(val); }
-		constexpr uint8_t get_vs1_even() const {return uint8_t(val>>8); }
-		constexpr uint8_t get_vs0_odd() const {return uint8_t(val>>16); }
-		constexpr uint8_t get_vs1_odd() const {return uint8_t(val>>24); }
+		// low byte: even step; high byte: odd step; within each byte: low nibble=vs0, high nibble=vs1
+		constexpr uint8_t get_vs0_even() const { return decode4(uint8_t(val) & 0xf); }
+		constexpr uint8_t get_vs1_even() const { return decode4(uint8_t(val) >> 4); }
+		constexpr uint8_t get_vs0_odd()  const { return decode4(uint8_t(val >> 8) & 0xf); }
+		constexpr uint8_t get_vs1_odd()  const { return decode4(uint8_t(val >> 8) >> 4); }
 
-		constexpr uint32_t operator()() const {return val;}
+		constexpr uint16_t operator()() const {return val;}
 	};
 
         class TPackedScoreHalf {
 	private:
-		uint16_t val;
+		uint8_t val;
+		// Decode nibble: 0x0->0x00, 0x1->0x01, 0xf->0xff
+		static constexpr uint8_t decode4(uint8_t nibble) { return (nibble <= 1) ? nibble : 0xff; }
 	public:
 		constexpr TPackedScoreHalf() : val(0) {};
-		// Note: j must be even
-		constexpr TPackedScoreHalf(const uint8_t *pvScore, const uint16_t j) { val = ((uint16_t *)(pvScore+(2*j)))[0]; }
+		constexpr TPackedScoreHalf(const uint8_t packed_val) : val(packed_val) {};
 
 		constexpr TPackedScoreHalf(const TPackedScoreHalf& other) : val(other.val) {}
 		constexpr TPackedScoreHalf& operator=(const TPackedScoreHalf& other) { val = other.val; return *this;}
 
-		constexpr uint8_t get_vs0_even() const {return uint8_t(val); }
-		constexpr uint8_t get_vs1_even() const {return uint8_t(val>>8); }
+		// low nibble=vs0, high nibble=vs1 (even step only)
+		constexpr uint8_t get_vs0_even() const { return decode4(val & 0xf); }
+		constexpr uint8_t get_vs1_even() const { return decode4(val >> 4); }
 
-		constexpr uint16_t operator()() const {return val;}
+		constexpr uint8_t operator()() const {return val;}
 	};
 
         constexpr uint16_t iter = MAX_ITER;
@@ -589,21 +592,27 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 	assert_leq(readGapExtend, readGapOpen);
 	uint8_t rdgape = uint8_t(readGapExtend);
 
-	// Load the procbuf in local memeory
-	// as we will read over it many times
-	uint32_t loc_procbuf[MAX_RB][(MAX_ITER+1)/2];
+	// Load the procbuf into local memory, compacting {0x00,0x01,0xff} -> {0x0,0x1,0xf} nibbles.
+	// Each entry covers two consecutive j steps (even+odd): low byte=even, high byte=odd.
+	// Last entry (when iter is odd) uses only the low byte.
+	auto encode4 = [](uint8_t v) -> uint8_t { return (v <= 1) ? v : 0xf; };
+	auto pack_byte = [&](const uint8_t *p) -> uint8_t {
+		return encode4(p[0]) | (encode4(p[1]) << 4);
+	};
+	uint16_t loc_procbuf[MAX_RB][(MAX_ITER+1)/2];
 	for (int ir=0; ir<MAX_RB; ir++) {
 		size_t off = (size_t)( ir ) * iter * 2;
-		// points into the query profile
 		const uint8_t *pvScore = profbuf + off;
 		for(TIdxSize j = 0; j < ((iter-1)/2); j++) {
-			const TPackedScore full_score(pvScore,j*2);
-			loc_procbuf[ir][j] = full_score();
+			// Each j step occupies 2 bytes (vs0, vs1); even=j*2, odd=(j*2+2)
+			uint8_t even_byte = pack_byte(pvScore + j*4);      // vs0_even, vs1_even
+			uint8_t odd_byte  = pack_byte(pvScore + j*4 + 2);  // vs0_odd,  vs1_odd
+			loc_procbuf[ir][j] = uint16_t(even_byte) | (uint16_t(odd_byte) << 8);
 		}
 		if constexpr((iter%2)!=0) {
-			// Last Even step
-		        const TPackedScoreHalf full_score(pvScore, iter-1);
-			loc_procbuf[ir][(iter-1)/2] = full_score();
+			// Last Even step: only one j step remaining
+			uint8_t even_byte = pack_byte(pvScore + ((iter-1)/2)*4);
+			loc_procbuf[ir][(iter-1)/2] = uint16_t(even_byte);
 		}
 	}
 
