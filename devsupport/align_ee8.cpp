@@ -111,10 +111,17 @@ int align_ee8_one(const int el, // for debuggging purpose
 #else
 	// Note: The vast majority of reads have iter==151
 	if (iter!=151) return 0;  // TODO: We may properly use the right template function, or call slow align directly
+#ifndef PBMASK
 	const EEU8_TCScore lrmax = EEU8_alignNucleotidesLRScalar<uint16_t,151>(profbuf, rf, rfd,
 					nrow,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
-#endif
+
+#else
+	const EEU8_TCScore lrmax = EEU8_alignNucleotidesLRM11Scalar<uint16_t,151>(profbuf, rf, rfd,
+					nrow,
+					gaps[0],gaps[1],gaps[2],gaps[3]);
+#endif // PBMASK
+#endif // PR_LR_SCALAR
 	int nerrs = 0;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
 #ifndef PRE_LR_SCALAR
