@@ -161,12 +161,15 @@ void align_ee8(const int npar, const int nels,
    const int elp_pp = (nels+ (npar-1))/npar; // round up
    int nerrs = 0;
 #ifdef OMPGPU
-#pragma omp target teams distribute parallel for reduction(+:nerrs)
+#pragma omp target teams distribute reduction(+:nerrs)
 #else
 #pragma omp parallel for schedule(dynamic) reduction(+:nerrs)
 #endif
    for (int p=0; p<npar; p++) {
       const int iend = std::min((p+1)*elp_pp,nels);
+#ifdef OMPGPU
+#pragma omp parallel for reduction(+:nerrs)
+#endif
       for (int i=p*elp_pp; i<iend; i++) {
          nerrs+= align_ee8_one(i,
 		nrow[i], iter[i], colstride[i], lastWordIdx[i],minsc[i], rfd[i],
