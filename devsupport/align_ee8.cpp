@@ -117,7 +117,7 @@ int align_ee8_one(const int el, // for debuggging purpose
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 
 #else
-	const EEU8_TCScore lrmax = EEU8_alignNucleotidesLRM1Scalar<uint16_t,151>(profbuf, rf, rfd,
+	const EEU8_TCScore lrmax = EEU8_alignNucleotidesLRM11Scalar<uint16_t,151>(profbuf, rf, rfd,
 					nrow,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 #endif // PBMASK
