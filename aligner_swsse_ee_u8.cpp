@@ -774,6 +774,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 		uint8_t val;
 		// vs0 or vs1 (score) encoded to a bit: 0->0x00, 1->0x01
 		static constexpr uint8_t decode_bit(uint8_t val, uint8_t shift) { return (val>>shift) & 0x1; }
+		static constexpr uint8_t encode1(uint8_t v) { return v != 0 ? 1u : 0u; }
 
 	public:
 		constexpr TPackedScore() : val(0) {};
@@ -781,6 +782,31 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 
 		constexpr TPackedScore(const TPackedScore& other) : val(other.val) {}
 		constexpr TPackedScore& operator=(const TPackedScore& other) { val = other.val; return *this;}
+
+		// Pack one full byte from profbuf: pe0[0..3] into bits 0-3, pe1[0..3] into bits 4-7.
+		// pe0 points to j-pair0 (4 bytes: vs0_even, vs1_even, vs0_odd, vs1_odd),
+		// pe1 points to j-pair1 (same layout, offset +4).
+		static constexpr uint8_t pack_full(const uint8_t *pe0, const uint8_t *pe1) {
+			return  encode1(pe0[0])        |
+			       (encode1(pe0[1]) << 1)  |
+			       (encode1(pe0[2]) << 2)  |
+			       (encode1(pe0[3]) << 3)  |
+			       (encode1(pe1[0]) << 4)  |
+			       (encode1(pe1[1]) << 5)  |
+			       (encode1(pe1[2]) << 6)  |
+			       (encode1(pe1[3]) << 7);
+		}
+
+		// Pack a remainder byte from profbuf: between 1 and 3 j-steps from pe0 (and optionally pe1).
+		// nsteps is the number of remaining j-steps (1, 2, or 3).
+		static constexpr uint8_t pack_remainder(const uint8_t *pe0, const uint8_t *pe1, int nsteps) {
+			uint8_t packed = encode1(pe0[0]) | (encode1(pe0[1]) << 1);
+			if (nsteps >= 2)
+				packed |= (encode1(pe0[2]) << 2) | (encode1(pe0[3]) << 3);
+			if (nsteps >= 3)
+				packed |= (encode1(pe1[0]) << 4) | (encode1(pe1[1]) << 5);
+			return packed;
+		}
 
 		// note that vs1 is a cell's bias E score, vs0 is a cell's bias H score
 		// They are paired together and multiple are packed into a byte
@@ -895,45 +921,14 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 	//   bits[7:4] = j-pair1: vs0_even, vs1_even, vs0_odd, vs1_odd
 	// The last byte covers any remainder j-pairs that don't fill a full byte.
 	uint8_t loc_procbuf[MAX_RB][(MAX_ITER+3)/4];
-	{
-		auto encode1 = [](uint8_t v) -> uint8_t { return v != 0 ? 1u : 0u; };
-		for (int ir=0; ir<MAX_RB; ir++) {
-			size_t off = (size_t)( ir ) * iter * 2;
-			const uint8_t *pvScore = profbuf + off;
-			// Full bytes: each covers two j-pairs (j2=b*4 and j2=b*4+2)
-			for(TIdxSize b = 0; b < (iter/4); b++) {
-				const uint8_t *pe0 = pvScore + b*8;     // j-pair0: vs0_even, vs1_even, vs0_odd, vs1_odd
-				const uint8_t *pe1 = pvScore + b*8 + 4; // j-pair1
-				loc_procbuf[ir][b] =
-					 encode1(pe0[0])        |
-					(encode1(pe0[1]) << 1)  |
-					(encode1(pe0[2]) << 2)  |
-					(encode1(pe0[3]) << 3)  |
-					(encode1(pe1[0]) << 4)  |
-					(encode1(pe1[1]) << 5)  |
-					(encode1(pe1[2]) << 6)  |
-					(encode1(pe1[3]) << 7);
-			}
-			// Remainder byte: covers leftover j-pairs (0, 1, 2, or 3 remaining j-steps)
-			{
-				const TIdxSize b = iter / 4;
-				const TIdxSize rem_j2 = b * 4; // first remaining j-pair index
-				if (rem_j2 < iter) {
-					const uint8_t *pe0 = pvScore + rem_j2 * 2;
-					uint8_t packed = encode1(pe0[0]) | (encode1(pe0[1]) << 1);
-					if (rem_j2 + 1 < iter) { // odd half of j-pair0 exists
-						packed |= (encode1(pe0[2]) << 2) | (encode1(pe0[3]) << 3);
-					}
-					if (rem_j2 + 2 < iter) { // j-pair1 even half exists
-						const uint8_t *pe1 = pvScore + (rem_j2 + 2) * 2;
-						packed |= (encode1(pe1[0]) << 4) | (encode1(pe1[1]) << 5);
-						if (rem_j2 + 3 < iter) { // j-pair1 odd half exists
-							packed |= (encode1(pe1[2]) << 6) | (encode1(pe1[3]) << 7);
-						}
-					}
-					loc_procbuf[ir][b] = packed;
-				}
-			}
+	for (int ir = 0; ir < MAX_RB; ir++) {
+		const uint8_t *pvScore = profbuf + (size_t)ir * iter * 2;
+		for (TIdxSize b = 0; b < (iter/4); b++)
+			loc_procbuf[ir][b] = TPackedScore::pack_full(pvScore + b*8, pvScore + b*8 + 4);
+		if constexpr((iter % 4) != 0) {
+			const TIdxSize b = iter / 4;
+			const uint8_t *pe0 = pvScore + b * 8;
+			loc_procbuf[ir][b] = TPackedScore::pack_remainder(pe0, pe0 + 4, iter % 4);
 		}
 	}
 
