@@ -808,7 +808,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 			return packed;
 		}
 
-		// note that vs1 is a cell's bias E score, vs0 is a cell's bias H score
+		// note that vs1 is a cell's bias E/F score, vs0 is a cell's bias H score
 		// They are paired together and multiple are packed into a byte
 		// vs1 scores are packed at odd indices
 		constexpr uint8_t get_score(uint8_t j_mod) const {
@@ -817,7 +817,9 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 			// vs1 should be 0xff (mask) or 0x00, not {0x00 or 0x01}
 			// An odd j_mod means it is a vs1 score
 			if(j_mod % 2 != 0) {
-				score = (score) ? 0xff : 0x00;
+				score = -score;
+				//Because score={0x00,0x01} it is equivalent to:
+				//score = (score) ? 0xff : 0x00;
 			}
 
 			return score;
@@ -834,64 +836,58 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 		constexpr TPackedEH(const TPackedEH& other) : val(other.val) {}
 		constexpr TPackedEH& operator=(const TPackedEH& other) { val = other.val; return *this;}
 
-		constexpr void set(uint8_t E_even, uint8_t H_even, uint8_t E_odd, uint8_t H_odd) { val =(uint32_t(H_odd)<<24) | (uint32_t(E_odd)<<16) |  (uint32_t(H_even)<<8) | uint32_t(E_even);}
-		constexpr void set(uint8_t E_even, uint8_t H_even) { val = (uint32_t(H_even)<<8) | uint32_t(E_even);}
-
-		// preserve odd, update even (low 16 bits)
-		constexpr void set_even(uint8_t E, uint8_t H) { val = (val & uint32_t(0xffff0000U)) | ((uint32_t(H)<<8) | uint32_t(E));}
-		// preserve even, update odd (high 16 bits)
-		constexpr void set_odd(uint8_t E, uint8_t H) { val = (val & uint32_t(0xffffU)) | ((uint32_t(H)<<24) | (uint32_t(E)<<16));}
-
-		constexpr uint8_t get_E_even() const {return uint8_t(val); }
-		constexpr uint8_t get_H_even() const {return uint8_t(val>>8); }
-		constexpr uint8_t get_E_odd() const {return uint8_t(val>>16); }
-		constexpr uint8_t get_H_odd() const {return uint8_t(val>>24); }
-
-		// Apply one even j-step: updates even slot, vf, and vh (advances vh to vh_next).
-		// si is the base score index; scores si and si+1 are used.
-		inline void apply_even_step(const TPackedScore &full_score, int si,
-		                            uint8_t &vf, uint8_t &vh,
-		                            uint8_t rdgapo, uint8_t rdgape,
-		                            uint8_t rfgapo, uint8_t rfgape) {
-			uint8_t ve = get_E_even();
-			uint8_t vh_next = get_H_even();
-			vf = subs_u8(vf, full_score.get_score(si+1));
-			vh = subs_u8(vh, full_score.get_score(si));
-			vh = std::max(vh, ve);
-			vh = std::max(vh, vf);
-			uint8_t vtmp = vh;
-			vh = subs_u8(vh, rdgapo);
-			vh = subs_u8(vh, full_score.get_score(si+1));
-			ve = subs_u8(ve, rdgape);
-			ve = std::max(ve, vh);
-			set_even(ve, vtmp);
-			vtmp = subs_u8(vtmp, rfgapo);
-			vf = subs_u8(vf, rfgape);
-			vf = std::max(vf, vtmp);
-			vh = vh_next;
+		constexpr uint8_t get_byte(int i) const { return uint8_t(val >> (i * 8)); }
+		constexpr void set_bytes(int i, uint8_t E, uint8_t H) {
+			const uint32_t mask = uint32_t(0xffffU) << (i * 16);
+			val = (val & ~mask) | ((uint32_t(H) << (i*16 + 8)) | (uint32_t(E) << (i*16)));
 		}
 
-		// Apply one odd j-step: updates odd slot, vf, and vh (advances vh to vh_next).
-		// si is the base score index; scores si and si+1 are used.
-		inline void apply_odd_step(const TPackedScore &full_score, int si,
-		                           uint8_t &vf, uint8_t &vh,
-		                           uint8_t rdgapo, uint8_t rdgape,
-		                           uint8_t rfgapo, uint8_t rfgape) {
-			uint8_t ve = get_E_odd();
-			uint8_t vh_next = get_H_odd();
-			vf = subs_u8(vf, full_score.get_score(si+1));
-			vh = subs_u8(vh, full_score.get_score(si));
+		// i=0 addresses the even slot, i=1 the odd slot.
+		constexpr uint8_t get_E(int i) const { return get_byte(i * 2); }
+		constexpr uint8_t get_H(int i) const { return get_byte(i * 2 + 1); }
+
+		// Apply one j-step. score_off is the logical index within the packed byte (0-3).
+		// score_off is always a compile-time literal so all branches are eliminated.
+		inline void apply_step(const TPackedScore &full_score, int score_off,
+		                       uint8_t &vf, uint8_t &vh,
+		                       uint8_t rdgapo, uint8_t rdgape,
+		                       uint8_t rfgapo, uint8_t rfgape) {
+			const int i = score_off % 2;
+
+			// Load cells from E and H, calculated previously
+			uint8_t ve        = get_E(i);
+			uint8_t vh_next   = get_H(i);
+			const uint8_t vs0 = full_score.get_score(score_off*2);
+			const uint8_t vs1 = full_score.get_score(score_off*2+1);
+
+			// Store cells in F, calculated previously
+			vf = subs_u8(vf, vs1); // veto some ref gap extensions
+
+			// Factor in query profile (matches and mismatches)
+			vh = subs_u8(vh, vs0);
+
+			// Update H, factoring in E and F
 			vh = std::max(vh, ve);
 			vh = std::max(vh, vf);
+
+			// Save the new vH values
 			uint8_t vtmp = vh;
+
+			// Update vE value
 			vh = subs_u8(vh, rdgapo);
-			vh = subs_u8(vh, full_score.get_score(si+1));
+			vh = subs_u8(vh, vs1); // veto some read gap opens
 			ve = subs_u8(ve, rdgape);
 			ve = std::max(ve, vh);
-			set_odd(ve, vtmp);
+
+			// Save E and H values for next i round
+			set_bytes(i, ve, vtmp);
+
+			// Update vf value
 			vtmp = subs_u8(vtmp, rfgapo);
 			vf = subs_u8(vf, rfgape);
 			vf = std::max(vf, vtmp);
+
+			// Load the next H value
 			vh = vh_next;
 		}
 	};
@@ -915,10 +911,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 	assert_leq(readGapExtend, readGapOpen);
 	uint8_t rdgape = uint8_t(readGapExtend);
 
-	// Load the procbuf into local memory, compacting {0x00, non-zero} -> {0, 1} (1-bit encoding).
-	// Each byte packs two consecutive j-pairs (4 j-steps) into one byte:
-	//   bits[3:0] = j-pair0: vs0_even, vs1_even, vs0_odd, vs1_odd
-	//   bits[7:4] = j-pair1: vs0_even, vs1_even, vs0_odd, vs1_odd
+	// Load the procbuf, E/F and H biases, into local memory, compacting {0x00, non-zero} -> {0, 1} (1-bit encoding).
+	// Each byte packs two consecutive j-pairs (4 j-steps) into one byte.
 	// The last byte covers any remainder j-pairs that don't fill a full byte.
 	uint8_t loc_procbuf[MAX_RB][(MAX_ITER+3)/4];
 	for (int ir = 0; ir < MAX_RB; ir++) {
@@ -932,27 +926,23 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 		}
 	}
 
-	//
-	//
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
 
-	// Set all elts to reference gap open penalty
-	// iAutomatic initialize the H and E vectors in the first matrix column
+	// H and E vectors for each j-step, packed two per element
 	TPackedEH bufEH[(iter+1)/2];
+
+	constexpr int last_step = iter - 1;
+	constexpr int last_elem = last_step / 2;
+	constexpr int last_slot = last_step % 2;
 
 	// Fill in the table as usual but instead of using the same gap-penalty
 	// vector for each iteration of the inner loop, load words out of a
 	// pre-calculated gap vector parallel to the query profile.  The pre-
 	// calculated gap vectors enforce the gap barrier constraint by making it
 	// infinitely costly to introduce a gap in barrier rows.
-	//
-	// AND use a separate loop to fill in the first row of the table, enforcing
-	// the st_ constraints in the process.  This is awkward because it
-	// separates the processing of the first row from the others and might make
-	// it difficult to use the first-row results in the next row, but it might
-	// be the simplest and least disruptive way to deal with the st_ constraint.
 
+	// For each character in the reference text
 	for(TIdxSize i = 0; i < rfd; i++) {
 		
 		// Fetch the appropriate query profile.  Note that elements of rf must
@@ -961,57 +951,43 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 	
 		// scalar version of EEU8_alignOne()
 		{
-		  // vhilsw: topmost (least sig) word set to 0xff, all other words=0
-		  uint8_t vhilsw   = 0xff;
-	
 		  // Set all cells to low value
-		  uint8_t vf       = 0;
+		  uint8_t vf = 0;
 
 		  // in scalar mode, we always start high
-		  uint8_t vh = vhilsw; //0xff
+		  uint8_t vh = 0xff;
 
-		  // For each character in the reference text
 #ifdef OMPGPU
 		  // Full unrolling allows bufEH to be mapped to the GPU register file
 		  // Only downsides for the CPUs, that have fewer registers
 #pragma omp unroll full
 #endif
-		  // Each loc_procbuf byte covers two j-pairs; loop over bytes.
+		  // E and H scores are kept in uint8_t, coming in pairs and packed into 4 bytes
+		  // However a single byte encodes 4 biasing pairs of every cell, hence doing 4 per loop
+		  // score_off is the logical index within the packed byte (0-3).
 		  for(TIdxSize b = 0; b < (iter/4); b++) {
 		    const TPackedScore full_score(loc_procbuf[ir][b]);
-		    TPackedEH full_eh0(bufEH[b*2]);
-		    full_eh0.apply_even_step(full_score, 0, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    full_eh0.apply_odd_step(full_score, 2, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    bufEH[b*2] = full_eh0;
-		    TPackedEH full_eh1(bufEH[b*2+1]);
-		    full_eh1.apply_even_step(full_score, 4, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    full_eh1.apply_odd_step(full_score, 6, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    bufEH[b*2+1] = full_eh1;
+		    bufEH[b*2].apply_step(full_score, 0, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    bufEH[b*2].apply_step(full_score, 1, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    bufEH[b*2+1].apply_step(full_score, 2, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    bufEH[b*2+1].apply_step(full_score, 3, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
 		  }
-		  // Remainder: process leftover j-pairs from the last loc_procbuf byte.
-		  // Up to 3 leftover j-steps: j-pair0 even+odd, then j-pair1 even.
-		  // (iter%4)==3 means 3 leftover j-steps; ==2 means 2; ==1 means 1; ==0 means none.
+		  // Do remaining elements
 		  if constexpr((iter % 4) != 0) {
 		    const TIdxSize b = iter / 4;
 		    const TPackedScore full_score(loc_procbuf[ir][b]);
-		    TPackedEH full_eh0(bufEH[b*2]);
-		    full_eh0.apply_even_step(full_score, 0, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    if constexpr((iter % 4) >= 2) {
-		      full_eh0.apply_odd_step(full_score, 2, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    }
-		    bufEH[b*2] = full_eh0;
+		    bufEH[b*2].apply_step(full_score, 0, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    if constexpr((iter % 4) >= 2)
+		      bufEH[b*2].apply_step(full_score, 1, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
 		    if constexpr((iter % 4) >= 3) {
-		    	TPackedEH full_eh1(bufEH[b*2+1]);
-		    	full_eh1.apply_even_step(full_score, 4, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    	bufEH[b*2+1] = full_eh1;
+		      bufEH[b*2+1].apply_step(full_score, 2, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
 		    }
 		  }
 		}
 
 		// Note: we may not want to extract from the final row
 		//       EEU8_TCScore == uint8_t == uint8_t
-		// Was: EEU8_TCScore lr = bufEH2[iter - 1].get_H();
-		EEU8_TCScore lr = ((iter%2)!=0) ? bufEH[iter/2].get_H_even() : bufEH[(iter-1)/2].get_H_odd();
+		EEU8_TCScore lr = bufEH[last_elem].get_H(last_slot);
 		if(lr > lrmax) {
 			lrmax = lr;
 		}
