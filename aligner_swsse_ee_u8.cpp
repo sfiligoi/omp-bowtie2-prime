@@ -755,7 +755,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
  * Like the previous alignNucleotides, but the Scalar version allows to forfeit some extra strutures.
  * Note that this version does not return the E, F, H vectors.
  * Only lrmax is computed and returned.
- * Profbuf compacted and saved into a local structure, encoded into 2 bits for values of masking.
+ * Profbuf compacted and saved into a local structure, encoded into 1 bit for values of masking.
  *
  * If the vectors are needed, e.g. when (lrmax - 0xff)>=minsc, i.e. btnfilled>0, use the regular, full version.
  *
@@ -769,6 +769,65 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 					const char   rf[], const TIdxSize rfd,
 					const size_t nrow,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
+        class TPackedScore {
+	private:
+		uint8_t val;
+		// vs0 or vs1 (score) encoded to a bit: 0->0x00, 1->0x01
+		static constexpr uint8_t decode_bit(uint8_t val, uint8_t shift) { return (val>>shift) & 0x1; }
+		static constexpr uint8_t encode1(uint8_t v) { return v != 0 ? 1u : 0u; }
+
+	public:
+		constexpr TPackedScore() : val(0) {};
+		constexpr TPackedScore(const uint8_t packed_val) : val(packed_val) {};
+
+		constexpr TPackedScore(const TPackedScore& other) : val(other.val) {}
+		constexpr TPackedScore& operator=(const TPackedScore& other) { val = other.val; return *this;}
+
+		// Pack one full byte from profbuf: pe0[0..3] into bits 0-3, pe1[0..3] into bits 4-7.
+		// pe0 points to j-pair0 (4 bytes: vs0_even, vs1_even, vs0_odd, vs1_odd),
+		// pe1 points to j-pair1 (same layout, offset +4).
+		static constexpr uint8_t pack_full(const uint8_t *pe0, const uint8_t *pe1) {
+			return  encode1(pe0[0])        |
+			       (encode1(pe0[1]) << 1)  |
+			       (encode1(pe0[2]) << 2)  |
+			       (encode1(pe0[3]) << 3)  |
+			       (encode1(pe1[0]) << 4)  |
+			       (encode1(pe1[1]) << 5)  |
+			       (encode1(pe1[2]) << 6)  |
+			       (encode1(pe1[3]) << 7);
+		}
+
+		// Pack a remainder byte from profbuf: between 1 and 3 j-steps from pe0 (and optionally pe1).
+		// nsteps is the number of remaining j-steps (1, 2, or 3).
+		static constexpr uint8_t pack_remainder(const uint8_t *pe0, const uint8_t *pe1, int nsteps) {
+			uint8_t packed = encode1(pe0[0]) | (encode1(pe0[1]) << 1);
+			if (nsteps >= 2)
+				packed |= (encode1(pe0[2]) << 2) | (encode1(pe0[3]) << 3);
+			if (nsteps >= 3)
+				packed |= (encode1(pe1[0]) << 4) | (encode1(pe1[1]) << 5);
+			return packed;
+		}
+
+		// note that vs1 is a cell's bias E/F score, vs0 is a cell's bias H score
+		// They are paired together and multiple are packed into a byte
+		// vs1 scores are packed at odd indices
+		constexpr uint8_t get_score(uint8_t j_mod) const {
+			uint8_t score = decode_bit(val, j_mod);
+
+			// vs1 should be 0xff (mask) or 0x00, not {0x00 or 0x01}
+			// An odd j_mod means it is a vs1 score
+			if(j_mod % 2 != 0) {
+				score = -score;
+				//Because score={0x00,0x01} it is equivalent to:
+				//score = (score) ? 0xff : 0x00;
+			}
+
+			return score;
+		};
+
+		constexpr uint8_t operator()() const {return val;}
+	};
+
         class TPackedEH {
 	private:
 		uint32_t val;
@@ -777,39 +836,60 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 		constexpr TPackedEH(const TPackedEH& other) : val(other.val) {}
 		constexpr TPackedEH& operator=(const TPackedEH& other) { val = other.val; return *this;}
 
-		constexpr void set(uint8_t E_even, uint8_t H_even, uint8_t E_odd, uint8_t H_odd) { val =(uint32_t(H_odd)<<24) | (uint32_t(E_odd)<<16) |  (uint32_t(H_even)<<8) | uint32_t(E_even);}
-		constexpr void set(uint8_t E_even, uint8_t H_even) { val = (uint32_t(H_even)<<8) | uint32_t(E_even);}
+		constexpr uint8_t get_byte(int i) const { return uint8_t(val >> (i * 8)); }
+		constexpr void set_bytes(int i, uint8_t E, uint8_t H) {
+			const uint32_t mask = uint32_t(0xffffU) << (i * 16);
+			val = (val & ~mask) | ((uint32_t(H) << (i*16 + 8)) | (uint32_t(E) << (i*16)));
+		}
 
-		// preserve odd, update even (low 16 bits)
-		constexpr void set_even(uint8_t E, uint8_t H) { val = (val & uint32_t(0xffff0000U)) | ((uint32_t(H)<<8) | uint32_t(E));}
-		// preserve even, update odd (high 16 bits)
-		constexpr void set_odd(uint8_t E, uint8_t H) { val = (val & uint32_t(0xffffU)) | ((uint32_t(H)<<24) | (uint32_t(E)<<16));}
+		// i=0 addresses the even slot, i=1 the odd slot.
+		constexpr uint8_t get_E(int i) const { return get_byte(i * 2); }
+		constexpr uint8_t get_H(int i) const { return get_byte(i * 2 + 1); }
 
-		constexpr uint8_t get_E_even() const {return uint8_t(val); }
-		constexpr uint8_t get_H_even() const {return uint8_t(val>>8); }
-		constexpr uint8_t get_E_odd() const {return uint8_t(val>>16); }
-		constexpr uint8_t get_H_odd() const {return uint8_t(val>>24); }
-	};
+		// Apply one j-step. score_off is the logical index within the packed byte (0-3).
+		// score_off is always a compile-time literal so all branches are eliminated.
+		inline void apply_step(const TPackedScore &full_score, int score_off,
+		                       uint8_t &vf, uint8_t &vh,
+		                       uint8_t rdgapo, uint8_t rdgape,
+		                       uint8_t rfgapo, uint8_t rfgape) {
+			const int i = score_off % 2;
 
-        class TPackedScore {
-	private:
-		uint8_t val;
-		// Decode 2-bit field: 0->0x00, 1->0x01, 2->0xff
-		static constexpr uint8_t decode2(uint8_t bits) { return (bits <= 1) ? bits : 0xff; }
-	public:
-		constexpr TPackedScore() : val(0) {};
-		constexpr TPackedScore(const uint8_t packed_val) : val(packed_val) {};
+			// Load cells from E and H, calculated previously
+			uint8_t ve        = get_E(i);
+			uint8_t vh_next   = get_H(i);
+			const uint8_t vs0 = full_score.get_score(score_off*2);
+			const uint8_t vs1 = full_score.get_score(score_off*2+1);
 
-		constexpr TPackedScore(const TPackedScore& other) : val(other.val) {}
-		constexpr TPackedScore& operator=(const TPackedScore& other) { val = other.val; return *this;}
+			// Store cells in F, calculated previously
+			vf = subs_u8(vf, vs1); // veto some ref gap extensions
 
-		// bits[1:0]=vs0_even, bits[3:2]=vs1_even, bits[5:4]=vs0_odd, bits[7:6]=vs1_odd
-		constexpr uint8_t get_vs0_even() const { return decode2(val & 0x3); }
-		constexpr uint8_t get_vs1_even() const { return decode2((val >> 2) & 0x3); }
-		constexpr uint8_t get_vs0_odd()  const { return decode2((val >> 4) & 0x3); }
-		constexpr uint8_t get_vs1_odd()  const { return decode2((val >> 6) & 0x3); }
+			// Factor in query profile (matches and mismatches)
+			vh = subs_u8(vh, vs0);
 
-		constexpr uint8_t operator()() const {return val;}
+			// Update H, factoring in E and F
+			vh = std::max(vh, ve);
+			vh = std::max(vh, vf);
+
+			// Save the new vH values
+			uint8_t vtmp = vh;
+
+			// Update vE value
+			vh = subs_u8(vh, rdgapo);
+			vh = subs_u8(vh, vs1); // veto some read gap opens
+			ve = subs_u8(ve, rdgape);
+			ve = std::max(ve, vh);
+
+			// Save E and H values for next i round
+			set_bytes(i, ve, vtmp);
+
+			// Update vf value
+			vtmp = subs_u8(vtmp, rfgapo);
+			vf = subs_u8(vf, rfgape);
+			vf = std::max(vf, vtmp);
+
+			// Load the next H value
+			vh = vh_next;
+		}
 	};
 
         constexpr uint16_t iter = MAX_ITER;
@@ -831,53 +911,38 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 	assert_leq(readGapExtend, readGapOpen);
 	uint8_t rdgape = uint8_t(readGapExtend);
 
-	// Load the procbuf into local memory, compacting {0x00,0x01,0xff} -> {0,1,2} (2-bit encoding).
-	// Each entry packs two consecutive j steps (even+odd) into one byte:
-	//   bits[1:0]=vs0_even, bits[3:2]=vs1_even, bits[5:4]=vs0_odd, bits[7:6]=vs1_odd
-	// Last entry (when iter is odd) uses only the low 4 bits (even step only).
-	uint8_t loc_procbuf[MAX_RB][(MAX_ITER+1)/2];
-	{
-		auto encode2 = [](uint8_t v) -> uint8_t { return (v <= 1) ? v : 2; };
-		for (int ir=0; ir<MAX_RB; ir++) {
-			size_t off = (size_t)( ir ) * iter * 2;
-			const uint8_t *pvScore = profbuf + off;
-			for(TIdxSize j = 0; j < ((iter-1)/2); j++) {
-				// Each j step occupies 2 bytes (vs0, vs1); even step at j*4, odd at j*4+2
-				const uint8_t *pe = pvScore + j*4;
-				loc_procbuf[ir][j] =  encode2(pe[0])        |
-									(encode2(pe[1]) << 2)   |
-									(encode2(pe[2]) << 4)   |
-									(encode2(pe[3]) << 6);
-			}
-			if constexpr((iter%2)!=0) {
-				// Last Even step: only one j step remaining
-				const uint8_t *pe = pvScore + ((iter-1)/2)*4;
-				loc_procbuf[ir][(iter-1)/2] = encode2(pe[0]) | (encode2(pe[1]) << 2);
-			}
+	// Load the procbuf, E/F and H biases, into local memory, compacting {0x00, non-zero} -> {0, 1} (1-bit encoding).
+	// Each byte packs two consecutive j-pairs (4 j-steps) into one byte.
+	// The last byte covers any remainder j-pairs that don't fill a full byte.
+	uint8_t loc_procbuf[MAX_RB][(MAX_ITER+3)/4];
+	for (int ir = 0; ir < MAX_RB; ir++) {
+		const uint8_t *pvScore = profbuf + (size_t)ir * iter * 2;
+		for (TIdxSize b = 0; b < (iter/4); b++)
+			loc_procbuf[ir][b] = TPackedScore::pack_full(pvScore + b*8, pvScore + b*8 + 4);
+		if constexpr((iter % 4) != 0) {
+			const TIdxSize b = iter / 4;
+			const uint8_t *pe0 = pvScore + b * 8;
+			loc_procbuf[ir][b] = TPackedScore::pack_remainder(pe0, pe0 + 4, iter % 4);
 		}
 	}
 
-	//
-	//
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
 
-	// Set all elts to reference gap open penalty
-	// iAutomatic initialize the H and E vectors in the first matrix column
+	// H and E vectors for each j-step, packed two per element
 	TPackedEH bufEH[(iter+1)/2];
+
+	constexpr int last_step = iter - 1;
+	constexpr int last_elem = last_step / 2;
+	constexpr int last_slot = last_step % 2;
 
 	// Fill in the table as usual but instead of using the same gap-penalty
 	// vector for each iteration of the inner loop, load words out of a
 	// pre-calculated gap vector parallel to the query profile.  The pre-
 	// calculated gap vectors enforce the gap barrier constraint by making it
 	// infinitely costly to introduce a gap in barrier rows.
-	//
-	// AND use a separate loop to fill in the first row of the table, enforcing
-	// the st_ constraints in the process.  This is awkward because it
-	// separates the processing of the first row from the others and might make
-	// it difficult to use the first-row results in the next row, but it might
-	// be the simplest and least disruptive way to deal with the st_ constraint.
 
+	// For each character in the reference text
 	for(TIdxSize i = 0; i < rfd; i++) {
 		
 		// Fetch the appropriate query profile.  Note that elements of rf must
@@ -886,138 +951,43 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 	
 		// scalar version of EEU8_alignOne()
 		{
-		  // vhilsw: topmost (least sig) word set to 0xff, all other words=0
-		  uint8_t vhilsw   = 0xff;
-	
 		  // Set all cells to low value
-		  uint8_t vf       = 0;
+		  uint8_t vf = 0;
 
 		  // in scalar mode, we always start high
-		  uint8_t vh = vhilsw; //0xff
+		  uint8_t vh = 0xff;
 
-		  // For each character in the reference text
 #ifdef OMPGPU
 		  // Full unrolling allows bufEH to be mapped to the GPU register file
 		  // Only downsides for the CPUs, that have fewer registers
 #pragma omp unroll full
 #endif
-		  for(TIdxSize j = 0; j < ((iter-1)/2); j++) {
-		    // Load cells from E and H, calculated previously
-		    TPackedEH full_eh(bufEH[j]);
-		    // Load the scores
-		    const TPackedScore full_score(loc_procbuf[ir][j]);
-		    // Even step
-		    {
-		  	// Load cells from E and H, calculated previously
-			uint8_t ve = full_eh.get_E_even();
-		  	uint8_t vh_next = full_eh.get_H_even();
-
-			// Store cells in F, calculated previously
-			vf = subs_u8(vf, full_score.get_vs1_even()); // veto some ref gap extensions
-		  	
-		  	// Factor in query profile (matches and mismatches)
-		  	vh = subs_u8(vh, full_score.get_vs0_even());
-		  	
-		  	// Update H, factoring in E and F
-		  	vh = std::max(vh, ve);
-		  	vh = std::max(vh, vf);
-		  	
-		  	// Save the new vH values
-		  	uint8_t vtmp = vh;
-		  	
-		  	// Update vE value
-		  	vh = subs_u8(vh, rdgapo);
-		  	vh = subs_u8(vh, full_score.get_vs1_even()); // veto some read gap opens
-		  	ve = subs_u8(ve, rdgape);
-		  	ve = std::max(ve, vh);
-
-		  	// Save E and H values for next i round
-		  	full_eh.set_even(ve,vtmp);
-		  	
-		  	// Update vf value for next round
-		  	vtmp = subs_u8(vtmp, rfgapo);
-		  	vf = subs_u8(vf, rfgape);
-		  	vf = std::max(vf, vtmp);
-			vh = vh_next;
-		    }
-		    // Odd step
-		    {
-		  	// Load cells from E and H, calculated previously
-			uint8_t ve = full_eh.get_E_odd();
-		  	uint8_t vh_next = full_eh.get_H_odd();
-
-			// Store cells in F, calculated previously
-			vf = subs_u8(vf, full_score.get_vs1_odd()); // veto some ref gap extensions
-		  	
-		  	// Factor in query profile (matches and mismatches)
-		  	vh = subs_u8(vh, full_score.get_vs0_odd());
-		  	
-		  	// Update H, factoring in E and F
-		  	vh = std::max(vh, ve);
-		  	vh = std::max(vh, vf);
-		  	
-		  	// Save the new vH values
-		  	uint8_t vtmp = vh;
-		  	
-		  	// Update vE value
-		  	vh = subs_u8(vh, rdgapo);
-		  	vh = subs_u8(vh, full_score.get_vs1_odd()); // veto some read gap opens
-		  	ve = subs_u8(ve, rdgape);
-		  	ve = std::max(ve, vh);
-
-		  	// Save E and H values for next i round
-		  	full_eh.set_odd(ve,vtmp);
-		  	
-		  	// Update vf value for next round
-		  	vtmp = subs_u8(vtmp, rfgapo);
-		  	vf = subs_u8(vf, rfgape);
-		  	vf = std::max(vf, vtmp);
-			vh = vh_next;
-		    }
-		    // save the packed result back for the next i loop
-		    bufEH[j] = full_eh;
+		  // E and H scores are kept in uint8_t, coming in pairs and packed into 4 bytes
+		  // However a single byte encodes 4 biasing pairs of every cell, hence doing 4 per loop
+		  // score_off is the logical index within the packed byte (0-3).
+		  for(TIdxSize b = 0; b < (iter/4); b++) {
+		    const TPackedScore full_score(loc_procbuf[ir][b]);
+		    bufEH[b*2].apply_step(full_score, 0, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    bufEH[b*2].apply_step(full_score, 1, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    bufEH[b*2+1].apply_step(full_score, 2, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    bufEH[b*2+1].apply_step(full_score, 3, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
 		  }
-		  if constexpr((iter%2)!=0) {
-			// Last Even step
-		  	// Load cells from E and H, calculated previously
-			const TPackedEH full_eh(bufEH[iter/2]);
-		        // Load the scores
-			// Use the Full Packed class for consistency
-		        const TPackedScore full_score(loc_procbuf[ir][(iter-1)/2]);
-
-			uint8_t ve = full_eh.get_E_even();
-			// no next round, do not need vh_next
-
-			// Store cells in F, calculated previously
-			vf = subs_u8(vf, full_score.get_vs1_even()); // veto some ref gap extensions
-		  	
-		  	// Factor in query profile (matches and mismatches)
-		  	vh = subs_u8(vh, full_score.get_vs0_even());
-		  	
-		  	// Update H, factoring in E and F
-		  	vh = std::max(vh, ve);
-		  	vh = std::max(vh, vf);
-		  	
-		  	// Save the new vH values
-		  	uint8_t vtmp = vh;
-		  	
-		  	// Update vE value
-		  	vh = subs_u8(vh, rdgapo);
-		  	vh = subs_u8(vh, full_score.get_vs1_even()); // veto some read gap opens
-		  	ve = subs_u8(ve, rdgape);
-		  	ve = std::max(ve, vh);
-
-		  	// Save E and H values for next i round
-		  	bufEH[iter/2].set(ve,vtmp);
-		  	
-		  	// no next round
+		  // Do remaining elements
+		  if constexpr((iter % 4) != 0) {
+		    const TIdxSize b = iter / 4;
+		    const TPackedScore full_score(loc_procbuf[ir][b]);
+		    bufEH[b*2].apply_step(full_score, 0, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    if constexpr((iter % 4) >= 2)
+		      bufEH[b*2].apply_step(full_score, 1, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    if constexpr((iter % 4) >= 3) {
+		      bufEH[b*2+1].apply_step(full_score, 2, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    }
 		  }
 		}
 
 		// Note: we may not want to extract from the final row
 		//       EEU8_TCScore == uint8_t == uint8_t
-		// Was: EEU8_TCScore lr = bufEH2[iter - 1].get_H();
-		EEU8_TCScore lr = ((iter%2)!=0) ? bufEH[iter/2].get_H_even() : bufEH[(iter-1)/2].get_H_odd();
+		EEU8_TCScore lr = bufEH[last_elem].get_H(last_slot);
 		if(lr > lrmax) {
 			lrmax = lr;
 		}
