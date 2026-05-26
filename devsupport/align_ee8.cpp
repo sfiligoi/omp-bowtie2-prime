@@ -12,6 +12,8 @@
 
 #define tread(data,size,n, file) if (fread(data,size,n,file)!=n) {fprintf(stderr, "Read failed\n"); return 3;}
 
+#define SKIPPED_LRMAX -2000
+
 int load_data(int nels,
 		size_t nrow[],
 		size_t iter[],
@@ -96,8 +98,9 @@ int align_ee8_one(const int el, // for debuggging purpose
                 const SSERegI *profbuf,
 		const char    *rf,
 		const uint8_t gaps[],
-                SSERegI          *mat,
-		DpBtCandidate    *btncand,
+                SSERegI       *mat,
+		DpBtCandidate *btncand,
+                int32_t       &computed_lrmax, // out
                 const int32_t ref_lrmax,
                 const int32_t ref_btnfilled) {
 #ifndef PRE_LR_SCALAR
@@ -110,7 +113,10 @@ int align_ee8_one(const int el, // for debuggging purpose
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 #else
 	// Note: The vast majority of reads have iter==151
-	if (iter!=151) return 0;  // TODO: We may properly use the right template function, or call slow align directly
+	if (iter!=151) {
+		computed_lrmax = SKIPPED_LRMAX; // special value to signal we did not actually compute it
+		return 0;  // TODO: We may properly use the right template function, or call slow align directly
+	}
 #ifndef PBMASK
 	const EEU8_TCScore lrmax = EEU8_alignNucleotidesLRScalar<uint16_t,151>(profbuf, rf, rfd,
 					nrow,
@@ -123,6 +129,7 @@ int align_ee8_one(const int el, // for debuggging purpose
 #endif // PBMASK
 #endif // PR_LR_SCALAR
 	int nerrs = 0;
+	computed_lrmax = lrmax;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
 #ifndef PRE_LR_SCALAR
 	if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
@@ -154,8 +161,9 @@ void align_ee8(const int npar, const int nels,
                 const SSERegI profbuf[],
 		const char    rf[],
 		const uint8_t gaps[],
-                SSERegI          mat[], 
-		DpBtCandidate    btncand[],
+                SSERegI       mat[], 
+		DpBtCandidate btncand[],
+                int32_t       computed_lrmax[], // out
                 const int32_t ref_lrmax[],
                 const int32_t ref_btnfilled[]) {
    const int elp_pp = (nels+ (npar-1))/npar; // round up
@@ -167,6 +175,15 @@ void align_ee8(const int npar, const int nels,
 #endif
    for (int p=0; p<npar; p++) {
       const int iend = std::min((p+1)*elp_pp,nels);
+#if defined(PRE_LR_SCALAR)
+	// no mat or btncand, just pass NULLs around 
+	SSERegI       *my_mat = NULL;
+	DpBtCandidate *my_btncand = NULL;
+#elif !defined(OMPGPU)
+	// the following loop is sequential, so can reuse the buffer
+	SSERegI       *my_mat = mat+p*size_t(MAX_MAT_EL);
+	DpBtCandidate *my_btncand = btncand+p*size_t(MAX_RF_EL);
+#endif
 #ifdef OMPGPU
 #pragma omp parallel for reduction(+:nerrs)
 #endif
@@ -174,8 +191,8 @@ void align_ee8(const int npar, const int nels,
          nerrs+= align_ee8_one(i,
 		nrow[i], iter[i], colstride[i], lastWordIdx[i],minsc[i], rfd[i],
                 profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),gaps+4*i,
-		mat+p*size_t(MAX_MAT_EL),btncand+p*size_t(MAX_RF_EL),
-		ref_lrmax[i],ref_btnfilled[i]);
+		my_mat,my_btncand,
+		computed_lrmax[i],ref_lrmax[i],ref_btnfilled[i]);
       }
    }
 
@@ -188,6 +205,7 @@ void align_ee8(const int npar, const int nels,
 }
 
 int load_and_align_ee8(const int npar, const int nels) {
+   int32_t *computed_lrmax = new int32_t[nels];
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
@@ -213,21 +231,57 @@ int load_and_align_ee8(const int npar, const int nels) {
 		profbuf,rf,gaps) !=0 ) return 1;
    if (load_results(nels,
 		ref_lrmax, ref_btnfilled) !=0 ) return 1;
-   auto t2 = std::chrono::high_resolution_clock::now();
+   auto t2a = std::chrono::high_resolution_clock::now();
+   for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
+   auto t2b = std::chrono::high_resolution_clock::now();
    align_ee8(npar, nels,
 		nrow, iter, colstride, lastWordIdx,minsc,rfd,
 		profbuf,rf,gaps,mat,btncand,
-		ref_lrmax,ref_btnfilled);
-   auto t3 = std::chrono::high_resolution_clock::now();
+		computed_lrmax,ref_lrmax,ref_btnfilled);
+   auto t3a = std::chrono::high_resolution_clock::now();
+   {
+     int nerrs = 0;
+     int ncomputed = 0;
+     for (int i=0; i<nels; i++) {
+      if (computed_lrmax[i] != SKIPPED_LRMAX ) {
+	ncomputed++;
+	if (computed_lrmax[i] != ref_lrmax[i]) {
+	   nerrs++;
+#ifndef NO_CHECK_PRINT
+	   fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",i,int(computed_lrmax[i]), int(ref_lrmax[i]));
+#endif
+	}
+      }
+     }
+     fprintf(stderr, "INFO: Computed %i out of %i alignments, %i errors\n", ncomputed, nels, nerrs);
+   }
+   for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
+   auto t3b = std::chrono::high_resolution_clock::now();
    align_ee8(npar, nels,
 		nrow, iter, colstride, lastWordIdx,minsc,rfd,
 		profbuf,rf,gaps,mat,btncand,
-		ref_lrmax, ref_btnfilled);
+		computed_lrmax, ref_lrmax, ref_btnfilled);
    auto t4 = std::chrono::high_resolution_clock::now();
+   {
+     int nerrs = 0;
+     int ncomputed = 0;
+     for (int i=0; i<nels; i++) {
+      if (computed_lrmax[i] != SKIPPED_LRMAX ) {
+	ncomputed++;
+	if (computed_lrmax[i] != ref_lrmax[i]) {
+	   nerrs++;
+#ifndef NO_CHECK_PRINT
+	   fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",i,int(computed_lrmax[i]), int(ref_lrmax[i]));
+#endif
+	}
+      }
+     }
+     fprintf(stderr, "INFO: Computed %i out of %i alignments, %i errors\n", ncomputed, nels, nerrs);
+   }
 
-   auto time_span1 = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
-   auto time_span2 = std::chrono::duration_cast<std::chrono::duration<double>>(t3 - t2);
-   auto time_span3 = std::chrono::duration_cast<std::chrono::duration<double>>(t4 - t3);
+   auto time_span1 = std::chrono::duration_cast<std::chrono::duration<double>>(t2a - t1);
+   auto time_span2 = std::chrono::duration_cast<std::chrono::duration<double>>(t3a - t2b);
+   auto time_span3 = std::chrono::duration_cast<std::chrono::duration<double>>(t4 - t3b);
    fprintf(stderr, "load %.4f s cold align %.4f s hot align %.4f s\n", time_span1.count(), time_span2.count(), time_span3.count());
 
    delete[] btncand;
@@ -243,6 +297,7 @@ int load_and_align_ee8(const int npar, const int nels) {
    delete[] profbuf;
    delete[] ref_btnfilled;
    delete[] ref_lrmax;
+   delete[] computed_lrmax;
    return 0;
 }
 
