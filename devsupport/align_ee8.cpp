@@ -177,8 +177,8 @@ void align_ee8(const int npar, const int nels,
       const int iend = std::min((p+1)*elp_pp,nels);
 #if defined(PRE_LR_SCALAR)
 	// no mat or btncand, just pass NULLs around 
-	SSERegI       *my_mat = NULL;
-	DpBtCandidate *my_btncand = NULL;
+	SSERegI       *my_mat = nullptr;
+	DpBtCandidate *my_btncand = nullptr;
 #elif !defined(OMPGPU)
 	// the following loop is sequential, so can reuse the buffer
 	SSERegI       *my_mat = mat+p*size_t(MAX_MAT_EL);
@@ -188,6 +188,11 @@ void align_ee8(const int npar, const int nels,
 #pragma omp parallel for reduction(+:nerrs)
 #endif
       for (int i=p*elp_pp; i<iend; i++) {
+#if defined(OMPGPU) && !defined(PRE_LR_SCALAR)
+	// the loop is parallel, so we must use a different buffer for each element
+	SSERegI       *my_mat = mat+i*size_t(MAX_MAT_EL);
+	DpBtCandidate *my_btncand = btncand+i*size_t(MAX_RF_EL);
+#endif
          nerrs+= align_ee8_one(i,
 		nrow[i], iter[i], colstride[i], lastWordIdx[i],minsc[i], rfd[i],
                 profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),gaps+4*i,
@@ -209,10 +214,18 @@ int load_and_align_ee8(const int npar, const int nels) {
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
-#ifndef FAST_SSE_SCALAR // matrix won't be used in fast scalar
-   SSERegI *mat = new SSERegI[size_t(npar)*MAX_MAT_EL];
+#if defined(PRE_LR_SCALAR)
+   // no mat or btncand, just pass NULLs around 
+   SSERegI        *mat = nullptr;
+   DpBtCandidate *btncand = nullptr;
+#elif !defined(OMPGPU)
+   // one per thread is enough on the CPU
+   SSERegI       *mat = new SSERegI[size_t(npar)*MAX_MAT_EL];
+   DpBtCandidate *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar];
 #else
-   SSERegI *mat = nullptr;
+   // no shortcuts on the GPU
+   SSERegI       *mat = new SSERegI[size_t(nels)*MAX_MAT_EL];
+   DpBtCandidate *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*nels];
 #endif
    char    *rf = new char[size_t(MAX_RF_EL)*nels];
    size_t  *nrow = new size_t[nels];
@@ -222,7 +235,6 @@ int load_and_align_ee8(const int npar, const int nels) {
    int32_t  *minsc = new int32_t[nels];
    size_t  *rfd = new size_t[nels];
    uint8_t *gaps = new uint8_t[4*nels];
-   DpBtCandidate    *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar];
 
    auto t1 = std::chrono::high_resolution_clock::now();
    // test tool, don't worry about perfect cleanup
