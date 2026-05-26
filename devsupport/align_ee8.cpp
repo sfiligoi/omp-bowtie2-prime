@@ -277,6 +277,7 @@ int load_and_align_ee8(const int npar, const int nels) {
    {
      int nerrs = 0;
      int ncomputed = 0;
+     int npartials = 0;
      for (int i=0; i<nels; i++) {
       if (computed_lrmax[i] != SKIPPED_LRMAX ) {
 	ncomputed++;
@@ -286,9 +287,15 @@ int load_and_align_ee8(const int npar, const int nels) {
 	   fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",i,int(computed_lrmax[i]), int(ref_lrmax[i]));
 #endif
 	}
+#if defined(PRE_LR_SCALAR)
+	// The fast method does not provide all info is sc too large
+	TAlScore sc = (TAlScore)(computed_lrmax[i] - 0xff);
+	if (sc>=minsc[i]) npartials++;
+#endif
       }
      }
-     fprintf(stderr, "INFO: Computed %i out of %i alignments, %i errors\n", ncomputed, nels, nerrs);
+     fprintf(stderr, "INFO: Computed %i out of %i alignments, %i npartials, %i errors\n", ncomputed, nels, npartials, nerrs);
+     if ((ncomputed-npartials+nerrs)!=nels) fprintf(stderr, "INFO: A 2nd round for %i els still needed\n",nels-(ncomputed-npartials+nerrs));
    }
 
    auto time_span1 = std::chrono::duration_cast<std::chrono::duration<double>>(t2a - t1);
