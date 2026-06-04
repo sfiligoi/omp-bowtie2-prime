@@ -344,6 +344,93 @@ inline void EEU8_lazyF(const SSERegI vf0,
 }
 #endif
 
+#ifndef BUILTIN_SUB_SAT_BROKEN
+/*
+ * Like EEU8_alignOne, but assuming scalar processing and going over many elements at once
+ *
+ * Note: TBuf must be the same width as vectu8_t
+ *
+ */
+
+template<int VLen, typename TIdxSize, typename TBuf>
+inline uint8_t __attribute__((ext_vector_type(VLen))) EEU8_alignVect(
+			const TIdxSize iter,
+			const size_t colstride,
+			const TBuf *pvScore,
+			const TBuf *pvHLoad, const TBuf *pvELoad,
+			TBuf *pvHStore, TBuf *pvEStore, TBuf *pvFStore,
+			const uint8_t rfgapo, const uint8_t rfgape, const uint8_t rdgapo, const uint8_t rdgape) {
+		typedef uint8_t vectu8_t __attribute__((ext_vector_type(VLen)));
+		// the gaps are the same for all the elements
+		// pre-load in vector format
+		const vectu8_t vect_rfgapo = rfgapo;
+		const vectu8_t vect_rfgape = rfgape;
+		const vectu8_t vect_rdgapo = rdgapo;
+		const vectu8_t vect_rdgape = rdgape;
+
+		// vhilsw: Set all to 0xff
+		vectu8_t vhilsw   = 0xff;
+	
+		// Set all cells to low value
+		vectu8_t vf       = 0;
+
+		// in scalar mode, we always start high
+		vectu8_t vh = vhilsw; //0xff
+		
+		// For each character in the reference text:
+		for(TIdxSize j = 0; j < iter; j++) {
+			vectu8_t vs0 = *pvScore;
+                        pvScore++;
+			vectu8_t vs1 = *pvScore;
+                        pvScore++;
+			// Load cells from E, calculated previously
+			vectu8_t ve = *pvELoad;
+			pvELoad += ROWSTRIDE;
+			
+			// Store cells in F, calculated previously
+			vf = __builtin_elementwise_sub_sat(vf, vs1); // veto some ref gap extensions
+			// HACK: Remove explicit cast
+			*((vectu8_t*)pvFStore) = vf;
+			pvFStore += ROWSTRIDE;
+			
+			// Factor in query profile (matches and mismatches)
+			vh = __builtin_elementwise_sub_sat(vh, vs0);
+			
+			// Update H, factoring in E and F
+			vh = __builtin_elementwise_max(vh, ve);
+			vh = __builtin_elementwise_max(vh, vf);
+			
+			// Save the new vH values
+			// HACK: Remove explicit cast
+			*((vectu8_t*)pvHStore) = vh;
+			pvHStore += ROWSTRIDE;
+			
+			// Update vE value
+			vectu8_t vtmp = vh;
+			vh = __builtin_elementwise_sub_sat(vh, vect_rdgapo);
+			vh = __builtin_elementwise_sub_sat(vh, vs1); // veto some read gap opens
+			ve = __builtin_elementwise_sub_sat(ve, vect_rdgape);
+			ve = __builtin_elementwise_max(ve, vh);
+
+			// Load the next h value
+			vh = *pvHLoad;
+			pvHLoad += ROWSTRIDE;
+			
+			// Save E values
+			// HACK: Remove explicit cast
+			*((vectu8_t*)pvEStore) = ve;
+			pvEStore += ROWSTRIDE;
+			
+			// Update vf value
+			vtmp = __builtin_elementwise_sub_sat(vtmp, vect_rfgapo);
+			vf = __builtin_elementwise_sub_sat(vf, vect_rfgape);
+			vf = __builtin_elementwise_max(vf, vtmp);
+		}
+
+		return vf;
+}
+#endif
+
 /**
  * Solve the current alignment problem using SSE instructions that operate on 16
  * unsigned 8-bit values packed into a single 128-bit register.
