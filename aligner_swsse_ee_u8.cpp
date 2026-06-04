@@ -81,7 +81,11 @@ typedef uint8_t EEU8_TCScore;
 // Helper for saturating subtraction (unsigned 8-bit)
 // since there is no such thing in standard C++.
 constexpr uint8_t subs_u8(uint8_t a, uint8_t b) {
+#ifndef BUILTIN_SUB_SAT_BROKEN
+    return __builtin_elementwise_sub_sat(a,b);
+#else
     return a-std::min(a,b);
+#endif
 }
 
 /**

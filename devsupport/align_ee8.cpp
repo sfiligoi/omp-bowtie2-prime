@@ -330,5 +330,16 @@ int main(int argv, const char* argc[]) {
    int npar = atoi(argc[1]);
    int nels = atoi(argc[2]);
 
+#ifndef BUILTIN_SUB_SAT_BROKEN
+   {
+     // make sure this compiler is not broken
+     uint8_t a = 20;
+     uint8_t b = 40;
+     if (__builtin_elementwise_sub_sat(a,b)!=0) {
+        fprintf(stderr, "ERROR: Broken compiler detected!\n");
+	return 2;
+     }
+   }
+#endif
    return load_and_align_ee8(npar,nels);
 }
