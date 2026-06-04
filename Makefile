@@ -39,11 +39,18 @@ BOWTIE_SHARED_MEM :=
 
 #
 # Recommended amdclang++ flags
+#
+# Note: Needs at least version 22.0
+#       Older versions have broken builtin sat_sub
+#       Tested with container
+#       docker:rocm/dev-ubuntu-24.04:7.2.4
+#
 CXX := amdclang++
 # amdclang++ can use hipcc to compile hip kernels anyways with -x hip
 # CXX := hipcc
 
 # CPU-only
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DPRE_LR_SCALAR -DPBMASK -DSSE_SCALAR -DNO_CHECK_PRINT
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DPRE_LR_SCALAR -DSSE_SCALAR
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR
 CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2

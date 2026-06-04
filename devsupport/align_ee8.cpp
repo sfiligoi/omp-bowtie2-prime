@@ -336,7 +336,18 @@ int main(int argv, const char* argc[]) {
      uint8_t a = 20;
      uint8_t b = 40;
      if (__builtin_elementwise_sub_sat(a,b)!=0) {
-        fprintf(stderr, "ERROR: Broken compiler detected!\n");
+        fprintf(stderr, "ERROR: Broken compiler detected, builtin scalar sub_sat produces wrong result!\n");
+	return 2;
+     }
+   }
+   {
+     // make sure this compiler is not broken
+     typedef uint8_t uint8x16_t __attribute__((ext_vector_type(16)));
+     uint8x16_t a = 20;
+     uint8x16_t b = 40;
+     uint8x16_t r = 0;
+     if (__builtin_reduce_or(__builtin_elementwise_sub_sat(a,b)!=r)) { // enough is one is not equal
+        fprintf(stderr, "ERROR: Broken compiler detected, builtin vector sub_sat produces wrong result!\n");
 	return 2;
      }
    }
