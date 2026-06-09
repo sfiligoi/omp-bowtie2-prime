@@ -353,7 +353,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
  */
 
 template<int VLen, typename TIdxSize, typename TBuf>
-inline uint8_t __attribute__((ext_vector_type(VLen))) EEU8_alignVect(
+inline void EEU8_alignVect(
 			const TIdxSize iter,
 			const size_t colstride,
 			const TBuf *pvScore,
@@ -426,8 +426,6 @@ inline uint8_t __attribute__((ext_vector_type(VLen))) EEU8_alignVect(
 			vf = __builtin_elementwise_sub_sat(vf, vect_rfgape);
 			vf = __builtin_elementwise_max(vf, vtmp);
 		}
-
-		return vf;
 }
 #endif
 
