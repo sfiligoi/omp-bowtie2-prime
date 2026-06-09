@@ -511,6 +511,17 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	SSERegI *pvEStore = pmat + colstride + SSEMatrixConsts::E;
 	SSERegI *pvFStore = pmat + SSEMatrixConsts::F;
 	
+	// sc := lr - 0xff
+	// minlr = minsc + 0xff
+	// Make it fit inside uint8_t
+	const EEU8_TCScore minlr = 
+		(minsc<=(-255)) 
+		? 0                 // underflow
+		: ((minsc>0) 
+			? 0xff      // overflow
+			: (minsc + 0xff)
+		  );
+
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
 
@@ -558,11 +569,8 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		
 		// Note: we may not want to extract from the final row
 		EEU8_TCScore lr = ((EEU8_TCScore*)(pvHLoad))[lastWordIdx];
-		TAlScore sc = (TAlScore)(lr - 0xff);
-		if(lr > lrmax) {
-			lrmax = lr;
-		}
-		if(sc >= minsc) {
+		lrmax = std::max(lr,lrmax);
+		if (lr >= minlr) {
 			// Yes, this is legit
 			btncand[btnfilled].init(nrow-1, i, lr);
 			btnfilled++;
