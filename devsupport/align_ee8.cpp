@@ -14,6 +14,14 @@
 
 #define SKIPPED_LRMAX -2000
 
+#ifndef CPUVECT
+typedef SSERegI TMatBuf;
+#else
+// TODO, make it more dynameic
+#define VECT_SIZE 16
+typedef uint8_t TMatBuf __attribute__((ext_vector_type(VECT_SIZE)));
+#endif
+
 int load_data(int nels,
 		size_t nrow[],
 		size_t iter[],
@@ -88,6 +96,7 @@ int load_results(int nels,
    return 0;
 }
 
+#ifndef CPUVECT
 int align_ee8_one(const int el, // for debuggging purpose
 		const size_t nrow,
 		const size_t iter,
@@ -98,7 +107,7 @@ int align_ee8_one(const int el, // for debuggging purpose
                 const SSERegI *profbuf,
 		const char    *rf,
 		const uint8_t gaps[],
-                SSERegI       *mat,
+                TMatBuf       *mat,
 		DpBtCandidate *btncand,
                 int32_t       &computed_lrmax, // out
                 const int32_t ref_lrmax,
@@ -150,6 +159,61 @@ int align_ee8_one(const int el, // for debuggging purpose
 	return nerrs;
 }
 
+#else
+template<int VLen>
+int align_ee8_vect(const int el, // first, for debuggging purpose
+		const size_t nrow,
+		const size_t iter,
+		const size_t colstride,
+		const size_t lastWordIdx,
+		const int32_t minsc,
+		const size_t rfd,
+                const SSERegI *profbuf,
+		const char    *rf,
+		const uint8_t gaps[],
+                TMatBuf       *mat,
+		DpBtCandidate *btncand,
+                int32_t       *computed_lrmax, // out
+                const int32_t *ref_lrmax,
+                const int32_t *ref_btnfilled) {
+	typedef uint8_t vectu8_t __attribute__((ext_vector_type(VLen)));
+	uint16_t btnfilled[VLen];
+        //fprintf(stderr,"Using profbuf %p\n",profbuf);
+        //fprintf(stderr,"Using rf %p\n",rf);
+	const vectu8_t lrmax = EEU8_alignNucleotidesVect<VLen,uint16_t>(
+					(const vectu8_t*) profbuf, (const vectu8_t*) rf, rfd,
+					mat,
+                                        iter, colstride, lastWordIdx,
+					minsc, nrow,
+					btncand, btnfilled,
+					gaps[0],gaps[1],gaps[2],gaps[3]);
+	int nerrs = 0;
+	for(int i=0; i<VLen; i++) computed_lrmax[i] = lrmax[i];
+	for(int i=0; i<VLen; i++) if (int(ref_lrmax[i]) != int(lrmax[i])) nerrs++;
+#ifndef PRE_LR_SCALAR
+	for(int i=0; i<VLen; i++) if (int(ref_btnfilled[i]) != int(btnfilled[i])) nerrs++;
+#else
+	//TAlScore sc = (TAlScore)(lrmax - 0xff);
+	//if ((ref_btnfilled!=0) != (sc>=minsc)) nerrs++;
+#endif
+
+#if 0
+
+#ifndef NO_CHECK_PRINT
+	if (int(ref_lrmax) != int(lrmax)) fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",el,int(lrmax), int(ref_lrmax));
+#ifndef PRE_LR_SCALAR
+	if (int(ref_btnfilled) != int(btnfilled)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i != %i)\n",el,int(btnfilled), int(ref_btnfilled));
+#else
+	if ((ref_btnfilled!=0) != (sc>=minsc)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i) vs sc %i minsc %i)\n",el,int(ref_btnfilled), int(sc), int(minsc));
+#endif
+#endif
+#endif
+	// TODO: In case of PRE_LR_SCALAR, we should also likely want to test the complete align on the elements that need it
+	//       But that's probably better done in a separate test
+	return nerrs;
+}
+
+#endif
 
 void align_ee8(const int npar, const int nels,
 		const size_t nrow[],
@@ -161,7 +225,7 @@ void align_ee8(const int npar, const int nels,
                 const SSERegI profbuf[],
 		const char    rf[],
 		const uint8_t gaps[],
-                SSERegI       mat[], 
+                TMatBuf       mat[], 
 		DpBtCandidate btncand[],
                 int32_t       computed_lrmax[], // out
                 const int32_t ref_lrmax[],
@@ -177,20 +241,22 @@ void align_ee8(const int npar, const int nels,
       const int iend = std::min((p+1)*elp_pp,nels);
 #if defined(PRE_LR_SCALAR)
 	// no mat or btncand, just pass NULLs around 
-	SSERegI       *my_mat = nullptr;
+	TMatBuf       *my_mat = nullptr;
 	DpBtCandidate *my_btncand = nullptr;
 #elif !defined(OMPGPU)
 	// the following loop is sequential, so can reuse the buffer
-	SSERegI       *my_mat = mat+p*size_t(MAX_MAT_EL);
+	TMatBuf       *my_mat = mat+p*size_t(MAX_MAT_EL);
 	DpBtCandidate *my_btncand = btncand+p*size_t(MAX_RF_EL);
 #endif
+#ifndef CPUVECT
+
 #ifdef OMPGPU
 #pragma omp parallel for reduction(+:nerrs)
 #endif
       for (int i=p*elp_pp; i<iend; i++) {
 #if defined(OMPGPU) && !defined(PRE_LR_SCALAR)
 	// the loop is parallel, so we must use a different buffer for each element
-	SSERegI       *my_mat = mat+i*size_t(MAX_MAT_EL);
+	TMatBuf       *my_mat = mat+i*size_t(MAX_MAT_EL);
 	DpBtCandidate *my_btncand = btncand+i*size_t(MAX_RF_EL);
 #endif
          nerrs+= align_ee8_one(i,
@@ -199,6 +265,17 @@ void align_ee8(const int npar, const int nels,
 		my_mat,my_btncand,
 		computed_lrmax[i],ref_lrmax[i],ref_btnfilled[i]);
       }
+
+#else /* CPUVECT */
+      // HACK, TODO: Deal with rounding
+      for (int i=p*elp_pp; (i+VECT_SIZE)<=iend; i+=VECT_SIZE) {
+         nerrs+= align_ee8_vect<VECT_SIZE>(i,
+		nrow[i], iter[i], colstride[i], lastWordIdx[i],minsc[i], rfd[i],
+                profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),gaps+4*i,
+		my_mat,my_btncand,
+		computed_lrmax+i,ref_lrmax+i,ref_btnfilled+i);
+      }
+#endif
    }
 
    if (nerrs!=0) {
@@ -214,20 +291,22 @@ int load_and_align_ee8(const int npar, const int nels) {
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
+   //fprintf(stderr,"Allocated %li profbuf: %p\n",long(size_t(nels)*MAX_PB_EL),profbuf);
 #if defined(PRE_LR_SCALAR)
    // no mat or btncand, just pass NULLs around 
-   SSERegI        *mat = nullptr;
+   TMatBuf        *mat = nullptr;
    DpBtCandidate *btncand = nullptr;
 #elif !defined(OMPGPU)
    // one per thread is enough on the CPU
-   SSERegI       *mat = new SSERegI[size_t(npar)*MAX_MAT_EL];
+   TMatBuf       *mat = new TMatBuf[size_t(npar)*MAX_MAT_EL];
    DpBtCandidate *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar];
 #else
    // no shortcuts on the GPU
-   SSERegI       *mat = new SSERegI[size_t(nels)*MAX_MAT_EL];
+   TMatBuf       *mat = new TMatBuf[size_t(nels)*MAX_MAT_EL];
    DpBtCandidate *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*nels];
 #endif
    char    *rf = new char[size_t(MAX_RF_EL)*nels];
+   //fprintf(stderr,"Allocated %li rf: %p\n",long(size_t(MAX_RF_EL)*nels),rf);
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];
    size_t  *colstride = new size_t[nels];
