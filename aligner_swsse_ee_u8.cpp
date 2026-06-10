@@ -88,6 +88,11 @@ constexpr uint8_t subs_u8(uint8_t a, uint8_t b) {
 #endif
 }
 
+#ifndef BUILTIN_SUB_SAT_BROKEN
+template <typename T, unsigned int N>
+using EEU8_Vector = T __attribute__((ext_vector_type(N)));
+#endif
+
 /**
  * Build query profile look up tables for the read.  The query profile look
  * up table is organized as a 1D array indexed by [i][j] where i is the
@@ -352,15 +357,15 @@ inline void EEU8_lazyF(const SSERegI vf0,
  *
  */
 
-template<int VLen, typename TIdxSize, typename TBuf>
+template<unsigned int VLen, typename TIdxSize, typename TBuf>
 inline void EEU8_alignVect(
 			const TIdxSize iter,
 			const size_t colstride,
-			const TBuf *pvScore, const uint8_t __attribute__((ext_vector_type(VLen))) rfidxs,
+			const TBuf *pvScore, const EEU8_Vector<uint8_t, VLen> rfidxs,
 			const TBuf *pvHLoad, const TBuf *pvELoad,
 			TBuf *pvHStore, TBuf *pvEStore, TBuf *pvFStore,
 			const uint8_t rfgapo, const uint8_t rfgape, const uint8_t rdgapo, const uint8_t rdgape) {
-		typedef uint8_t vectu8_t __attribute__((ext_vector_type(VLen)));
+		typedef EEU8_Vector<uint8_t, VLen> vectu8_t;
 		// the gaps are the same for all the elements
 		// pre-load in vector format
 		const vectu8_t vect_rfgapo = rfgapo;
@@ -607,16 +612,16 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
  *
  */
 
-template<int VLen, typename TIdxSize>
-inline EEU8_TCScore __attribute__((ext_vector_type(VLen)))  EEU8_alignNucleotidesVect(
-					const uint8_t __attribute__((ext_vector_type(VLen))) profbuf[],
-					const uint8_t __attribute__((ext_vector_type(VLen))) rf[], const TIdxSize rfd,
-					uint8_t __attribute__((ext_vector_type(VLen))) pmat[],
+template<unsigned int VLen, typename TIdxSize>
+inline EEU8_Vector<uint8_t, VLen> EEU8_alignNucleotidesVect(
+					const EEU8_Vector<uint8_t, VLen> profbuf[],
+					const EEU8_Vector<uint8_t, VLen> rf[], const TIdxSize rfd,
+					EEU8_Vector<uint8_t, VLen> pmat[],
 					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
 					const TAlScore minsc, const size_t nrow,
 					DpBtCandidate btncand[], TIdxSize btnfilled[],
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
-	typedef uint8_t vectu8_t __attribute__((ext_vector_type(VLen)));
+	typedef EEU8_Vector<uint8_t, VLen> vectu8_t;
 
 	// Many thanks to Michael Farrar for releasing his striped Smith-Waterman
 	// implementation:
