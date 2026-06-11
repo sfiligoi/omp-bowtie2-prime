@@ -96,6 +96,150 @@ int load_results(int nels,
    return 0;
 }
 
+void swap_data(size_t my, size_t other,
+                size_t nrow[],
+                size_t iter[],
+                size_t colstride[],
+                size_t lastWordIdx[],
+                int32_t minsc[],
+                size_t rfd[],
+                SSERegI profbuf[],
+                char    rf[],
+                uint8_t gaps[],
+                int32_t lrmax[],
+                int32_t btnfilled[]
+                ) {
+	if (my==other) return; // nothing to do
+	std::swap(nrow[my],nrow[other]);
+	std::swap(iter[my],iter[other]);
+	std::swap(colstride[my],colstride[other]);
+	std::swap(lastWordIdx[my],lastWordIdx[other]);
+	std::swap(minsc[my],minsc[other]);
+	std::swap(rfd[my],rfd[other]);
+	for (size_t i=0; i<MAX_PB_EL; i++) std::swap(profbuf[my*size_t(MAX_PB_EL)+i],profbuf[other*size_t(MAX_PB_EL)+i]);
+	for (size_t i=0; i<MAX_RF_EL; i++) std::swap(rf[my*size_t(MAX_RF_EL)+i],rf[other*size_t(MAX_RF_EL)+i]);
+	for (size_t i=0; i<4; i++) std::swap(gaps[my*4+i],gaps[other*4+i]);
+	std::swap(lrmax[my],lrmax[other]);
+	std::swap(btnfilled[my],btnfilled[other]);
+}
+
+// The accelerated algoritms need homogeneous alignment sizes
+// Move anything that does not fit to the end
+// Return how many homogeneous elements we have
+int filter(int nels,
+		size_t nrow[],
+		size_t iter[],
+		size_t colstride[],
+		size_t lastWordIdx[],
+		int32_t minsc[],
+		size_t rfd[],
+                SSERegI profbuf[],
+		char    rf[],
+		uint8_t gaps[],
+		int32_t lrmax[],
+		int32_t btnfilled[]
+		) {
+   uint32_t *gaps4 = (uint32_t*)gaps;
+   bool is_first = true;
+   size_t nrow_first;
+   size_t colstride_first;
+   size_t lastWordIdx_first;
+   int32_t minsc_first;
+   size_t rfd_first;
+   uint32_t gaps_first;
+
+   int filter_iter_n = 0;
+   int filter_nrow_n = 0;
+   int filter_colstride_n = 0;
+   int filter_lastWordIdx_n = 0;
+   int filter_minsc_n = 0;
+   int filter_rfd_n = 0;
+   int filter_gaps_n = 0;
+   int good_els = nels;
+   int i = 0;
+   while (i<good_els) {
+      if (iter[i]!=((151+(NBYTES_PER_REG-1))/NBYTES_PER_REG)) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_iter_n++;
+	continue;
+      }
+      // for all other values, we will default to the first we see
+      if (is_first) {
+	nrow_first = nrow[i];
+	colstride_first = colstride[i];
+	lastWordIdx_first = lastWordIdx[i];
+ 	minsc_first = minsc[i];
+ 	rfd_first = rfd[i];
+   	gaps_first = gaps4[i];
+	is_first = false;
+      }
+      if (rfd[i]!=rfd_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_rfd_n++;
+	continue;
+      }
+      if (gaps4[i]!=gaps_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_gaps_n++;
+	continue;
+      }
+      if (nrow[i]!=nrow_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_nrow_n++;
+	continue;
+      }
+      if (colstride[i]!=colstride_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_colstride_n++;
+	continue;
+      }
+      if (lastWordIdx[i]!=lastWordIdx_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_lastWordIdx_n++;
+	continue;
+      }
+      if (minsc[i]!=minsc_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_minsc_n++;
+	continue;
+      }
+      i++;
+   }
+
+   fprintf(stderr, "INFO: Filtered from %i down to %i (%3.2f%%%)\n",int(nels), int(good_els),100.0*good_els/nels);
+   fprintf(stderr, "INFO: Filter iter: %i rfd: %i gaps: %i nrow: %i colstride: %i lastWordIdx: %i minsc: %i\n",
+		   filter_iter_n,filter_rfd_n,filter_gaps_n,filter_nrow_n,filter_colstride_n,filter_lastWordIdx_n,filter_minsc_n);
+   return good_els;
+}
+
 #ifndef CPUVECT
 int align_ee8_one(const int el, // for debuggging purpose
 		const size_t nrow,
@@ -121,11 +265,16 @@ int align_ee8_one(const int el, // for debuggging purpose
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 #else
+
+#if 0
+	// The upstream filter takes care of this...
 	// Note: The vast majority of reads have iter==151
 	if (iter!=151) {
 		computed_lrmax = SKIPPED_LRMAX; // special value to signal we did not actually compute it
 		return 0;  // TODO: We may properly use the right template function, or call slow align directly
 	}
+#endif
+
 #ifndef PBMASK
 	const EEU8_TCScore lrmax = EEU8_alignNucleotidesLRScalar<uint16_t,151>(profbuf, rf, rfd,
 					nrow,
@@ -286,7 +435,7 @@ void align_ee8(const int npar, const int nels,
 
 }
 
-int load_and_align_ee8(const int npar, const int nels) {
+int load_and_align_ee8(const int npar, int nels) {
    int32_t *computed_lrmax = new int32_t[nels];
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
@@ -322,6 +471,9 @@ int load_and_align_ee8(const int npar, const int nels) {
 		profbuf,rf,gaps) !=0 ) return 1;
    if (load_results(nels,
 		ref_lrmax, ref_btnfilled) !=0 ) return 1;
+   nels = filter(nels,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, ref_lrmax, ref_btnfilled);
    auto t2a = std::chrono::high_resolution_clock::now();
    for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
    auto t2b = std::chrono::high_resolution_clock::now();
