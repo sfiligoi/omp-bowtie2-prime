@@ -234,7 +234,7 @@ int filter(int nels,
       i++;
    }
 
-   fprintf(stderr, "INFO: Filtered from %i down to %i (%3.2f%%%)\n",int(nels), int(good_els),100.0*good_els/nels);
+   fprintf(stderr, "INFO: Filtered from %i down to %i (%3.2f%%)\n",int(nels), int(good_els),100.0*good_els/nels);
    fprintf(stderr, "INFO: Filter iter: %i rfd: %i gaps: %i nrow: %i colstride: %i lastWordIdx: %i minsc: %i\n",
 		   filter_iter_n,filter_rfd_n,filter_gaps_n,filter_nrow_n,filter_colstride_n,filter_lastWordIdx_n,filter_minsc_n);
    return good_els;
@@ -248,9 +248,9 @@ int align_ee8_one(const int el, // for debuggging purpose
 		const size_t lastWordIdx,
 		const int32_t minsc,
 		const size_t rfd,
+		const uint8_t gaps[4],
                 const SSERegI *profbuf,
 		const char    *rf,
-		const uint8_t gaps[],
                 TMatBuf       *mat,
 		DpBtCandidate *btncand,
                 int32_t       &computed_lrmax, // out
@@ -317,9 +317,9 @@ int align_ee8_vect(const int el, // first, for debuggging purpose
 		const size_t lastWordIdx,
 		const int32_t minsc,
 		const size_t rfd,
+		const uint8_t gaps[4],
                 const SSERegI *profbuf,
 		const char    *rf,
-		const uint8_t gaps[],
                 TMatBuf       *mat,
 		DpBtCandidate *btncand,
                 int32_t       *computed_lrmax, // out
@@ -365,15 +365,15 @@ int align_ee8_vect(const int el, // first, for debuggging purpose
 #endif
 
 void align_ee8(const int npar, const int nels,
-		const size_t nrow[],
-		const size_t iter[],
-		const size_t colstride[],
-		const size_t lastWordIdx[],
-		const int32_t minsc[],
-		const size_t rfd[],
+		const size_t nrow,
+		const size_t iter,
+		const size_t colstride,
+		const size_t lastWordIdx,
+		const int32_t minsc,
+		const size_t  rfd,
+		const uint8_t gaps[4],
                 const SSERegI profbuf[],
 		const char    rf[],
-		const uint8_t gaps[],
                 TMatBuf       mat[], 
 		DpBtCandidate btncand[],
                 int32_t       computed_lrmax[], // out
@@ -409,8 +409,8 @@ void align_ee8(const int npar, const int nels,
 	DpBtCandidate *my_btncand = btncand+i*size_t(MAX_RF_EL);
 #endif
          nerrs+= align_ee8_one(i,
-		nrow[i], iter[i], colstride[i], lastWordIdx[i],minsc[i], rfd[i],
-                profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),gaps+4*i,
+		nrow, iter, colstride, lastWordIdx,minsc, rfd, gaps,
+                profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),
 		my_mat,my_btncand,
 		computed_lrmax[i],ref_lrmax[i],ref_btnfilled[i]);
       }
@@ -419,8 +419,8 @@ void align_ee8(const int npar, const int nels,
       // HACK, TODO: Deal with rounding
       for (int i=p*elp_pp; (i+VECT_SIZE)<=iend; i+=VECT_SIZE) {
          nerrs+= align_ee8_vect<VECT_SIZE>(i,
-		nrow[i], iter[i], colstride[i], lastWordIdx[i],minsc[i], rfd[i],
-                profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),gaps+4*i,
+		nrow, iter, colstride, lastWordIdx,minsc, rfd, gaps,
+                profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),
 		my_mat,my_btncand,
 		computed_lrmax+i,ref_lrmax+i,ref_btnfilled+i);
       }
@@ -477,9 +477,12 @@ int load_and_align_ee8(const int npar, int nels) {
    auto t2a = std::chrono::high_resolution_clock::now();
    for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
    auto t2b = std::chrono::high_resolution_clock::now();
+   // we filtered the eleemnts, we can now assume they are homogeneous
    align_ee8(npar, nels,
-		nrow, iter, colstride, lastWordIdx,minsc,rfd,
-		profbuf,rf,gaps,mat,btncand,
+		nrow[0], iter[0], colstride[0], lastWordIdx[0],minsc[0],rfd[0], // homogeneous
+		gaps, // 4 elements, so passing by pointer, but still homogeneous
+		profbuf,rf,
+		mat,btncand,
 		computed_lrmax,ref_lrmax,ref_btnfilled);
    auto t3a = std::chrono::high_resolution_clock::now();
    {
@@ -501,9 +504,11 @@ int load_and_align_ee8(const int npar, int nels) {
    for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
    auto t3b = std::chrono::high_resolution_clock::now();
    align_ee8(npar, nels,
-		nrow, iter, colstride, lastWordIdx,minsc,rfd,
-		profbuf,rf,gaps,mat,btncand,
-		computed_lrmax, ref_lrmax, ref_btnfilled);
+		nrow[0], iter[0], colstride[0], lastWordIdx[0],minsc[0],rfd[0], // homogeneous
+		gaps, // 4 elements, so passing by pointer, but still homogeneous
+		profbuf,rf,
+		mat,btncand,
+		computed_lrmax,ref_lrmax,ref_btnfilled);
    auto t4 = std::chrono::high_resolution_clock::now();
    {
      int nerrs = 0;
