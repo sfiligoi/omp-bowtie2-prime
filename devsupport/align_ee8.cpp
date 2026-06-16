@@ -18,7 +18,7 @@
 typedef SSERegI TMatBuf;
 #else
 // TODO, make it more dynameic
-#define VECT_SIZE 16
+#define VECT_SIZE 64
 typedef uint8_t TMatBuf __attribute__((ext_vector_type(VECT_SIZE)));
 #endif
 
@@ -96,6 +96,7 @@ int load_results(int nels,
    return 0;
 }
 
+// Swap all data for two elements
 void swap_data(size_t my, size_t other,
                 size_t nrow[],
                 size_t iter[],
@@ -439,7 +440,7 @@ int load_and_align_ee8(const int npar, int nels) {
    int32_t *computed_lrmax = new int32_t[nels];
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
-   SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
+   SSERegI *profbuf = new (std::align_val_t(1024))  SSERegI[size_t(nels)*MAX_PB_EL];
    //fprintf(stderr,"Allocated %li profbuf: %p\n",long(size_t(nels)*MAX_PB_EL),profbuf);
 #if defined(PRE_LR_SCALAR)
    // no mat or btncand, just pass NULLs around 
@@ -447,14 +448,14 @@ int load_and_align_ee8(const int npar, int nels) {
    DpBtCandidate *btncand = nullptr;
 #elif !defined(OMPGPU)
    // one per thread is enough on the CPU
-   TMatBuf       *mat = new TMatBuf[size_t(npar)*MAX_MAT_EL];
-   DpBtCandidate *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar];
+   TMatBuf       *mat = new  (std::align_val_t(1024))  TMatBuf[size_t(npar)*MAX_MAT_EL];
+   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*npar];
 #else
    // no shortcuts on the GPU
-   TMatBuf       *mat = new TMatBuf[size_t(nels)*MAX_MAT_EL];
-   DpBtCandidate *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*nels];
+   TMatBuf       *mat = new  (std::align_val_t(1024)) TMatBuf[size_t(nels)*MAX_MAT_EL];
+   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*nels];
 #endif
-   char    *rf = new char[size_t(MAX_RF_EL)*nels];
+   char    *rf = new  (std::align_val_t(1024)) char[size_t(MAX_RF_EL)*nels];
    //fprintf(stderr,"Allocated %li rf: %p\n",long(size_t(MAX_RF_EL)*nels),rf);
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];
