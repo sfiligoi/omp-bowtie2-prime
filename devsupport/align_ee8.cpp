@@ -241,6 +241,43 @@ int filter(int nels,
    return good_els;
 }
 
+#ifdef CPUVECT
+// The input buffers are meant for scalar execution
+// If we have vectors, we must transpose some buffers accordingly
+// Remonder: We groupped same rfdp[ together, so use that info
+//
+// rf
+//  Org:
+//   el=0 0...rfd0..MAX_RF_EL-1
+//   el=1                       MAX_RF_EL..+rfd1..2*MAX_RF_EL-1
+//   ...
+//   el=N                                                            N*MAX_RF_EL..+rfdN..(N-1)*MAX_RF_EL-1
+//  New:
+//   el=0   0      V           ...   V*(rfd-1)
+//   el=1    1      V+1          ...         V*(rfd-1)+1
+//   ...
+//   el=V-1     V-1     2*V-1            ...              V*rfd-1
+//   el=V                                                         V*rfd ...
+//
+void vect_transpose_rf(const int nels,
+		const size_t  rfd,
+		const char rf_in[],
+		char       rf_out[]
+		) {
+    // Note: We are assuming rounded nels
+    for (int b=0; b<(nels/VECT_SIZE); b++) {
+       for (size_t r=0; r<rfd; r++) {
+	  for (int v=0; v<VECT_SIZE; v++) {
+             uint64_t source_i = (b*VECT_SIZE+v)*uint64_t(MAX_RF_EL)+r;
+             uint64_t dest_i = (b*uint64_t(rfd)+r)*uint64_t(VECT_SIZE)+v;
+	     rf_out[dest_i] = rf_in[source_i];
+	  }
+       }
+    }
+}
+
+#endif
+
 #ifndef CPUVECT
 int align_ee8_one(const int el, // for debuggging purpose
 		const size_t nrow,
@@ -380,7 +417,11 @@ void align_ee8(const int npar, const int nels,
                 int32_t       computed_lrmax[], // out
                 const int32_t ref_lrmax[],
                 const int32_t ref_btnfilled[]) {
-   const int elp_pp = (nels+ (npar-1))/npar; // round up
+   int elp_pp = (nels+ (npar-1))/npar; // round up
+#ifdef CPUVECT
+   // keep block multiple of VECT_SIZE
+   elp_pp = ((elp_pp + (VECT_SIZE-1))/VECT_SIZE)*VECT_SIZE; // round up
+#endif 
    int nerrs = 0;
 #ifdef OMPGPU
 #pragma omp target teams distribute reduction(+:nerrs)
@@ -417,11 +458,12 @@ void align_ee8(const int npar, const int nels,
       }
 
 #else /* CPUVECT */
-      // HACK, TODO: Deal with rounding
+      // Note: Assuming nels was rounded
       for (int i=p*elp_pp; (i+VECT_SIZE)<=iend; i+=VECT_SIZE) {
          nerrs+= align_ee8_vect<VECT_SIZE>(i,
 		nrow, iter, colstride, lastWordIdx,minsc, rfd, gaps,
-                profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),
+                profbuf+i*size_t(MAX_PB_EL),
+		rf+i*size_t(rfd), // transposed, now different spacing
 		my_mat,my_btncand,
 		computed_lrmax+i,ref_lrmax+i,ref_btnfilled+i);
       }
@@ -441,7 +483,6 @@ int load_and_align_ee8(const int npar, int nels) {
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new (std::align_val_t(1024))  SSERegI[size_t(nels)*MAX_PB_EL];
-   //fprintf(stderr,"Allocated %li profbuf: %p\n",long(size_t(nels)*MAX_PB_EL),profbuf);
 #if defined(PRE_LR_SCALAR)
    // no mat or btncand, just pass NULLs around 
    TMatBuf        *mat = nullptr;
@@ -456,7 +497,6 @@ int load_and_align_ee8(const int npar, int nels) {
    DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*nels];
 #endif
    char    *rf = new  (std::align_val_t(1024)) char[size_t(MAX_RF_EL)*nels];
-   //fprintf(stderr,"Allocated %li rf: %p\n",long(size_t(MAX_RF_EL)*nels),rf);
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];
    size_t  *colstride = new size_t[nels];
@@ -475,6 +515,18 @@ int load_and_align_ee8(const int npar, int nels) {
    nels = filter(nels,
                 nrow, iter, colstride, lastWordIdx, minsc,
                 rfd, profbuf, rf, gaps, ref_lrmax, ref_btnfilled);
+#ifdef CPUVECT
+   // TODO: Fix the code to support non-multiple numbers
+   if ((nels%VECT_SIZE)!=0) {
+      nels = (nels/VECT_SIZE)*VECT_SIZE; // round down
+      fprintf(stderr, "INFO: Rounded down to %i\n",int(nels));
+   }
+   // create support buffers
+   char    *rf_alt = new  (std::align_val_t(1024)) char[size_t(rfd[0])*nels];
+   // need transposed values for vector operation
+   vect_transpose_rf(nels,rfd[0],rf,rf_alt); // rfd homogeneous
+   std::swap(rf,rf_alt); // use the transposed version from now on... keeping the old just for debugging
+#endif
    auto t2a = std::chrono::high_resolution_clock::now();
    for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
    auto t2b = std::chrono::high_resolution_clock::now();
@@ -540,6 +592,9 @@ int load_and_align_ee8(const int npar, int nels) {
    auto time_span3 = std::chrono::duration_cast<std::chrono::duration<double>>(t4 - t3b);
    fprintf(stderr, "load %.4f s cold align %.4f s hot align %.4f s\n", time_span1.count(), time_span2.count(), time_span3.count());
 
+#ifdef CPUVECT
+   delete[] rf_alt;
+#endif
    delete[] btncand;
    delete[] gaps;
    delete[] rfd;
