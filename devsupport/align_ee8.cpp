@@ -14,6 +14,14 @@
 
 #define SKIPPED_LRMAX -2000
 
+#ifndef CPUVECT
+typedef SSERegI TMatBuf;
+#else
+// TODO, make it more dynameic
+#define VECT_SIZE 16
+typedef uint8_t TMatBuf __attribute__((ext_vector_type(VECT_SIZE)));
+#endif
+
 int load_data(int nels,
 		size_t nrow[],
 		size_t iter[],
@@ -88,6 +96,234 @@ int load_results(int nels,
    return 0;
 }
 
+// Swap all data for two elements
+void swap_data(size_t my, size_t other,
+                size_t nrow[],
+                size_t iter[],
+                size_t colstride[],
+                size_t lastWordIdx[],
+                int32_t minsc[],
+                size_t rfd[],
+                SSERegI profbuf[],
+                char    rf[],
+                uint8_t gaps[],
+                int32_t lrmax[],
+                int32_t btnfilled[]
+                ) {
+	if (my==other) return; // nothing to do
+	std::swap(nrow[my],nrow[other]);
+	std::swap(iter[my],iter[other]);
+	std::swap(colstride[my],colstride[other]);
+	std::swap(lastWordIdx[my],lastWordIdx[other]);
+	std::swap(minsc[my],minsc[other]);
+	std::swap(rfd[my],rfd[other]);
+	for (size_t i=0; i<MAX_PB_EL; i++) std::swap(profbuf[my*size_t(MAX_PB_EL)+i],profbuf[other*size_t(MAX_PB_EL)+i]);
+	for (size_t i=0; i<MAX_RF_EL; i++) std::swap(rf[my*size_t(MAX_RF_EL)+i],rf[other*size_t(MAX_RF_EL)+i]);
+	for (size_t i=0; i<4; i++) std::swap(gaps[my*4+i],gaps[other*4+i]);
+	std::swap(lrmax[my],lrmax[other]);
+	std::swap(btnfilled[my],btnfilled[other]);
+}
+
+// The accelerated algoritms need homogeneous alignment sizes
+// Move anything that does not fit to the end
+// Return how many homogeneous elements we have
+int filter(int nels,
+		size_t nrow[],
+		size_t iter[],
+		size_t colstride[],
+		size_t lastWordIdx[],
+		int32_t minsc[],
+		size_t rfd[],
+                SSERegI profbuf[],
+		char    rf[],
+		uint8_t gaps[],
+		int32_t lrmax[],
+		int32_t btnfilled[]
+		) {
+   uint32_t *gaps4 = (uint32_t*)gaps;
+   bool is_first = true;
+   size_t nrow_first;
+   size_t colstride_first;
+   size_t lastWordIdx_first;
+   int32_t minsc_first;
+   size_t rfd_first;
+   uint32_t gaps_first;
+
+   int filter_iter_n = 0;
+   int filter_nrow_n = 0;
+   int filter_colstride_n = 0;
+   int filter_lastWordIdx_n = 0;
+   int filter_minsc_n = 0;
+   int filter_rfd_n = 0;
+   int filter_gaps_n = 0;
+   int good_els = nels;
+   int i = 0;
+   while (i<good_els) {
+      if (iter[i]!=((151+(NBYTES_PER_REG-1))/NBYTES_PER_REG)) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_iter_n++;
+	continue;
+      }
+      // for all other values, we will default to the first we see
+      if (is_first) {
+	nrow_first = nrow[i];
+	colstride_first = colstride[i];
+	lastWordIdx_first = lastWordIdx[i];
+ 	minsc_first = minsc[i];
+ 	rfd_first = rfd[i];
+   	gaps_first = gaps4[i];
+	is_first = false;
+      }
+      if (rfd[i]!=rfd_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_rfd_n++;
+	continue;
+      }
+      if (gaps4[i]!=gaps_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_gaps_n++;
+	continue;
+      }
+      if (nrow[i]!=nrow_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_nrow_n++;
+	continue;
+      }
+      if (colstride[i]!=colstride_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_colstride_n++;
+	continue;
+      }
+      if (lastWordIdx[i]!=lastWordIdx_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_lastWordIdx_n++;
+	continue;
+      }
+      if (minsc[i]!=minsc_first) {
+	// keep the most relevant one
+	swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	good_els--;
+	filter_minsc_n++;
+	continue;
+      }
+      i++;
+   }
+
+   fprintf(stderr, "INFO: Filtered from %i down to %i (%3.2f%%)\n",int(nels), int(good_els),100.0*good_els/nels);
+   fprintf(stderr, "INFO: Filter iter: %i rfd: %i gaps: %i nrow: %i colstride: %i lastWordIdx: %i minsc: %i\n",
+		   filter_iter_n,filter_rfd_n,filter_gaps_n,filter_nrow_n,filter_colstride_n,filter_lastWordIdx_n,filter_minsc_n);
+   return good_els;
+}
+
+#ifdef CPUVECT
+// The input buffers are meant for scalar execution
+// If we have vectors, we must transpose some buffers accordingly
+// Remonder: We groupped same rfd together, so use that info
+//
+// rf
+//  Org:
+//   el=0 0...rfd0..MAX_RF_EL-1
+//   el=1                       MAX_RF_EL..+rfd1..2*MAX_RF_EL-1
+//   ...
+//   el=N                                                            N*MAX_RF_EL..+rfdN..(N-1)*MAX_RF_EL-1
+//  New:
+//   el=0   0      V           ...   V*(rfd-1)
+//   el=1    1      V+1          ...         V*(rfd-1)+1
+//   ...
+//   el=V-1     V-1     2*V-1            ...              V*rfd-1
+//   el=V                                                         V*rfd ...
+//
+void vect_transpose_rf(const int nels,
+		const size_t  rfd,
+		const char rf_in[],
+		char       rf_out[]
+		) {
+    // Note: We are assuming rounded nels
+#pragma omp parallel for collapse(2)
+    for (int b=0; b<(nels/VECT_SIZE); b++) {
+       for (size_t r=0; r<rfd; r++) {
+	  for (int v=0; v<VECT_SIZE; v++) {
+             uint64_t source_i = (b*VECT_SIZE+v)*uint64_t(MAX_RF_EL)+r;
+             uint64_t dest_i = (b*uint64_t(rfd)+r)*uint64_t(VECT_SIZE)+v;
+	     rf_out[dest_i] = rf_in[source_i];
+	  }
+       }
+    }
+}
+
+// The input buffers are meant for scalar execution
+// If we have vectors, we must transpose some buffers accordingly
+// Remonder: We groupped same iter together, so use that info
+//
+// rf
+//  Org: (vs0,vs1) always together, iter consecutive, x5 
+//   el=0 0 1 ...itr5a..MAX_PB_EL-1
+//   el=1                       MAX_PB_EL.+1..+itr5b..2*MAX_PB_EL-1
+//   ...
+//   el=N                                                            N*MAX_PB_EL.+1..+itr5n..(N-1)*MAX_PB_EL-1
+//  New: (vs0x5) (vs1x5), repeated iter times
+//   el=0   0      V           ...   V*(itr5-1)
+//   el=1    1      V+1          ...         V*(itr5-1)+1
+//   ...
+//   el=V-1     V-1     2*V-1            ...              V*itr5-1
+//   el=V                                                         V*itr5 ...
+//
+void vect_transpose_profbuf(const int nels,
+		const size_t  iter,
+		const uint8_t profbuf_in[],
+		uint8_t       profbuf_out[]
+		) {
+    // Note: We are assuming rounded nels
+#pragma omp parallel for collapse(3)
+    for (int b=0; b<(nels/VECT_SIZE); b++) {
+      for (size_t j=0; j<iter; j++) {
+        for (size_t r=0; r<5; r++) {
+	  for (int v=0; v<VECT_SIZE; v++) {
+	     // [MAX_PB_EL,5,iter,2],
+             // ((b,v),r,j,0)
+             uint64_t source_vs0 = (b*VECT_SIZE+v)*uint64_t(MAX_PB_EL)+((r*iter+j)*2);
+             uint64_t source_vs1 = source_vs0+1;
+	     // [BLK,iter,2,5,v]
+	     // (b,j,0,r,v)
+             uint64_t dest_vs0 = ((b*uint64_t(iter)+j)*2*5+r)*uint64_t(VECT_SIZE)+v;
+             uint64_t dest_vs1 = dest_vs0+VECT_SIZE*5;
+	     profbuf_out[dest_vs0] = profbuf_in[source_vs0];
+	     profbuf_out[dest_vs1] = profbuf_in[source_vs1];
+	  }
+	}
+      }
+    }
+}
+
+#endif
+
+#ifndef CPUVECT
 int align_ee8_one(const int el, // for debuggging purpose
 		const size_t nrow,
 		const size_t iter,
@@ -95,10 +331,10 @@ int align_ee8_one(const int el, // for debuggging purpose
 		const size_t lastWordIdx,
 		const int32_t minsc,
 		const size_t rfd,
+		const uint8_t gaps[4],
                 const SSERegI *profbuf,
 		const char    *rf,
-		const uint8_t gaps[],
-                SSERegI       *mat,
+                TMatBuf       *mat,
 		DpBtCandidate *btncand,
                 int32_t       &computed_lrmax, // out
                 const int32_t ref_lrmax,
@@ -112,11 +348,16 @@ int align_ee8_one(const int el, // for debuggging purpose
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 #else
+
+#if 0
+	// The upstream filter takes care of this...
 	// Note: The vast majority of reads have iter==151
 	if (iter!=151) {
 		computed_lrmax = SKIPPED_LRMAX; // special value to signal we did not actually compute it
 		return 0;  // TODO: We may properly use the right template function, or call slow align directly
 	}
+#endif
+
 #ifndef PBMASK
 	const EEU8_TCScore lrmax = EEU8_alignNucleotidesLRScalar<uint16_t,151>(profbuf, rf, rfd,
 					nrow,
@@ -150,23 +391,82 @@ int align_ee8_one(const int el, // for debuggging purpose
 	return nerrs;
 }
 
+#else
+template<int VLen>
+int align_ee8_vect(const int el, // first, for debuggging purpose
+		const size_t nrow,
+		const size_t iter,
+		const size_t colstride,
+		const size_t lastWordIdx,
+		const int32_t minsc,
+		const size_t rfd,
+		const uint8_t gaps[4],
+                const SSERegI *profbuf,
+		const char    *rf,
+                TMatBuf       *mat,
+		DpBtCandidate *btncand,
+                int32_t       *computed_lrmax, // out
+                const int32_t *ref_lrmax,
+                const int32_t *ref_btnfilled) {
+	typedef uint8_t vectu8_t __attribute__((ext_vector_type(VLen)));
+	uint16_t btnfilled[VLen];
+        //fprintf(stderr,"Using profbuf %p\n",profbuf);
+        //fprintf(stderr,"Using rf %p\n",rf);
+	const vectu8_t lrmax = EEU8_alignNucleotidesVect<VLen,uint16_t>(
+					(const vectu8_t*) profbuf, (const vectu8_t*) rf, rfd,
+					mat,
+                                        iter, colstride, lastWordIdx,
+					minsc, nrow,
+					btncand, btnfilled,
+					gaps[0],gaps[1],gaps[2],gaps[3]);
+	int nerrs = 0;
+	for(int i=0; i<VLen; i++) computed_lrmax[i] = lrmax[i];
+	for(int i=0; i<VLen; i++) if (int(ref_lrmax[i]) != int(lrmax[i])) nerrs++;
+#ifndef PRE_LR_SCALAR
+	for(int i=0; i<VLen; i++) if (int(ref_btnfilled[i]) != int(btnfilled[i])) nerrs++;
+#else
+	//TAlScore sc = (TAlScore)(lrmax - 0xff);
+	//if ((ref_btnfilled!=0) != (sc>=minsc)) nerrs++;
+#endif
+
+#if 0
+
+#ifndef NO_CHECK_PRINT
+	if (int(ref_lrmax) != int(lrmax)) fprintf(stderr, "[%i] MISMATCH in lrmax (%i != %i)\n",el,int(lrmax), int(ref_lrmax));
+#ifndef PRE_LR_SCALAR
+	if (int(ref_btnfilled) != int(btnfilled)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i != %i)\n",el,int(btnfilled), int(ref_btnfilled));
+#else
+	if ((ref_btnfilled!=0) != (sc>=minsc)) fprintf(stderr, "[%i] MISMATCH in ref_btnfilled (%i) vs sc %i minsc %i)\n",el,int(ref_btnfilled), int(sc), int(minsc));
+#endif
+#endif
+#endif
+	// TODO: In case of PRE_LR_SCALAR, we should also likely want to test the complete align on the elements that need it
+	//       But that's probably better done in a separate test
+	return nerrs;
+}
+
+#endif
 
 void align_ee8(const int npar, const int nels,
-		const size_t nrow[],
-		const size_t iter[],
-		const size_t colstride[],
-		const size_t lastWordIdx[],
-		const int32_t minsc[],
-		const size_t rfd[],
+		const size_t nrow,
+		const size_t iter,
+		const size_t colstride,
+		const size_t lastWordIdx,
+		const int32_t minsc,
+		const size_t  rfd,
+		const uint8_t gaps[4],
                 const SSERegI profbuf[],
 		const char    rf[],
-		const uint8_t gaps[],
-                SSERegI       mat[], 
+                TMatBuf       mat[], 
 		DpBtCandidate btncand[],
                 int32_t       computed_lrmax[], // out
                 const int32_t ref_lrmax[],
                 const int32_t ref_btnfilled[]) {
-   const int elp_pp = (nels+ (npar-1))/npar; // round up
+   int elp_pp = (nels+ (npar-1))/npar; // round up
+#ifdef CPUVECT
+   // keep block multiple of VECT_SIZE
+   elp_pp = ((elp_pp + (VECT_SIZE-1))/VECT_SIZE)*VECT_SIZE; // round up
+#endif 
    int nerrs = 0;
 #ifdef OMPGPU
 #pragma omp target teams distribute reduction(+:nerrs)
@@ -177,28 +477,41 @@ void align_ee8(const int npar, const int nels,
       const int iend = std::min((p+1)*elp_pp,nels);
 #if defined(PRE_LR_SCALAR)
 	// no mat or btncand, just pass NULLs around 
-	SSERegI       *my_mat = nullptr;
+	TMatBuf       *my_mat = nullptr;
 	DpBtCandidate *my_btncand = nullptr;
 #elif !defined(OMPGPU)
 	// the following loop is sequential, so can reuse the buffer
-	SSERegI       *my_mat = mat+p*size_t(MAX_MAT_EL);
+	TMatBuf       *my_mat = mat+p*size_t(MAX_MAT_EL);
 	DpBtCandidate *my_btncand = btncand+p*size_t(MAX_RF_EL);
 #endif
+#ifndef CPUVECT
+
 #ifdef OMPGPU
 #pragma omp parallel for reduction(+:nerrs)
 #endif
       for (int i=p*elp_pp; i<iend; i++) {
 #if defined(OMPGPU) && !defined(PRE_LR_SCALAR)
 	// the loop is parallel, so we must use a different buffer for each element
-	SSERegI       *my_mat = mat+i*size_t(MAX_MAT_EL);
+	TMatBuf       *my_mat = mat+i*size_t(MAX_MAT_EL);
 	DpBtCandidate *my_btncand = btncand+i*size_t(MAX_RF_EL);
 #endif
          nerrs+= align_ee8_one(i,
-		nrow[i], iter[i], colstride[i], lastWordIdx[i],minsc[i], rfd[i],
-                profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),gaps+4*i,
+		nrow, iter, colstride, lastWordIdx,minsc, rfd, gaps,
+                profbuf+i*size_t(MAX_PB_EL),rf+i*size_t(MAX_RF_EL),
 		my_mat,my_btncand,
 		computed_lrmax[i],ref_lrmax[i],ref_btnfilled[i]);
       }
+
+#else /* CPUVECT */
+      // Note: Assuming nels was rounded
+      for (int i=p*elp_pp; (i+VECT_SIZE)<=iend; i+=VECT_SIZE) {
+         nerrs+= align_ee8_vect<VECT_SIZE>(i,
+		nrow, iter, colstride, lastWordIdx,minsc, rfd, gaps,
+                profbuf+i*size_t(iter*10), rf+i*size_t(rfd), // transposed, now different spacing
+		my_mat,my_btncand,
+		computed_lrmax+i,ref_lrmax+i,ref_btnfilled+i);
+      }
+#endif
    }
 
    if (nerrs!=0) {
@@ -209,25 +522,25 @@ void align_ee8(const int npar, const int nels,
 
 }
 
-int load_and_align_ee8(const int npar, const int nels) {
+int load_and_align_ee8(const int npar, int nels) {
    int32_t *computed_lrmax = new int32_t[nels];
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
-   SSERegI *profbuf = new SSERegI[size_t(nels)*MAX_PB_EL];
+   SSERegI *profbuf = new (std::align_val_t(1024))  SSERegI[size_t(nels)*MAX_PB_EL];
 #if defined(PRE_LR_SCALAR)
    // no mat or btncand, just pass NULLs around 
-   SSERegI        *mat = nullptr;
+   TMatBuf        *mat = nullptr;
    DpBtCandidate *btncand = nullptr;
 #elif !defined(OMPGPU)
    // one per thread is enough on the CPU
-   SSERegI       *mat = new SSERegI[size_t(npar)*MAX_MAT_EL];
-   DpBtCandidate *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*npar];
+   TMatBuf       *mat = new  (std::align_val_t(1024))  TMatBuf[size_t(npar)*MAX_MAT_EL];
+   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*npar];
 #else
    // no shortcuts on the GPU
-   SSERegI       *mat = new SSERegI[size_t(nels)*MAX_MAT_EL];
-   DpBtCandidate *btncand = new DpBtCandidate[size_t(MAX_RF_EL)*nels];
+   TMatBuf       *mat = new  (std::align_val_t(1024)) TMatBuf[size_t(nels)*MAX_MAT_EL];
+   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*nels];
 #endif
-   char    *rf = new char[size_t(MAX_RF_EL)*nels];
+   char    *rf = new  (std::align_val_t(1024)) char[size_t(MAX_RF_EL)*nels];
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];
    size_t  *colstride = new size_t[nels];
@@ -243,12 +556,33 @@ int load_and_align_ee8(const int npar, const int nels) {
 		profbuf,rf,gaps) !=0 ) return 1;
    if (load_results(nels,
 		ref_lrmax, ref_btnfilled) !=0 ) return 1;
+   nels = filter(nels,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, ref_lrmax, ref_btnfilled);
+#ifdef CPUVECT
+   // TODO: Fix the code to support non-multiple numbers
+   if ((nels%VECT_SIZE)!=0) {
+      nels = (nels/VECT_SIZE)*VECT_SIZE; // round down
+      fprintf(stderr, "INFO: Rounded down to %i\n",int(nels));
+   }
+   // create support buffers
+   char    *rf_alt = new  (std::align_val_t(1024)) char[size_t(rfd[0])*nels];
+   uint8_t *profbuf_alt = new (std::align_val_t(1024)) uint8_t[size_t(iter[0])*10*nels];
+   // need transposed values for vector operation
+   vect_transpose_rf(nels,rfd[0],rf,rf_alt); // rfd homogeneous
+   vect_transpose_profbuf(nels,iter[0],profbuf,profbuf_alt); // iter homogeneous
+   std::swap(rf,rf_alt); // use the transposed version from now on... keeping the old just for debugging
+   std::swap(profbuf,profbuf_alt); // use the transposed version from now on... keeping the old just for debugging
+#endif
    auto t2a = std::chrono::high_resolution_clock::now();
    for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
    auto t2b = std::chrono::high_resolution_clock::now();
+   // we filtered the eleemnts, we can now assume they are homogeneous
    align_ee8(npar, nels,
-		nrow, iter, colstride, lastWordIdx,minsc,rfd,
-		profbuf,rf,gaps,mat,btncand,
+		nrow[0], iter[0], colstride[0], lastWordIdx[0],minsc[0],rfd[0], // homogeneous
+		gaps, // 4 elements, so passing by pointer, but still homogeneous
+		profbuf,rf,
+		mat,btncand,
 		computed_lrmax,ref_lrmax,ref_btnfilled);
    auto t3a = std::chrono::high_resolution_clock::now();
    {
@@ -270,9 +604,11 @@ int load_and_align_ee8(const int npar, const int nels) {
    for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
    auto t3b = std::chrono::high_resolution_clock::now();
    align_ee8(npar, nels,
-		nrow, iter, colstride, lastWordIdx,minsc,rfd,
-		profbuf,rf,gaps,mat,btncand,
-		computed_lrmax, ref_lrmax, ref_btnfilled);
+		nrow[0], iter[0], colstride[0], lastWordIdx[0],minsc[0],rfd[0], // homogeneous
+		gaps, // 4 elements, so passing by pointer, but still homogeneous
+		profbuf,rf,
+		mat,btncand,
+		computed_lrmax,ref_lrmax,ref_btnfilled);
    auto t4 = std::chrono::high_resolution_clock::now();
    {
      int nerrs = 0;
@@ -303,6 +639,10 @@ int load_and_align_ee8(const int npar, const int nels) {
    auto time_span3 = std::chrono::duration_cast<std::chrono::duration<double>>(t4 - t3b);
    fprintf(stderr, "load %.4f s cold align %.4f s hot align %.4f s\n", time_span1.count(), time_span2.count(), time_span3.count());
 
+#ifdef CPUVECT
+   delete[] profbuf_alt;
+   delete[] rf_alt;
+#endif
    delete[] btncand;
    delete[] gaps;
    delete[] rfd;
@@ -330,5 +670,27 @@ int main(int argv, const char* argc[]) {
    int npar = atoi(argc[1]);
    int nels = atoi(argc[2]);
 
+#ifndef BUILTIN_SUB_SAT_BROKEN
+   {
+     // make sure this compiler is not broken
+     uint8_t a = 20;
+     uint8_t b = 40;
+     if (__builtin_elementwise_sub_sat(a,b)!=0) {
+        fprintf(stderr, "ERROR: Broken compiler detected, builtin scalar sub_sat produces wrong result!\n");
+	return 2;
+     }
+   }
+   {
+     // make sure this compiler is not broken
+     typedef uint8_t uint8x16_t __attribute__((ext_vector_type(16)));
+     uint8x16_t a = 20;
+     uint8x16_t b = 40;
+     uint8x16_t r = 0;
+     if (__builtin_reduce_or(__builtin_elementwise_sub_sat(a,b)!=r)) { // enough is one is not equal
+        fprintf(stderr, "ERROR: Broken compiler detected, builtin vector sub_sat produces wrong result!\n");
+	return 2;
+     }
+   }
+#endif
    return load_and_align_ee8(npar,nels);
 }

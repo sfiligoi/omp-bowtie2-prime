@@ -81,8 +81,17 @@ typedef uint8_t EEU8_TCScore;
 // Helper for saturating subtraction (unsigned 8-bit)
 // since there is no such thing in standard C++.
 constexpr uint8_t subs_u8(uint8_t a, uint8_t b) {
+#ifndef BUILTIN_SUB_SAT_BROKEN
+    return __builtin_elementwise_sub_sat(a,b);
+#else
     return a-std::min(a,b);
+#endif
 }
+
+#ifndef BUILTIN_SUB_SAT_BROKEN
+template <typename T, unsigned int N>
+using EEU8_Vector = T __attribute__((ext_vector_type(N)));
+#endif
 
 /**
  * Build query profile look up tables for the read.  The query profile look
@@ -340,6 +349,100 @@ inline void EEU8_lazyF(const SSERegI vf0,
 }
 #endif
 
+#ifndef BUILTIN_SUB_SAT_BROKEN
+/*
+ * Like EEU8_alignOne, but assuming scalar processing and going over many elements at once
+ *
+ * Note: TBuf must be the same width as vectu8_t
+ *
+ */
+
+template<unsigned int VLen, typename TIdxSize, typename TBuf>
+inline void EEU8_alignVect(
+			const TIdxSize iter,
+			const size_t colstride,
+			const TBuf *pvScore, const EEU8_Vector<uint8_t, VLen> rfidxs,
+			const TBuf *pvHLoad, const TBuf *pvELoad,
+			TBuf *pvHStore, TBuf *pvEStore, TBuf *pvFStore,
+			const uint8_t rfgapo, const uint8_t rfgape, const uint8_t rdgapo, const uint8_t rdgape) {
+		typedef EEU8_Vector<uint8_t, VLen> vectu8_t;
+		// the gaps are the same for all the elements
+		// pre-load in vector format
+		const vectu8_t vect_rfgapo = rfgapo;
+		const vectu8_t vect_rfgape = rfgape;
+		const vectu8_t vect_rdgapo = rdgapo;
+		const vectu8_t vect_rdgape = rdgape;
+
+		// vhilsw: Set all to 0xff
+		vectu8_t vhilsw   = 0xff;
+	
+		// Set all cells to low value
+		vectu8_t vf       = 0;
+
+		// in scalar mode, we always start high
+		vectu8_t vh = vhilsw; //0xff
+		
+		// For each character in the reference text:
+		for(TIdxSize j = 0; j < iter; j++) {
+			// We expect VLen>>5, so there is high probabilty all 5 will be needed
+			// So, we always load all 5 of them
+			// Using chained ternary operator logic, since that resolves to masked vector operations
+			uint64_t pvScore_idx = j*5*2;
+			vectu8_t vs0 = pvScore[pvScore_idx];
+			vs0 = (rfidxs==1) ? pvScore[pvScore_idx+1] : vs0;
+			vs0 = (rfidxs==2) ? pvScore[pvScore_idx+2] : vs0;
+			vs0 = (rfidxs==3) ? pvScore[pvScore_idx+3] : vs0;
+			vs0 = (rfidxs==4) ? pvScore[pvScore_idx+4] : vs0;
+
+			vectu8_t vs1 = pvScore[pvScore_idx+5];
+			vs1 = (rfidxs==1) ? pvScore[pvScore_idx+6] : vs1;
+			vs1 = (rfidxs==2) ? pvScore[pvScore_idx+7] : vs1;
+			vs1 = (rfidxs==3) ? pvScore[pvScore_idx+8] : vs1;
+			vs1 = (rfidxs==4) ? pvScore[pvScore_idx+9] : vs1;
+
+			// Load cells from E, calculated previously
+			vectu8_t ve = *pvELoad;
+			pvELoad += ROWSTRIDE;
+			
+			// Store cells in F, calculated previously
+			vf = __builtin_elementwise_sub_sat(vf, vs1); // veto some ref gap extensions
+			*pvFStore = vf;
+			pvFStore += ROWSTRIDE;
+			
+			// Factor in query profile (matches and mismatches)
+			vh = __builtin_elementwise_sub_sat(vh, vs0);
+			
+			// Update H, factoring in E and F
+			vh = __builtin_elementwise_max(vh, ve);
+			vh = __builtin_elementwise_max(vh, vf);
+			
+			// Save the new vH values
+			*pvHStore = vh;
+			pvHStore += ROWSTRIDE;
+			
+			// Update vE value
+			vectu8_t vtmp = vh;
+			vh = __builtin_elementwise_sub_sat(vh, vect_rdgapo);
+			vh = __builtin_elementwise_sub_sat(vh, vs1); // veto some read gap opens
+			ve = __builtin_elementwise_sub_sat(ve, vect_rdgape);
+			ve = __builtin_elementwise_max(ve, vh);
+
+			// Load the next h value
+			vh = *pvHLoad;
+			pvHLoad += ROWSTRIDE;
+			
+			// Save E values
+			*pvEStore = ve;
+			pvEStore += ROWSTRIDE;
+			
+			// Update vf value
+			vtmp = __builtin_elementwise_sub_sat(vtmp, vect_rfgapo);
+			vf = __builtin_elementwise_sub_sat(vf, vect_rfgape);
+			vf = __builtin_elementwise_max(vf, vtmp);
+		}
+}
+#endif
+
 /**
  * Solve the current alignment problem using SSE instructions that operate on 16
  * unsigned 8-bit values packed into a single 128-bit register.
@@ -422,6 +525,17 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	SSERegI *pvEStore = pmat + colstride + SSEMatrixConsts::E;
 	SSERegI *pvFStore = pmat + SSEMatrixConsts::F;
 	
+	// sc := lr - 0xff
+	// minlr = minsc + 0xff
+	// Make it fit inside uint8_t
+	const EEU8_TCScore minlr = 
+		(minsc<=(-255)) 
+		? 0                 // underflow
+		: ((minsc>0) 
+			? 0xff      // overflow
+			: (minsc + 0xff)
+		  );
+
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
 
@@ -469,11 +583,8 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 		
 		// Note: we may not want to extract from the final row
 		EEU8_TCScore lr = ((EEU8_TCScore*)(pvHLoad))[lastWordIdx];
-		TAlScore sc = (TAlScore)(lr - 0xff);
-		if(lr > lrmax) {
-			lrmax = lr;
-		}
-		if(sc >= minsc) {
+		lrmax = std::max(lr,lrmax);
+		if (lr >= minlr) {
 			// Yes, this is legit
 			btncand[btnfilled].init(nrow-1, i, lr);
 			btnfilled++;
@@ -492,6 +603,167 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	btnfilled_ = btnfilled;  // pass it out
 	return lrmax;
 }
+
+#ifndef BUILTIN_SUB_SAT_BROKEN
+/*
+ * Like EEU8_alignNucleotides, but assuming scalar processing and going over many elements at once
+ *
+ * Note: TBuf must be the same width as vectu8_t
+ *
+ */
+
+template<unsigned int VLen, typename TIdxSize>
+inline EEU8_Vector<uint8_t, VLen> EEU8_alignNucleotidesVect(
+					const EEU8_Vector<uint8_t, VLen> profbuf[],
+					const EEU8_Vector<uint8_t, VLen> rf[], const TIdxSize rfd,
+					EEU8_Vector<uint8_t, VLen> pmat[],
+					const TIdxSize iter, const size_t colstride, const size_t lastWordIdx,
+					const TAlScore minsc, const size_t nrow,
+					DpBtCandidate btncand[], TIdxSize btnfilled[],
+					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
+	typedef EEU8_Vector<uint8_t, VLen> vectu8_t;
+
+	// Many thanks to Michael Farrar for releasing his striped Smith-Waterman
+	// implementation:
+	//
+	//  http://sites.google.com/site/farrarmichael/smith-waterman
+	//
+	// Much of the implmentation below is adapted from Michael's code.
+
+	// Set to reference gap open penalty
+	uint8_t rfgapo   = 0;
+	uint8_t rfgape   = 0;
+	uint8_t rdgapo   = 0;
+	uint8_t rdgape   = 0;
+
+	assert_gt(refGapOpen, 0);
+	rfgapo = refGapOpen;
+	
+	// Set to reference gap extension penalty
+	assert_gt(refGapExtend, 0);
+	assert_leq(refGapExtend, refGapOpen);
+	rfgape = refGapExtend;
+
+	// Set to read gap open penalty
+	assert_gt(readGapOpen, 0);
+	rdgapo = readGapOpen;
+	
+	// Set to read gap extension penalty
+	assert_gt(readGapExtend, 0);
+	assert_leq(readGapExtend, readGapOpen);
+	rdgape = readGapExtend;
+
+	// Points to a long vector of vectu8_t where each element is a block of
+	// contiguous cells in the E, F or H matrix.  If the index % 3 == 0, then
+	// the block of cells is from the E matrix.  If index % 3 == 1, they're
+	// from the F matrix.  If index % 3 == 2, then they're from the H matrix.
+	// Blocks of cells are organized in the same interleaved manner as they are
+	// calculated by the Farrar algorithm.
+	// const SSERegI *pvScore; // points into the query profile
+
+	assert_eq(ROWSTRIDE, colstride / iter);
+
+	// Initialize the H and E vectors in the first matrix column
+	{
+	  vectu8_t *pvHTmp = pmat + SSEMatrixConsts::TMP;
+	  vectu8_t *pvETmp = pmat + SSEMatrixConsts::E;
+	  vectu8_t vlo      = 0;
+	
+	  for(size_t i = 0; i < iter; i++) {
+		*pvETmp = vlo;
+		*pvHTmp = vlo;  // start high in end-to-end mode
+		pvETmp += ROWSTRIDE;
+		pvHTmp += ROWSTRIDE;
+	  }
+	}
+
+	// These are swapped just before the innermost loop
+	vectu8_t *pvHLoad  = pmat + SSEMatrixConsts::TMP;
+	vectu8_t *pvHStore = pmat + SSEMatrixConsts::H;
+	vectu8_t *pvELoad  = pmat + SSEMatrixConsts::E;
+	vectu8_t *pvEStore = pmat + colstride + SSEMatrixConsts::E;
+	vectu8_t *pvFStore = pmat + SSEMatrixConsts::F;
+	
+	// sc := lr - 0xff
+	// minlr = minsc + 0xff
+	// Make it fit inside uint8_t
+	const uint8_t minlr = 
+		(minsc<=(-255)) 
+		? 0                 // underflow
+		: ((minsc>0) 
+			? 0xff      // overflow
+			: (minsc + 0xff)
+		  );
+
+	// Maximum score in final row
+	// Reminder: EEU8_TCScore==uint8_t
+	vectu8_t lrmax = MIN_U8;
+
+	for (int i=0; i<VLen; i++) btnfilled[i] = 0;
+
+	// Fill in the table as usual but instead of using the same gap-penalty
+	// vector for each iteration of the inner loop, load words out of a
+	// pre-calculated gap vector parallel to the query profile.  The pre-
+	// calculated gap vectors enforce the gap barrier constraint by making it
+	// infinitely costly to introduce a gap in barrier rows.
+	//
+	// AND use a separate loop to fill in the first row of the table, enforcing
+	// the st_ constraints in the process.  This is awkward because it
+	// separates the processing of the first row from the others and might make
+	// it difficult to use the first-row results in the next row, but it might
+	// be the simplest and least disruptive way to deal with the st_ constraint.
+
+	for(TIdxSize i = 0; i < rfd; i++) {
+		assert(pvFStore == (pmat + i*colstride + SSEMatrixConsts::F));
+		assert(pvHStore == (pmat + i*colstride + SSEMatrixConsts::H));
+		
+		// Fetch the appropriate query profiles.  Note that elements of rf must
+		// be numbers, not masks.
+		vectu8_t rfidxs = __builtin_elementwise_ctzg(rf[i]);
+
+		// points into the base query profile
+		const vectu8_t *pvScore = profbuf;
+	
+		EEU8_alignVect<VLen>(iter,
+                        	colstride,
+                        	pvScore, rfidxs,
+                        	pvHLoad, pvELoad,
+                        	pvHStore, pvEStore, pvFStore,
+                        	rfgapo, rfgape, rdgapo, rdgape);
+
+		// else, no need for lazyF
+		pvHLoad = pvHStore;    // new pvHLoad = pvHStore
+		
+		// Note: we may not want to extract from the final row
+		vectu8_t lr = pvHLoad[lastWordIdx];
+		lrmax = __builtin_elementwise_max(lr,lrmax);
+		if (__builtin_reduce_max(lr) >= minlr) {
+		   // At least one triggered, let's see which one.
+		   for (int i=0; i<VLen; i++) {
+		      const uint8_t lr_i = lr[i];
+		      if (lr_i >= minlr) { 
+			// Yes, this is legit
+
+			// Note: The ordering is different than in EEU8_alignNucleotides
+			btncand[i+btnfilled[i]*VLen].init(nrow-1, i, lr_i);
+			btnfilled[i]++;
+		      }
+		   }
+		}
+
+		// pvHLoad are already where they need to be
+		
+		// Adjust the load and store vectors here.  
+		pvHStore = pvHStore + colstride;
+		pvELoad  = pvELoad  + colstride;
+		pvEStore = pvEStore + colstride;
+		pvFStore = pvFStore + colstride;
+	}
+
+
+	return lrmax;
+}
+#endif
 
 /**
  * Like the previous alignNucleotides, but the Scalar version allows to forfeit some extra strutures.
