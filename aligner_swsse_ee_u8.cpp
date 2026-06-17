@@ -387,18 +387,18 @@ inline void EEU8_alignVect(
 			// We expect VLen>>5, so there is high probabilty all 5 will be needed
 			// So, we always load all 5 of them
 			// Using chained ternary operator logic, since that resolves to masked vector operations
-			vectu8_t vs0 = pvScore[j*2];
-			vs0 = (rfidxs==1) ? pvScore[2*iter+ j*2] : vs0;
-			vs0 = (rfidxs==2) ? pvScore[4*iter+ j*2] : vs0;
-			vs0 = (rfidxs==3) ? pvScore[6*iter+ j*2] : vs0;
-			vs0 = (rfidxs==4) ? pvScore[8*iter+ j*2] : vs0;
+			uint64_t pvScore_idx = j*5*2;
+			vectu8_t vs0 = pvScore[pvScore_idx];
+			vs0 = (rfidxs==1) ? pvScore[pvScore_idx+1] : vs0;
+			vs0 = (rfidxs==2) ? pvScore[pvScore_idx+2] : vs0;
+			vs0 = (rfidxs==3) ? pvScore[pvScore_idx+3] : vs0;
+			vs0 = (rfidxs==4) ? pvScore[pvScore_idx+4] : vs0;
 
-			vectu8_t vs1 = pvScore[j*2+1];
-			vs1 = (rfidxs==1) ? pvScore[2*iter+ j*2+1] : vs1;
-			vs1 = (rfidxs==2) ? pvScore[4*iter+ j*2+1] : vs1;
-			vs1 = (rfidxs==3) ? pvScore[6*iter+ j*2+1] : vs1;
-			vs1 = (rfidxs==4) ? pvScore[8*iter+ j*2+1] : vs1;
-
+			vectu8_t vs1 = pvScore[pvScore_idx+5];
+			vs1 = (rfidxs==1) ? pvScore[pvScore_idx+6] : vs1;
+			vs1 = (rfidxs==2) ? pvScore[pvScore_idx+7] : vs1;
+			vs1 = (rfidxs==3) ? pvScore[pvScore_idx+8] : vs1;
+			vs1 = (rfidxs==4) ? pvScore[pvScore_idx+9] : vs1;
 
 			// Load cells from E, calculated previously
 			vectu8_t ve = *pvELoad;
@@ -720,6 +720,7 @@ inline EEU8_Vector<uint8_t, VLen> EEU8_alignNucleotidesVect(
 		// Fetch the appropriate query profiles.  Note that elements of rf must
 		// be numbers, not masks.
 		vectu8_t rfidxs = __builtin_elementwise_ctzg(rf[i]);
+
 		// points into the base query profile
 		const vectu8_t *pvScore = profbuf;
 	

@@ -52,7 +52,7 @@ CXX := amdclang++
 # CPU-only
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DPRE_LR_SCALAR -DPBMASK -DSSE_SCALAR -DNO_CHECK_PRINT
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DPRE_LR_SCALAR -DSSE_SCALAR
-#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR -DCPUVECT -DNO_CHECK_PRINT
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR -DCPUVECT -DNO_CHECK_PRINT -march=native
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR
 CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2
 

@@ -18,7 +18,7 @@
 typedef SSERegI TMatBuf;
 #else
 // TODO, make it more dynameic
-#define VECT_SIZE 64
+#define VECT_SIZE 16
 typedef uint8_t TMatBuf __attribute__((ext_vector_type(VECT_SIZE)));
 #endif
 
@@ -244,7 +244,7 @@ int filter(int nels,
 #ifdef CPUVECT
 // The input buffers are meant for scalar execution
 // If we have vectors, we must transpose some buffers accordingly
-// Remonder: We groupped same rfdp[ together, so use that info
+// Remonder: We groupped same rfd together, so use that info
 //
 // rf
 //  Org:
@@ -265,6 +265,7 @@ void vect_transpose_rf(const int nels,
 		char       rf_out[]
 		) {
     // Note: We are assuming rounded nels
+#pragma omp parallel for collapse(2)
     for (int b=0; b<(nels/VECT_SIZE); b++) {
        for (size_t r=0; r<rfd; r++) {
 	  for (int v=0; v<VECT_SIZE; v++) {
@@ -273,6 +274,50 @@ void vect_transpose_rf(const int nels,
 	     rf_out[dest_i] = rf_in[source_i];
 	  }
        }
+    }
+}
+
+// The input buffers are meant for scalar execution
+// If we have vectors, we must transpose some buffers accordingly
+// Remonder: We groupped same iter together, so use that info
+//
+// rf
+//  Org: (vs0,vs1) always together, iter consecutive, x5 
+//   el=0 0 1 ...itr5a..MAX_PB_EL-1
+//   el=1                       MAX_PB_EL.+1..+itr5b..2*MAX_PB_EL-1
+//   ...
+//   el=N                                                            N*MAX_PB_EL.+1..+itr5n..(N-1)*MAX_PB_EL-1
+//  New: (vs0x5) (vs1x5), repeated iter times
+//   el=0   0      V           ...   V*(itr5-1)
+//   el=1    1      V+1          ...         V*(itr5-1)+1
+//   ...
+//   el=V-1     V-1     2*V-1            ...              V*itr5-1
+//   el=V                                                         V*itr5 ...
+//
+void vect_transpose_profbuf(const int nels,
+		const size_t  iter,
+		const uint8_t profbuf_in[],
+		uint8_t       profbuf_out[]
+		) {
+    // Note: We are assuming rounded nels
+#pragma omp parallel for collapse(3)
+    for (int b=0; b<(nels/VECT_SIZE); b++) {
+      for (size_t j=0; j<iter; j++) {
+        for (size_t r=0; r<5; r++) {
+	  for (int v=0; v<VECT_SIZE; v++) {
+	     // [MAX_PB_EL,5,iter,2],
+             // ((b,v),r,j,0)
+             uint64_t source_vs0 = (b*VECT_SIZE+v)*uint64_t(MAX_PB_EL)+((r*iter+j)*2);
+             uint64_t source_vs1 = source_vs0+1;
+	     // [BLK,iter,2,5,v]
+	     // (b,j,0,r,v)
+             uint64_t dest_vs0 = ((b*uint64_t(iter)+j)*2*5+r)*uint64_t(VECT_SIZE)+v;
+             uint64_t dest_vs1 = dest_vs0+VECT_SIZE*5;
+	     profbuf_out[dest_vs0] = profbuf_in[source_vs0];
+	     profbuf_out[dest_vs1] = profbuf_in[source_vs1];
+	  }
+	}
+      }
     }
 }
 
@@ -462,8 +507,7 @@ void align_ee8(const int npar, const int nels,
       for (int i=p*elp_pp; (i+VECT_SIZE)<=iend; i+=VECT_SIZE) {
          nerrs+= align_ee8_vect<VECT_SIZE>(i,
 		nrow, iter, colstride, lastWordIdx,minsc, rfd, gaps,
-                profbuf+i*size_t(MAX_PB_EL),
-		rf+i*size_t(rfd), // transposed, now different spacing
+                profbuf+i*size_t(iter*10), rf+i*size_t(rfd), // transposed, now different spacing
 		my_mat,my_btncand,
 		computed_lrmax+i,ref_lrmax+i,ref_btnfilled+i);
       }
@@ -523,9 +567,12 @@ int load_and_align_ee8(const int npar, int nels) {
    }
    // create support buffers
    char    *rf_alt = new  (std::align_val_t(1024)) char[size_t(rfd[0])*nels];
+   uint8_t *profbuf_alt = new (std::align_val_t(1024)) uint8_t[size_t(iter[0])*10*nels];
    // need transposed values for vector operation
    vect_transpose_rf(nels,rfd[0],rf,rf_alt); // rfd homogeneous
+   vect_transpose_profbuf(nels,iter[0],profbuf,profbuf_alt); // iter homogeneous
    std::swap(rf,rf_alt); // use the transposed version from now on... keeping the old just for debugging
+   std::swap(profbuf,profbuf_alt); // use the transposed version from now on... keeping the old just for debugging
 #endif
    auto t2a = std::chrono::high_resolution_clock::now();
    for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
@@ -593,6 +640,7 @@ int load_and_align_ee8(const int npar, int nels) {
    fprintf(stderr, "load %.4f s cold align %.4f s hot align %.4f s\n", time_span1.count(), time_span2.count(), time_span3.count());
 
 #ifdef CPUVECT
+   delete[] profbuf_alt;
    delete[] rf_alt;
 #endif
    delete[] btncand;
