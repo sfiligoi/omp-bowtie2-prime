@@ -341,12 +341,21 @@ int align_ee8_one(const int el, // for debuggging purpose
                 const int32_t ref_btnfilled) {
 #ifndef PRE_LR_SCALAR
 	uint16_t btnfilled = 0;
+#ifndef PRE_M11_SCALAR
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
                                         iter, colstride, lastWordIdx,
 					minsc, nrow,
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
+#else
+	const EEU8_TCScore lrmax = EEU8_alignNucleotidesM11Scalar<uint16_t,151>(profbuf, rf, rfd,
+					mat,
+					nrow,
+					gaps[0],gaps[1],gaps[2],gaps[3]);
+
+#endif
+
 #else
 
 #if 0
@@ -372,7 +381,7 @@ int align_ee8_one(const int el, // for debuggging purpose
 	int nerrs = 0;
 	computed_lrmax = lrmax;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
-#ifndef PRE_LR_SCALAR
+#if  !(defined(PRE_LR_SCALAR)||defined(PRE_M11_SCALAR))
 	if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
 #else
 	TAlScore sc = (TAlScore)(lrmax - 0xff);
@@ -492,7 +501,14 @@ void align_ee8(const int npar, const int nels,
       for (int i=p*elp_pp; i<iend; i++) {
 #if defined(OMPGPU) && !defined(PRE_LR_SCALAR)
 	// the loop is parallel, so we must use a different buffer for each element
+#ifndef PRE_M11_SCALAR
 	TMatBuf       *my_mat = mat+i*size_t(MAX_MAT_EL);
+#else
+	// output is aligned on the 64-wide vector
+	int b64 = i/64;
+	int v64 = i%64;
+	TMatBuf       *my_mat = mat+b64*64*size_t(MAX_MAT_EL) + v64;
+#endif
 	DpBtCandidate *my_btncand = btncand+i*size_t(MAX_RF_EL);
 #endif
          nerrs+= align_ee8_one(i,
@@ -527,19 +543,6 @@ int load_and_align_ee8(const int npar, int nels) {
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new (std::align_val_t(1024))  SSERegI[size_t(nels)*MAX_PB_EL];
-#if defined(PRE_LR_SCALAR)
-   // no mat or btncand, just pass NULLs around 
-   TMatBuf        *mat = nullptr;
-   DpBtCandidate *btncand = nullptr;
-#elif !defined(OMPGPU)
-   // one per thread is enough on the CPU
-   TMatBuf       *mat = new  (std::align_val_t(1024))  TMatBuf[size_t(npar)*MAX_MAT_EL];
-   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*npar];
-#else
-   // no shortcuts on the GPU
-   TMatBuf       *mat = new  (std::align_val_t(1024)) TMatBuf[size_t(nels)*MAX_MAT_EL];
-   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*nels];
-#endif
    char    *rf = new  (std::align_val_t(1024)) char[size_t(MAX_RF_EL)*nels];
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];
@@ -576,6 +579,19 @@ int load_and_align_ee8(const int npar, int nels) {
 #endif
    auto t2a = std::chrono::high_resolution_clock::now();
    for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
+#if defined(PRE_LR_SCALAR)
+   // no mat or btncand, just pass NULLs around 
+   TMatBuf        *mat = nullptr;
+   DpBtCandidate *btncand = nullptr;
+#elif !defined(OMPGPU)
+   // one per thread is enough on the CPU
+   TMatBuf       *mat = new  (std::align_val_t(1024))  TMatBuf[size_t(npar)*MAX_MAT_EL];
+   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*npar];
+#else
+   // no shortcuts on the GPU
+   TMatBuf       *mat = new  (std::align_val_t(1024)) TMatBuf[size_t(nels)*MAX_MAT_EL];
+   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*nels];
+#endif
    auto t2b = std::chrono::high_resolution_clock::now();
    // we filtered the eleemnts, we can now assume they are homogeneous
    align_ee8(npar, nels,
