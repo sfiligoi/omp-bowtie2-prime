@@ -77,18 +77,22 @@
 
 typedef uint8_t EEU8_TCScore;
 
+#if defined(CPUVECT) && !defined(USE_BUILTIN_SUB_SAT)
+// we need BUILTIN_SUB_SAT for CPUVECT
+#define USE_BUILTIN_SUB_SAT 1
+#endif
 
 // Helper for saturating subtraction (unsigned 8-bit)
 // since there is no such thing in standard C++.
 constexpr uint8_t subs_u8(uint8_t a, uint8_t b) {
-#ifndef BUILTIN_SUB_SAT_BROKEN
+#ifdef USE_BUILTIN_SUB_SAT
     return __builtin_elementwise_sub_sat(a,b);
 #else
     return a-std::min(a,b);
 #endif
 }
 
-#ifndef BUILTIN_SUB_SAT_BROKEN
+#ifdef USE_BUILTIN_SUB_SAT
 template <typename T, unsigned int N>
 using EEU8_Vector = T __attribute__((ext_vector_type(N)));
 #endif
@@ -349,7 +353,7 @@ inline void EEU8_lazyF(const SSERegI vf0,
 }
 #endif
 
-#ifndef BUILTIN_SUB_SAT_BROKEN
+#ifdef USE_BUILTIN_SUB_SAT
 /*
  * Like EEU8_alignOne, but assuming scalar processing and going over many elements at once
  *
@@ -604,7 +608,7 @@ inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
 	return lrmax;
 }
 
-#ifndef BUILTIN_SUB_SAT_BROKEN
+#ifdef USE_BUILTIN_SUB_SAT
 /*
  * Like EEU8_alignNucleotides, but assuming scalar processing and going over many elements at once
  *

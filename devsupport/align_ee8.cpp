@@ -670,7 +670,7 @@ int main(int argv, const char* argc[]) {
    int npar = atoi(argc[1]);
    int nels = atoi(argc[2]);
 
-#ifndef BUILTIN_SUB_SAT_BROKEN
+#ifdef USE_BUILTIN_SUB_SAT
    {
      // make sure this compiler is not broken
      uint8_t a = 20;
