@@ -54,13 +54,14 @@ CXX := amdclang++
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DPRE_LR_SCALAR -DSSE_SCALAR
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR -DCPUVECT -DUSE_BUILTIN_SUB_SAT -march=native
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR
-CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2
+CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_AVX2 -DBUILTIN_SUB_SAT_BROKEN
 
 #
 # GPU-enabled
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DSSE_SCALAR -DNO_CHECK_PRINT -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm  -Rpass-analysis=kernel-resource-usage
 #CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DPRE_LR_SCALAR -DSSE_SCALAR -DNO_CHECK_PRINT -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm -Rpass-analysis=kernel-resource-usage
-#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DPRE_LR_SCALAR -DPBMASK -DSSE_SCALAR -DNO_CHECK_PRINT -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm -Rpass-analysis=kernel-resource-usage
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DPRE_LR_SCALAR -DPBMASK -DSSE_SCALAR -DNO_CHECK_PRINT -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm -Rpass-analysis=kernel-resource-usage -DBUILTIN_SUB_SAT_BROKEN
+#CXXFLAGS += -std=c++20 -DFORCE_ALL_OMP -mavx2 -faligned-new -DPRE_M11_SCALAR -DSSE_SCALAR -DNO_CHECK_PRINT -DOMPGPU -fopenmp-offload-mandatory --offload-arch=native -fopenmp-force-usm -Rpass-analysis=kernel-resource-usage -DBUILTIN_SUB_SAT_BROKEN
 
 # Enable HIP. Use CXX=amdclang++ or CXX=hipcc 
 # Warning with hybrid OPENMP Compilations
