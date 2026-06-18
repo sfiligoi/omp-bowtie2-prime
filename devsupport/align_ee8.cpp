@@ -463,10 +463,10 @@ void align_ee8(const int npar, const int nels,
                 const int32_t ref_lrmax[],
                 const int32_t ref_btnfilled[]) {
    int elp_pp = (nels+ (npar-1))/npar; // round up
-#ifdef CPUVECT
-   // keep block multiple of VECT_SIZE
-   elp_pp = ((elp_pp + (VECT_SIZE-1))/VECT_SIZE)*VECT_SIZE; // round up
-#endif 
+   // Keep block multiple of 64
+   // That's cache line size for bytes
+   elp_pp = ((elp_pp + (64-1))/64)*64; // round up
+   fprintf(stderr, "INFO: Starting %i parallel iterations of %i each (last %i).\n",int(npar), int(elp_pp), std::max(int(nels-(npar-1)*elp_pp),int(0)));
    int nerrs = 0;
 #ifdef OMPGPU
 #pragma omp target teams distribute reduction(+:nerrs)
