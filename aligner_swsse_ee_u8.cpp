@@ -1269,8 +1269,20 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 }
 
 /* 
- * Like EEU8_alignNucleotidesLRM11Scalar, but actually saves E,F,H, too 
+ * Using the same algorithm as EEU8_alignNucleotidesLRM11Scalar, 
+ * but returning pmat filled-in EEU8_alignNucleotides
  * That said, it uses a different output layout, to improve write coalescing
+ * 
+ * The original uses a contiguous for each function invocation,
+ *   with each element in pmat really being a (E,F,H,T) tuple, which are consecutive
+ *   (see SSEMatrix in aligner_swsse.h)
+ *
+ * This variant uses a  stripped approach, with each function invocation
+ *    writing evey VSize-th element only (The caller is expected to provide a shifted pmat)
+ *    Conceptually, it is the same as having VSize function invocations writing vector<VSize> elements.
+ *    (Which is effectively what happens on a GPU, due to SIMT execution)
+ *
+ *    Moreover, we are only saving E, F and H (T was an internal work area)
  *
  * Also returns btnfilled.
  */
@@ -1377,7 +1389,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 			vf = subs_u8(vf, vs1); // veto some ref gap extensions
 
 			// save F
-			pmat[0] = vf;
+			// (SSEMatrixConsts::F==2)
+			pmat[SSEMatrixConsts::F*VSize] = vf;
 
 			// Factor in query profile (matches and mismatches)
 			vh = subs_u8(vh, vs0);
@@ -1387,7 +1400,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 			vh = std::max(vh, vf);
 
 			// save H
-			pmat[VSize] = vh;
+			// (SSEMatrixConsts::H==1)
+			pmat[SSEMatrixConsts::H*VSize] = vh;
 
 			// Save the new vH values
 			uint8_t vtmp = vh;
@@ -1399,7 +1413,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 			ve = std::max(ve, vh);
 
 			// save E
-			pmat[2*VSize] = ve;
+			// (SSEMatrixConsts::E==0)
+			pmat[SSEMatrixConsts::E*VSize] = ve;
 
 			// Save E and H values for next i round
 			set_bytes(i, ve, vtmp);
