@@ -22,7 +22,7 @@ typedef SSERegI TMatBuf;
 typedef uint8_t TMatBuf __attribute__((ext_vector_type(VECT_SIZE)));
 #endif
 
-int load_data(int nels,
+int load_data(int nels, int skip_blocks,
 		size_t nrow[],
 		size_t iter[],
 		size_t colstride[],
@@ -40,8 +40,10 @@ int load_data(int nels,
       fprintf(stderr, "Could not open %s\n",fname);
       return 2;
    }
-   
-   for (int i=0; i<nels; i++) {
+ 
+   for (int b=0; b<=skip_blocks; b++) {
+    // read all elements, keep only the last pass
+    for (int i=0; i<nels; i++) {
       uint32_t magic = 0;
       uint32_t isize = 0;
       uint32_t cnt = 9999999;
@@ -52,7 +54,7 @@ int load_data(int nels,
       tread(&isize,sizeof(uint32_t), 1, file);
       if (isize != sizeof(SSERegI)) {fprintf(stderr, "Wrong isize\n"); return 4;}
       tread(&cnt,sizeof(uint32_t), 1, file);
-      if (cnt != i) {fprintf(stderr, "Wrong cnt\n"); return 4;}
+      if (cnt != (i+b*nels)) {fprintf(stderr, "Wrong cnt\n"); return 4;}
       tread(nrow+i,sizeof(size_t), 1, file);
       tread(iter+i,sizeof(size_t), 1, file);
       tread(colstride+i,sizeof(size_t), 1, file);
@@ -67,13 +69,14 @@ int load_data(int nels,
       if (rfd[i]>MAX_RF_EL) {fprintf(stderr, "RF size too big %i\n", int(rfd[i])); return 4;}
       tread(rf+(i*size_t(MAX_RF_EL)), sizeof(char), rfd[i], file);
       tread(gaps+i*4, sizeof(int8_t), 4, file);
+    }
    }
 
    fclose(file);
    return 0;
 }
 
-int load_results(int nels,
+int load_results(int nels, int skip_blocks,
 		int32_t lrmax[],
 		int32_t btnfilled[]) {
    char fname[256];
@@ -84,12 +87,15 @@ int load_results(int nels,
       return 2;
    }
    
-   for (int i=0; i<nels; i++) {
+   for (int b=0; b<=skip_blocks; b++) {
+    // read all elements, keep only the last pass
+    for (int i=0; i<nels; i++) {
       uint32_t cnt = 9999999;
       tread(&cnt,sizeof(uint32_t), 1, file);
-      if (cnt != i) {fprintf(stderr, "Wrong cnt\n"); return 4;}
+      if (cnt != (i+b*nels)) {fprintf(stderr, "Wrong cnt\n"); return 4;}
       tread(lrmax+i,sizeof(int32_t), 1, file);
       tread(btnfilled+i,sizeof(int32_t), 1, file);
+    }
    }
 
    fclose(file);
@@ -559,7 +565,7 @@ void align_ee8(const int npar, const int nels,
 
 }
 
-int load_and_align_ee8(const int npar, int nels, bool pass2_only) {
+int load_and_align_ee8(const int npar, int nels, bool pass2_only, int skip_blocks) {
    int32_t *computed_lrmax = new int32_t[nels];
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
@@ -575,10 +581,10 @@ int load_and_align_ee8(const int npar, int nels, bool pass2_only) {
 
    auto t1 = std::chrono::high_resolution_clock::now();
    // test tool, don't worry about perfect cleanup
-   if (load_data(nels,
+   if (load_data(nels, skip_blocks,
 		nrow, iter, colstride, lastWordIdx,minsc,rfd,
 		profbuf,rf,gaps) !=0 ) return 1;
-   if (load_results(nels,
+   if (load_results(nels, skip_blocks,
 		ref_lrmax, ref_btnfilled) !=0 ) return 1;
    nels = filter(nels,
                 nrow, iter, colstride, lastWordIdx, minsc,
@@ -703,14 +709,18 @@ int load_and_align_ee8(const int npar, int nels, bool pass2_only) {
 
 int main(int argv, const char* argc[]) {
    if (argv<3) {
-     fprintf(stderr, "Usage: test_align_ee8 <npar> <nels> [<pass2_only>]\n");
+     fprintf(stderr, "Usage: test_align_ee8 <npar> <nels> [<pass2_only>] [<skip_blocks>]\n");
      return 1;
    }
    int npar = atoi(argc[1]);
    int nels = atoi(argc[2]);
    int pass2_only = 0;
+   int skip_blocks = 0;
    if (argv>3) {
      pass2_only = atoi(argc[3]);
+   }
+   if (argv>4) {
+     skip_blocks = atoi(argc[4]);
    }
 
 #ifdef USE_BUILTIN_SUB_SAT
@@ -735,5 +745,5 @@ int main(int argv, const char* argc[]) {
      }
    }
 #endif
-   return load_and_align_ee8(npar,nels,pass2_only!=0);
+   return load_and_align_ee8(npar,nels,pass2_only!=0i,skip_blocks);
 }
