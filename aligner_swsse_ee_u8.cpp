@@ -1279,7 +1279,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 					const char   rf[], const TIdxSize rfd,
 					uint8_t pmat[],
 					const TAlScore minsc, const size_t nrow,
-					TIdxSize& btnfilled_,
+					DpBtCandidate btncand[], TIdxSize& btnfilled_,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
         class TPackedScore {
 	private:
@@ -1537,7 +1537,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 		lrmax = std::max(lr,lrmax);
 		if (lr >= minlr) {
 			// Yes, this is legit
-			// TODO: Save also (i, lr)
+			btncand[btnfilled].init(nrow-1, i, lr);
 			btnfilled++;
 		}
 	}

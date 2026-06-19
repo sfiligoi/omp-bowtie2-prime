@@ -352,7 +352,7 @@ int align_ee8_one(const int el, // for debuggging purpose
 	const EEU8_TCScore lrmax = EEU8_alignNucleotidesM11Scalar<uint16_t,151>(profbuf, rf, rfd,
 					mat,
 					minsc, nrow,
-					btnfilled,
+					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 
 #endif
