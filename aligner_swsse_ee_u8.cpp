@@ -1019,9 +1019,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRScalar(const uint8_t profbuf[],
 		//       EEU8_TCScore == uint8_t == uint8_t
 		// Was: EEU8_TCScore lr = bufEH2[iter - 1].get_H();
 		EEU8_TCScore lr = ((iter%2)!=0) ? bufEH[iter/2].get_H_even() : bufEH[(iter-1)/2].get_H_odd();
-		if(lr > lrmax) {
-			lrmax = lr;
-		}
+		lrmax = std::max(lr,lrmax);
 	}
 
 	return lrmax;
@@ -1264,9 +1262,7 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 		// Note: we may not want to extract from the final row
 		//       EEU8_TCScore == uint8_t == uint8_t
 		EEU8_TCScore lr = bufEH[last_elem].get_H(last_slot);
-		if(lr > lrmax) {
-			lrmax = lr;
-		}
+		lrmax = std::max(lr,lrmax);
 	}
 
 	return lrmax;
@@ -1275,12 +1271,15 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 /* 
  * Like EEU8_alignNucleotidesLRM11Scalar, but actually saves E,F,H, too 
  * That said, it uses a different output layout, to improve write coalescing
+ *
+ * Also returns btnfilled.
  */
 template<typename TIdxSize=uint16_t, uint16_t MAX_ITER=151, uint16_t MAX_RB=5, uint32_t VSize=64>
 inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 					const char   rf[], const TIdxSize rfd,
 					uint8_t pmat[],
-					const size_t nrow,
+					const TAlScore minsc, const size_t nrow,
+					TIdxSize& btnfilled_,
 					const int8_t refGapOpen, const int8_t refGapExtend, const int8_t readGapOpen, const int8_t readGapExtend) {
         class TPackedScore {
 	private:
@@ -1449,8 +1448,22 @@ inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 		}
 	}
 
+	// sc := lr - 0xff
+	// minlr = minsc + 0xff
+	// Make it fit inside uint8_t
+	const EEU8_TCScore minlr = 
+		(minsc<=(-255)) 
+		? 0                 // underflow
+		: ((minsc>0) 
+			? 0xff      // overflow
+			: (minsc + 0xff)
+		  );
+
 	// Maximum score in final row
 	EEU8_TCScore lrmax = MIN_U8;
+
+	// keep a local copy
+	TIdxSize btnfilled = 0;
 
 	// H and E vectors for each j-step, packed two per element
 	TPackedEH bufEH[(iter+1)/2];
@@ -1521,11 +1534,15 @@ inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 		// Note: we may not want to extract from the final row
 		//       EEU8_TCScore == uint8_t == uint8_t
 		EEU8_TCScore lr = bufEH[last_elem].get_H(last_slot);
-		if(lr > lrmax) {
-			lrmax = lr;
+		lrmax = std::max(lr,lrmax);
+		if (lr >= minlr) {
+			// Yes, this is legit
+			// TODO: Save also (i, lr)
+			btnfilled++;
 		}
 	}
 
+	btnfilled_ = btnfilled;  // pass it out
 	return lrmax;
 }
 

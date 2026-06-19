@@ -351,7 +351,8 @@ int align_ee8_one(const int el, // for debuggging purpose
 #else
 	const EEU8_TCScore lrmax = EEU8_alignNucleotidesM11Scalar<uint16_t,151>(profbuf, rf, rfd,
 					mat,
-					nrow,
+					minsc, nrow,
+					btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
 
 #endif
@@ -381,7 +382,7 @@ int align_ee8_one(const int el, // for debuggging purpose
 	int nerrs = 0;
 	computed_lrmax = lrmax;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
-#if  !(defined(PRE_LR_SCALAR)||defined(PRE_M11_SCALAR))
+#if  !defined(PRE_LR_SCALAR)
 	if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
 #else
 	TAlScore sc = (TAlScore)(lrmax - 0xff);
