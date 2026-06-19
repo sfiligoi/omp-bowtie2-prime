@@ -22,7 +22,7 @@ typedef SSERegI TMatBuf;
 typedef uint8_t TMatBuf __attribute__((ext_vector_type(VECT_SIZE)));
 #endif
 
-int load_data(int nels,
+int load_data(int nels, int skip_blocks,
 		size_t nrow[],
 		size_t iter[],
 		size_t colstride[],
@@ -40,8 +40,10 @@ int load_data(int nels,
       fprintf(stderr, "Could not open %s\n",fname);
       return 2;
    }
-   
-   for (int i=0; i<nels; i++) {
+ 
+   for (int b=0; b<=skip_blocks; b++) {
+    // read all elements, keep only the last pass
+    for (int i=0; i<nels; i++) {
       uint32_t magic = 0;
       uint32_t isize = 0;
       uint32_t cnt = 9999999;
@@ -52,7 +54,7 @@ int load_data(int nels,
       tread(&isize,sizeof(uint32_t), 1, file);
       if (isize != sizeof(SSERegI)) {fprintf(stderr, "Wrong isize\n"); return 4;}
       tread(&cnt,sizeof(uint32_t), 1, file);
-      if (cnt != i) {fprintf(stderr, "Wrong cnt\n"); return 4;}
+      if (cnt != (i+b*nels)) {fprintf(stderr, "Wrong cnt\n"); return 4;}
       tread(nrow+i,sizeof(size_t), 1, file);
       tread(iter+i,sizeof(size_t), 1, file);
       tread(colstride+i,sizeof(size_t), 1, file);
@@ -67,13 +69,14 @@ int load_data(int nels,
       if (rfd[i]>MAX_RF_EL) {fprintf(stderr, "RF size too big %i\n", int(rfd[i])); return 4;}
       tread(rf+(i*size_t(MAX_RF_EL)), sizeof(char), rfd[i], file);
       tread(gaps+i*4, sizeof(int8_t), 4, file);
+    }
    }
 
    fclose(file);
    return 0;
 }
 
-int load_results(int nels,
+int load_results(int nels, int skip_blocks,
 		int32_t lrmax[],
 		int32_t btnfilled[]) {
    char fname[256];
@@ -84,12 +87,15 @@ int load_results(int nels,
       return 2;
    }
    
-   for (int i=0; i<nels; i++) {
+   for (int b=0; b<=skip_blocks; b++) {
+    // read all elements, keep only the last pass
+    for (int i=0; i<nels; i++) {
       uint32_t cnt = 9999999;
       tread(&cnt,sizeof(uint32_t), 1, file);
-      if (cnt != i) {fprintf(stderr, "Wrong cnt\n"); return 4;}
+      if (cnt != (i+b*nels)) {fprintf(stderr, "Wrong cnt\n"); return 4;}
       tread(lrmax+i,sizeof(int32_t), 1, file);
       tread(btnfilled+i,sizeof(int32_t), 1, file);
+    }
    }
 
    fclose(file);
@@ -138,7 +144,8 @@ int filter(int nels,
 		char    rf[],
 		uint8_t gaps[],
 		int32_t lrmax[],
-		int32_t btnfilled[]
+		int32_t btnfilled[],
+		const bool pass2_only
 		) {
    uint32_t *gaps4 = (uint32_t*)gaps;
    bool is_first = true;
@@ -149,6 +156,7 @@ int filter(int nels,
    size_t rfd_first;
    uint32_t gaps_first;
 
+   int filter_pass2_n = 0;
    int filter_iter_n = 0;
    int filter_nrow_n = 0;
    int filter_colstride_n = 0;
@@ -159,6 +167,24 @@ int filter(int nels,
    int good_els = nels;
    int i = 0;
    while (i<good_els) {
+      if (pass2_only) {
+	const int32_t minlr = 
+		(minsc[i]<=(-255)) 
+		? 0                 // underflow
+		: ((minsc[i]>0) 
+			? 0xff      // overflow
+			: (minsc[i] + 0xff)
+		  );
+        if (lrmax[i]<minlr) {
+    	   // this one does not need a 2nd pass
+	   swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	   good_els--;
+	   filter_pass2_n++;
+	   continue;
+	}
+      }
       if (iter[i]!=((151+(NBYTES_PER_REG-1))/NBYTES_PER_REG)) {
 	// keep the most relevant one
 	swap_data(i, good_els-1,
@@ -236,8 +262,8 @@ int filter(int nels,
    }
 
    fprintf(stderr, "INFO: Filtered from %i down to %i (%3.2f%%)\n",int(nels), int(good_els),100.0*good_els/nels);
-   fprintf(stderr, "INFO: Filter iter: %i rfd: %i gaps: %i nrow: %i colstride: %i lastWordIdx: %i minsc: %i\n",
-		   filter_iter_n,filter_rfd_n,filter_gaps_n,filter_nrow_n,filter_colstride_n,filter_lastWordIdx_n,filter_minsc_n);
+   fprintf(stderr, "INFO: Filter pass2: %i iter: %i rfd: %i gaps: %i nrow: %i colstride: %i lastWordIdx: %i minsc: %i\n",
+		   filter_pass2_n, filter_iter_n,filter_rfd_n,filter_gaps_n,filter_nrow_n,filter_colstride_n,filter_lastWordIdx_n,filter_minsc_n);
    return good_els;
 }
 
@@ -341,12 +367,22 @@ int align_ee8_one(const int el, // for debuggging purpose
                 const int32_t ref_btnfilled) {
 #ifndef PRE_LR_SCALAR
 	uint16_t btnfilled = 0;
+#ifndef PRE_M11_SCALAR
 	const EEU8_TCScore lrmax = EEU8_alignNucleotides<uint16_t>(profbuf, rf, rfd,
 					mat,
                                         iter, colstride, lastWordIdx,
 					minsc, nrow,
 					btncand, btnfilled,
 					gaps[0],gaps[1],gaps[2],gaps[3]);
+#else
+	const EEU8_TCScore lrmax = EEU8_alignNucleotidesM11Scalar<uint16_t,151>(profbuf, rf, rfd,
+					mat,
+					minsc, nrow,
+					btncand, btnfilled,
+					gaps[0],gaps[1],gaps[2],gaps[3]);
+
+#endif
+
 #else
 
 #if 0
@@ -372,7 +408,7 @@ int align_ee8_one(const int el, // for debuggging purpose
 	int nerrs = 0;
 	computed_lrmax = lrmax;
 	if (int(ref_lrmax) != int(lrmax)) nerrs++;
-#ifndef PRE_LR_SCALAR
+#if  !defined(PRE_LR_SCALAR)
 	if (int(ref_btnfilled) != int(btnfilled)) nerrs++;
 #else
 	TAlScore sc = (TAlScore)(lrmax - 0xff);
@@ -492,7 +528,14 @@ void align_ee8(const int npar, const int nels,
       for (int i=p*elp_pp; i<iend; i++) {
 #if defined(OMPGPU) && !defined(PRE_LR_SCALAR)
 	// the loop is parallel, so we must use a different buffer for each element
+#ifndef PRE_M11_SCALAR
 	TMatBuf       *my_mat = mat+i*size_t(MAX_MAT_EL);
+#else
+	// output is aligned on the 64-wide vector
+	int b64 = i/64;
+	int v64 = i%64;
+	TMatBuf       *my_mat = mat+b64*64*ROWSTRIDE*iter*rfd + v64;
+#endif
 	DpBtCandidate *my_btncand = btncand+i*size_t(MAX_RF_EL);
 #endif
          nerrs+= align_ee8_one(i,
@@ -522,24 +565,11 @@ void align_ee8(const int npar, const int nels,
 
 }
 
-int load_and_align_ee8(const int npar, int nels) {
+int load_and_align_ee8(const int npar, int nels, bool pass2_only, int skip_blocks) {
    int32_t *computed_lrmax = new int32_t[nels];
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
    SSERegI *profbuf = new (std::align_val_t(1024))  SSERegI[size_t(nels)*MAX_PB_EL];
-#if defined(PRE_LR_SCALAR)
-   // no mat or btncand, just pass NULLs around 
-   TMatBuf        *mat = nullptr;
-   DpBtCandidate *btncand = nullptr;
-#elif !defined(OMPGPU)
-   // one per thread is enough on the CPU
-   TMatBuf       *mat = new  (std::align_val_t(1024))  TMatBuf[size_t(npar)*MAX_MAT_EL];
-   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*npar];
-#else
-   // no shortcuts on the GPU
-   TMatBuf       *mat = new  (std::align_val_t(1024)) TMatBuf[size_t(nels)*MAX_MAT_EL];
-   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*nels];
-#endif
    char    *rf = new  (std::align_val_t(1024)) char[size_t(MAX_RF_EL)*nels];
    size_t  *nrow = new size_t[nels];
    size_t  *iter = new size_t[nels];
@@ -551,14 +581,15 @@ int load_and_align_ee8(const int npar, int nels) {
 
    auto t1 = std::chrono::high_resolution_clock::now();
    // test tool, don't worry about perfect cleanup
-   if (load_data(nels,
+   if (load_data(nels, skip_blocks,
 		nrow, iter, colstride, lastWordIdx,minsc,rfd,
 		profbuf,rf,gaps) !=0 ) return 1;
-   if (load_results(nels,
+   if (load_results(nels, skip_blocks,
 		ref_lrmax, ref_btnfilled) !=0 ) return 1;
    nels = filter(nels,
                 nrow, iter, colstride, lastWordIdx, minsc,
-                rfd, profbuf, rf, gaps, ref_lrmax, ref_btnfilled);
+                rfd, profbuf, rf, gaps, ref_lrmax, ref_btnfilled,
+		pass2_only);
 #ifdef CPUVECT
    // TODO: Fix the code to support non-multiple numbers
    if ((nels%VECT_SIZE)!=0) {
@@ -576,8 +607,22 @@ int load_and_align_ee8(const int npar, int nels) {
 #endif
    auto t2a = std::chrono::high_resolution_clock::now();
    for (int i=0; i<nels; i++) computed_lrmax[i] = -1; // invalidate
+#if defined(PRE_LR_SCALAR)
+   // no mat or btncand, just pass NULLs around 
+   TMatBuf        *mat = nullptr;
+   DpBtCandidate *btncand = nullptr;
+#elif !defined(OMPGPU)
+   // one per thread is enough on the CPU
+   TMatBuf       *mat = new  (std::align_val_t(1024))  TMatBuf[size_t(npar)*MAX_MAT_EL];
+   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*npar];
+#else
+   // no shortcuts on the GPU
+   TMatBuf       *mat = new  (std::align_val_t(1024)) TMatBuf[size_t(nels)*MAX_MAT_EL];
+   DpBtCandidate *btncand = new  (std::align_val_t(1024)) DpBtCandidate[size_t(MAX_RF_EL)*nels];
+#endif
    auto t2b = std::chrono::high_resolution_clock::now();
    // we filtered the eleemnts, we can now assume they are homogeneous
+   fprintf(stderr, "INFO: #iter = %i #rfd = %i #row = %i #minsc = %i\n",int(iter[0]),int(rfd[0]),int(nrow[0]),int(minsc[0]));
    align_ee8(npar, nels,
 		nrow[0], iter[0], colstride[0], lastWordIdx[0],minsc[0],rfd[0], // homogeneous
 		gaps, // 4 elements, so passing by pointer, but still homogeneous
@@ -663,12 +708,20 @@ int load_and_align_ee8(const int npar, int nels) {
 
 
 int main(int argv, const char* argc[]) {
-   if (argv<2) {
-     fprintf(stderr, "Usage: test_align_ee8 <npar> <nels>\n");
+   if (argv<3) {
+     fprintf(stderr, "Usage: test_align_ee8 <npar> <nels> [<pass2_only>] [<skip_blocks>]\n");
      return 1;
    }
    int npar = atoi(argc[1]);
    int nels = atoi(argc[2]);
+   int pass2_only = 0;
+   int skip_blocks = 0;
+   if (argv>3) {
+     pass2_only = atoi(argc[3]);
+   }
+   if (argv>4) {
+     skip_blocks = atoi(argc[4]);
+   }
 
 #ifdef USE_BUILTIN_SUB_SAT
    {
@@ -692,5 +745,5 @@ int main(int argv, const char* argc[]) {
      }
    }
 #endif
-   return load_and_align_ee8(npar,nels);
+   return load_and_align_ee8(npar,nels,pass2_only!=0i,skip_blocks);
 }
