@@ -1270,11 +1270,11 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 
 /* 
  * Using the same algorithm as EEU8_alignNucleotidesLRM11Scalar, 
- * but returning pmat filled-in EEU8_alignNucleotides
+ * but returning pmat filled-in like EEU8_alignNucleotides does.
  * That said, it uses a different output layout, to improve write coalescing
  * 
  * The original uses a contiguous for each function invocation,
- *   with each element in pmat really being a (E,F,H,T) tuple, which are consecutive
+ *   with each element in pmat really being a (E,F,H,TMP) tuple, which are consecutive
  *   (see SSEMatrix in aligner_swsse.h)
  *
  * This variant uses a  stripped approach, with each function invocation
@@ -1282,7 +1282,11 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
  *    Conceptually, it is the same as having VSize function invocations writing vector<VSize> elements.
  *    (Which is effectively what happens on a GPU, due to SIMT execution)
  *
- *    Moreover, we are only saving E, F and H (T was an internal work area)
+ * The caller is expected to use a loop similar to this:
+ *    for (int i=0; i<VSize; i++) EEU8_alignNucleotidesM11Scalar(..., pmat+i, ...)
+ *
+ * Note that TMP elements are never written into, as they do not have a well defined semantics.
+ * (were used as a scratch area internally to EEU8_alignNucleotides)
  *
  * Also returns btnfilled.
  */
@@ -1493,8 +1497,6 @@ inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 	// calculated gap vectors enforce the gap barrier constraint by making it
 	// infinitely costly to introduce a gap in barrier rows.
 
-        uint8_t *pbuf = pmat;
-
 	// For each character in the reference text
 	for(TIdxSize i = 0; i < rfd; i++) {
 		
@@ -1510,6 +1512,8 @@ inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 		  // in scalar mode, we always start high
 		  uint8_t vh = 0xff;
 
+		  uint8_t *mypmat = pmat+(size_t(ROWSTRIDE*VSize)*iter*i);
+
 #ifdef OMPGPU
 		  // Full unrolling allows bufEH to be mapped to the GPU register file
 		  // Only downsides for the CPUs, that have fewer registers
@@ -1520,28 +1524,28 @@ inline EEU8_TCScore EEU8_alignNucleotidesM11Scalar(const uint8_t profbuf[],
 		  // score_off is the logical index within the packed byte (0-3).
 		  for(TIdxSize b = 0; b < (iter/4); b++) {
 		    const TPackedScore full_score(loc_procbuf[ir][b]);
-		    bufEH[b*2].apply_step(full_score, 0, pbuf, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    pbuf+=3*VSize;
-		    bufEH[b*2].apply_step(full_score, 1, pbuf, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    pbuf+=3*VSize;
-		    bufEH[b*2+1].apply_step(full_score, 2, pbuf, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    pbuf+=3*VSize;
-		    bufEH[b*2+1].apply_step(full_score, 3, pbuf, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    pbuf+=3*VSize;
+		    bufEH[b*2].apply_step(full_score, 0, mypmat, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    mypmat+=ROWSTRIDE*VSize;
+		    bufEH[b*2].apply_step(full_score, 1, mypmat, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    mypmat+=ROWSTRIDE*VSize;
+		    bufEH[b*2+1].apply_step(full_score, 2, mypmat, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    mypmat+=ROWSTRIDE*VSize;
+		    bufEH[b*2+1].apply_step(full_score, 3, mypmat, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    mypmat+=ROWSTRIDE*VSize;
 		  }
 		  // Do remaining elements
 		  if constexpr((iter % 4) != 0) {
 		    const TIdxSize b = iter / 4;
 		    const TPackedScore full_score(loc_procbuf[ir][b]);
-		    bufEH[b*2].apply_step(full_score, 0, pbuf, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		    pbuf+=3*VSize;
+		    bufEH[b*2].apply_step(full_score, 0, mypmat, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		    mypmat+=ROWSTRIDE*VSize;
 		    if constexpr((iter % 4) >= 2) {
-		      bufEH[b*2].apply_step(full_score, 1, pbuf, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		      pbuf+=3*VSize;
+		      bufEH[b*2].apply_step(full_score, 1, mypmat, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		      mypmat+=ROWSTRIDE*VSize;
 		    }
 		    if constexpr((iter % 4) >= 3) {
-		      bufEH[b*2+1].apply_step(full_score, 2, pbuf, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
-		      pbuf+=3*VSize;
+		      bufEH[b*2+1].apply_step(full_score, 2, mypmat, vf, vh, rdgapo, rdgape, rfgapo, rfgape);
+		      mypmat+=ROWSTRIDE*VSize;
 		    }
 		  }
 		}

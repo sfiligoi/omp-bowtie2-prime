@@ -508,7 +508,7 @@ void align_ee8(const int npar, const int nels,
 	// output is aligned on the 64-wide vector
 	int b64 = i/64;
 	int v64 = i%64;
-	TMatBuf       *my_mat = mat+b64*64*3*iter*rfd + v64;
+	TMatBuf       *my_mat = mat+b64*64*ROWSTRIDE*iter*rfd + v64;
 #endif
 	DpBtCandidate *my_btncand = btncand+i*size_t(MAX_RF_EL);
 #endif
