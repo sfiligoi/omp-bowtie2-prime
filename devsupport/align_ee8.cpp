@@ -595,6 +595,7 @@ int load_and_align_ee8(const int npar, int nels) {
 #endif
    auto t2b = std::chrono::high_resolution_clock::now();
    // we filtered the eleemnts, we can now assume they are homogeneous
+   fprintf(stderr, "INFO: #iter = %i #rfd = %i #row = %i #minsc = %i\n",int(iter[0]),int(rfd[0]),int(nrow[0]),int(minsc[0]));
    align_ee8(npar, nels,
 		nrow[0], iter[0], colstride[0], lastWordIdx[0],minsc[0],rfd[0], // homogeneous
 		gaps, // 4 elements, so passing by pointer, but still homogeneous
