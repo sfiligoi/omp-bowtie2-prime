@@ -211,6 +211,27 @@ struct ExtendRange {
 	size_t sz;  // # of elements in SA range
 };
 
+/**
+ * One DP problem collected during the BWT-walk phase of extendSeedsCollect.
+ * Contains everything needed by extendSeedsAlign to run initRef + align
+ * without touching the BWT index again.
+ *
+ * The profbuf/rf/rflen/nrow/gaps fields are pre-populated by extendSeedsCollect
+ * so that the LRM11Scalar pre-filter can run on the pre-decoded data directly,
+ * without accessing BitPairReference (CPU-only memory-mapped data).
+ */
+struct ExtendCandidate {
+	bool           fw;        // alignment orientation
+	TIndexOffU     tidx;      // reference sequence index
+	TIndexOffU     toff;      // offset within reference sequence
+	TIndexOffU     tlen;      // length of reference sequence
+	int64_t        refoff;    // ref offset implied by seed (no gaps)
+	DPRect         rect;      // DP bounding rectangle
+	size_t         nwindow;   // left-shift of seed within rect
+	Coord          refcoord;  // seed coordinate (for seenDiags bookkeeping)
+	bool           lrm11_passed; // passed LRM11Scalar pre-filter; set by runLRM11Filter
+};
+
 class SwDriver {
 
 public:
@@ -284,6 +305,60 @@ public:
 		AlnSinkWrap* mhs,            // HitSink for multiseed-style aligner
 		bool reportImmediately,      // whether to report hits immediately to mhs
 		bool& exhaustive);
+
+	/**
+	 * Phase 1 of the split extendSeeds pipeline.
+	 * Walks the BWT, resolves reference offsets, frames DP rectangles, and
+	 * collects surviving candidates into `cands`.
+	 * Returns EXTEND_PERFECT_SCORE early if minsc == perfectScore.
+	 */
+	int extendSeedsCollect(
+		const Ebwt& ebwtFw,          // BWT
+		const BitPairReference& ref, // Reference strings
+		SwAligner& swa,              // used only to query dpRows()
+		const Scoring& sc,           // scoring scheme
+		const int seedmms,           // # mismatches allowed in seed
+		const int seedlen,           // length of seed
+		const int seedival,          // interval between seeds
+		const TAlScore minsc,        // minimum score for anchor
+		const int nceil,             // maximum # Ns permitted in ref portion
+		const size_t maxhalf,        // maximum width on one side of DP table
+		PerReadMetrics& prm,           // per-read metrics
+		EList<ExtendCandidate>& cands  // output: DP problems to solve
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+		, uint32_t       mate_idx,     // index of this mate in flat_profbuf/flat_gaps/flat_minsc
+		size_t         cand_offset,    // where in flat rf/rflen/nrow this mate's candidates start
+		uint8_t*       flat_profbuf,   // [num_mates * ALPHA_SIZE * ALN_MAX_ROWS * 2]
+		char*          flat_rf,        // [total_cap * (ALN_MAX_COLS + 2)]
+		int8_t*        flat_gaps,      // [num_mates * 4]
+		uint16_t*      flat_rflen,     // [total_cap]
+		uint16_t*      flat_nrow,      // [total_cap]
+		uint32_t*      flat_mate       // [total_cap] — candidate → mate index
+#endif
+		);
+
+	/**
+	 * Phase 2 of the split extendSeeds pipeline.
+	 * For each candidate collected by extendSeedsCollect, runs initRef +
+	 * align + nextAlignment + report.  `swa` must already have initRead
+	 * called on it.
+	 * Returns EXTEND_POLICY_FULFILLED if a reporting limit is hit, or
+	 * EXTEND_EXHAUSTED_CANDIDATES when all candidates are processed.
+	 */
+	int extendSeedsAlign(
+		EList<ExtendCandidate>& cands,       // candidates from collect phase
+		const BitPairReference& ref, // Reference strings
+		SwAligner& swa,              // dynamic programming aligner (initRead already called)
+		const Scoring& sc,           // scoring scheme
+		const int seedmms,           // # mismatches allowed in seed
+		const int seedlen,           // length of seed
+		const int seedival,          // interval between seeds
+		const TAlScore minsc,        // minimum score for anchor
+		const bool enable8,          // use 8-bit SSE where possible
+		PerReadMetrics& prm,         // per-read metrics
+		AlnSinkWrap* msink,          // HitSink for multiseed-style aligner
+		bool reportImmediately,      // whether to report hits immediately to msink
+		bool& exhaustive);           // set to true iff all candidates processed
 
 #ifdef SUPPORT_PAIRED
 // NOTE: Unsupported, likely does not work

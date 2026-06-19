@@ -344,13 +344,23 @@ inline void EEU8_lazyF(const SSERegI vf0,
  * Solve the current alignment problem using SSE instructions that operate on 16
  * unsigned 8-bit values packed into a single 128-bit register.
  *
- * Select intput parameters:
+ * When score_only=true: runs the full DP but ping-pongs over two columns in
+ * pmat instead of writing a new column per reference position.  Returns lrmax
+ * and populates btncand with every column whose last-row score meets minsc,
+ * but does NOT store the full E/F/H matrix needed for backtrace.
+ *
+ * When score_only=false: writes a new matrix column for each reference
+ * position up to rfd, storing E/F/H vectors required for backtrace.
+ *
+ * Select input parameters:
  *   profbuf - buffer for query profile & temp vecs
  *   rf      - reference sequence
+ *   rfd     - number of reference columns to process
  *
  * Select output parameters:
- *   pmat    - SSE matrix for holding all E, F, H vectors
- *   btncand - cells we might backtrace from
+ *   pmat    - SSE matrix; used as 2-column ping-pong scratch when score_only,
+ *             or filled column-by-column otherwise
+ *   btncand - cells we might backtrace from (populated in both modes)
  */
 template<typename TIdxSize>
 inline EEU8_TCScore EEU8_alignNucleotides(const SSERegI profbuf[],
@@ -997,6 +1007,81 @@ inline EEU8_TCScore EEU8_alignNucleotidesLRM11Scalar(const uint8_t profbuf[],
 }
 
 #ifndef SWSSE_INLINE_ONLY
+/**
+ * Run only the LRM11Scalar pre-filter for the current initRef state.
+ * Returns true if the best last-row score meets minsc (candidate may align),
+ * false if it definitely cannot (safe to skip full DP).
+ */
+bool SwAligner::filterLRM11(TAlScore minsc) {
+	assert(initedRef() && initedRead());
+	buildQueryProfileEnd2EndSseU8(fw_);
+	auto& d = fw_ ? sseU8fw_ : sseU8rc_;
+	const size_t iter = (dpRows() + (EEU8_NWORDS_PER_REG-1)) / EEU8_NWORDS_PER_REG;
+	if(iter != 151) return true; // filter undefined for this read length; pass through
+	const EEU8_TCScore lrmax = EEU8_alignNucleotidesLRM11Scalar<uint16_t, 151, 5>(
+		reinterpret_cast<const uint8_t*>(d.profbuf_.ptr()), rf_, rflen_,
+		dpRows(),
+		sc_->refGapOpen(), sc_->refGapExtend(), sc_->readGapOpen(), sc_->readGapExtend());
+	return (TAlScore)(lrmax - 0xff) >= minsc;
+}
+
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+void SwAligner::runLRM11Filter(
+	int             total_cands,
+	int             num_mates,
+	const uint8_t*  flat_profbuf, // [num_mates*2*pb_stride]: slot mate*2+0=fw, mate*2+1=rc
+	const char*     flat_rf,
+	const int8_t*   flat_gaps,    // [num_mates*4]
+	const uint16_t* flat_rflen,
+	const uint16_t* flat_nrow,
+	const int32_t*  flat_minsc,   // [num_mates]
+	const uint32_t* flat_mate,    // [total_cands]: mate*2+(fw?0:1), indexes profbuf directly
+	bool*           flat_passed)
+{
+	const int npar = std::min(total_cands, 16384);
+	const int elp_pp = (total_cands + npar - 1) / npar;
+	const size_t pb_stride = ALPHA_SIZE * ALN_MAX_ROWS * 2;
+	const size_t rf_stride = ALN_MAX_COLS + 2;
+#ifdef OMPGPU
+#pragma omp target teams distribute \
+	map(to: flat_profbuf[0:num_mates*2*pb_stride], \
+	        flat_rf[0:total_cands*rf_stride], \
+	        flat_gaps[0:num_mates*4], \
+	        flat_rflen[0:total_cands], \
+	        flat_nrow[0:total_cands], \
+	        flat_minsc[0:num_mates], \
+	        flat_mate[0:total_cands]) \
+	map(tofrom: flat_passed[0:total_cands])
+#else
+#pragma omp parallel for schedule(dynamic)
+#endif
+	for(int p = 0; p < npar; p++) {
+		const int iend = std::min((p + 1) * elp_pp, total_cands);
+#ifdef OMPGPU
+#pragma omp parallel for
+#endif
+		for(int ci = p * elp_pp; ci < iend; ci++) {
+			if(flat_rflen[ci] == 0 || flat_nrow[ci] != 151) {
+				flat_passed[ci] = (flat_nrow[ci] != 151);
+			} else {
+				// flat_mate[ci] = mate*2 + (fw?0:1): direct index into profbuf (fw vs rc slot).
+				// Shift right to get the mate index for gaps and minsc.
+				const uint32_t pb_slot = flat_mate[ci];
+				const uint32_t mate    = pb_slot >> 1;
+				const EEU8_TCScore lrmax = EEU8_alignNucleotidesLRM11Scalar<uint16_t, 151, 5>(
+					flat_profbuf + (size_t)pb_slot * pb_stride,
+					flat_rf      + (size_t)ci * rf_stride,
+					flat_rflen[ci],
+					flat_nrow[ci],
+					flat_gaps[mate*4+0], flat_gaps[mate*4+1],
+					flat_gaps[mate*4+2], flat_gaps[mate*4+3]);
+				flat_passed[ci] = ((TAlScore)(lrmax - 0xff) >= (TAlScore)flat_minsc[mate]);
+			}
+		}
+	}
+}
+#endif
+
 /**
  * Align read 'rd' to reference using read & reference information given
  * last time init() was called.

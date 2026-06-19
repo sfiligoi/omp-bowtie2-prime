@@ -287,6 +287,35 @@ public:
 	 * last time init() was called.  Uses dynamic programming.
 	 */
 	bool align(TAlScore& best);
+	bool filterLRM11(TAlScore minsc);
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+	// Run the LRM11Scalar pre-filter over flat candidate arrays.
+	// flat_passed[i] is set to true if candidate i may align, false if it can be skipped.
+	// Implemented in aligner_swsse_ee_u8.cpp; uses GPU offload when OMPGPU is defined.
+	static void runLRM11Filter(
+		int             total_cands,
+		int             num_mates,     // actual mate count; gaps/minsc indexed by [mate]
+		const uint8_t*  flat_profbuf,  // [num_mates * 2 * ALPHA_SIZE * ALN_MAX_ROWS * 2] -- fw+rc per mate
+		const char*     flat_rf,       // [total_cands * (ALN_MAX_COLS + 2)]
+		const int8_t*   flat_gaps,     // [num_mates * 4]
+		const uint16_t* flat_rflen,    // [total_cands]
+		const uint16_t* flat_nrow,     // [total_cands]
+		const int32_t*  flat_minsc,    // [num_mates]
+		const uint32_t* flat_mate,     // [total_cands] -- mate*2+(fw?0:1), indexes profbuf directly
+		bool*           flat_passed);  // [total_cands]
+#endif
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+	// Called once per mate per orientation (after initRead). Writes query profile.
+	// out_profbuf: ALPHA_SIZE * dpRows() * 2 bytes; fw selects forward or RC profile.
+	// out_gaps: {refGapOpen, refGapExtend, readGapOpen, readGapExtend} (orientation-independent).
+	void fillCandProfbuf(bool fw, uint8_t* out_profbuf, int8_t out_gaps[4]);
+	// Called once per candidate (after initRef). Writes reference window and dimensions.
+	// Must be called after initRef(BitPairReference,...).
+	// out_rf:    rflen_ bytes (mask-encoded reference chars)
+	// out_rflen: set to rflen_
+	// out_nrow:  set to dpRows()
+	void fillCandRf(char* out_rf, uint16_t& out_rflen, uint16_t& out_nrow) const;
+#endif
 	bool alignEnd2EndSseU8(TAlScore& best);
 #ifdef ENABLE_I16
 	bool alignEnd2EndSseI16(TAlScore& best);

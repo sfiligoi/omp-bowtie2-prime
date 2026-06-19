@@ -227,6 +227,30 @@ bool SwAligner::initRef(
 		extend);     // true iff this is a seed extension
 }
 
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+void SwAligner::fillCandProfbuf(bool fw, uint8_t* out_profbuf, int8_t out_gaps[4])
+{
+	assert(initedRead());
+	buildQueryProfileEnd2EndSseU8(fw);
+	const auto& d = fw ? sseU8fw_ : sseU8rc_;
+	const size_t nrow = dpRows();
+	const size_t nbytes = ALPHA_SIZE * nrow * 2;
+	memcpy(out_profbuf, reinterpret_cast<const uint8_t*>(d.profbuf_.ptr()), nbytes);
+	out_gaps[0] = (int8_t)sc_->refGapOpen();
+	out_gaps[1] = (int8_t)sc_->refGapExtend();
+	out_gaps[2] = (int8_t)sc_->readGapOpen();
+	out_gaps[3] = (int8_t)sc_->readGapExtend();
+}
+
+void SwAligner::fillCandRf(char* out_rf, uint16_t& out_rflen, uint16_t& out_nrow) const
+{
+	assert(initedRef() && initedRead());
+	memcpy(out_rf, rf_, rflen_);
+	out_rflen = (uint16_t)rflen_;
+	out_nrow  = (uint16_t)dpRows();
+}
+#endif
+
 /**
  * Align read 'rd' to reference using read & reference information given
  * last time init() was called.
