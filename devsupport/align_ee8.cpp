@@ -138,7 +138,8 @@ int filter(int nels,
 		char    rf[],
 		uint8_t gaps[],
 		int32_t lrmax[],
-		int32_t btnfilled[]
+		int32_t btnfilled[],
+		const bool pass2_only
 		) {
    uint32_t *gaps4 = (uint32_t*)gaps;
    bool is_first = true;
@@ -149,6 +150,7 @@ int filter(int nels,
    size_t rfd_first;
    uint32_t gaps_first;
 
+   int filter_pass2_n = 0;
    int filter_iter_n = 0;
    int filter_nrow_n = 0;
    int filter_colstride_n = 0;
@@ -159,6 +161,24 @@ int filter(int nels,
    int good_els = nels;
    int i = 0;
    while (i<good_els) {
+      if (pass2_only) {
+	const int32_t minlr = 
+		(minsc[i]<=(-255)) 
+		? 0                 // underflow
+		: ((minsc[i]>0) 
+			? 0xff      // overflow
+			: (minsc[i] + 0xff)
+		  );
+        if (lrmax[i]<minlr) {
+    	   // this one does not need a 2nd pass
+	   swap_data(i, good_els-1,
+                nrow, iter, colstride, lastWordIdx, minsc,
+                rfd, profbuf, rf, gaps, lrmax, btnfilled);
+	   good_els--;
+	   filter_pass2_n++;
+	   continue;
+	}
+      }
       if (iter[i]!=((151+(NBYTES_PER_REG-1))/NBYTES_PER_REG)) {
 	// keep the most relevant one
 	swap_data(i, good_els-1,
@@ -236,8 +256,8 @@ int filter(int nels,
    }
 
    fprintf(stderr, "INFO: Filtered from %i down to %i (%3.2f%%)\n",int(nels), int(good_els),100.0*good_els/nels);
-   fprintf(stderr, "INFO: Filter iter: %i rfd: %i gaps: %i nrow: %i colstride: %i lastWordIdx: %i minsc: %i\n",
-		   filter_iter_n,filter_rfd_n,filter_gaps_n,filter_nrow_n,filter_colstride_n,filter_lastWordIdx_n,filter_minsc_n);
+   fprintf(stderr, "INFO: Filter pass2: %i iter: %i rfd: %i gaps: %i nrow: %i colstride: %i lastWordIdx: %i minsc: %i\n",
+		   filter_pass2_n, filter_iter_n,filter_rfd_n,filter_gaps_n,filter_nrow_n,filter_colstride_n,filter_lastWordIdx_n,filter_minsc_n);
    return good_els;
 }
 
@@ -539,7 +559,7 @@ void align_ee8(const int npar, const int nels,
 
 }
 
-int load_and_align_ee8(const int npar, int nels) {
+int load_and_align_ee8(const int npar, int nels, bool pass2_only) {
    int32_t *computed_lrmax = new int32_t[nels];
    int32_t *ref_lrmax = new int32_t[nels];
    int32_t *ref_btnfilled = new int32_t[nels];
@@ -562,7 +582,8 @@ int load_and_align_ee8(const int npar, int nels) {
 		ref_lrmax, ref_btnfilled) !=0 ) return 1;
    nels = filter(nels,
                 nrow, iter, colstride, lastWordIdx, minsc,
-                rfd, profbuf, rf, gaps, ref_lrmax, ref_btnfilled);
+                rfd, profbuf, rf, gaps, ref_lrmax, ref_btnfilled,
+		pass2_only);
 #ifdef CPUVECT
    // TODO: Fix the code to support non-multiple numbers
    if ((nels%VECT_SIZE)!=0) {
@@ -681,12 +702,16 @@ int load_and_align_ee8(const int npar, int nels) {
 
 
 int main(int argv, const char* argc[]) {
-   if (argv<2) {
-     fprintf(stderr, "Usage: test_align_ee8 <npar> <nels>\n");
+   if (argv<3) {
+     fprintf(stderr, "Usage: test_align_ee8 <npar> <nels> [<pass2_only>]\n");
      return 1;
    }
    int npar = atoi(argc[1]);
    int nels = atoi(argc[2]);
+   int pass2_only = 0;
+   if (argv>3) {
+     pass2_only = atoi(argc[3]);
+   }
 
 #ifdef USE_BUILTIN_SUB_SAT
    {
@@ -710,5 +735,5 @@ int main(int argv, const char* argc[]) {
      }
    }
 #endif
-   return load_and_align_ee8(npar,nels);
+   return load_and_align_ee8(npar,nels,pass2_only!=0);
 }
