@@ -2275,6 +2275,7 @@ public:
 
 	SwDriverBT2 sd;
 	RandomSource rnd;
+	EList<ExtendCandidate> extend_cands; // filled by extendSeedsCollect, consumed by extendSeedsAlign
 
 };
 
@@ -2803,11 +2804,11 @@ static void multiseedSearchWorker() {
 		 	mate_allocs.ensure_spare();
 #endif
 
+		   	// Phase 1: BWT walk — resolve SA offsets to ref coordinates, frame DP rects.
+		   	// Serial within each mate's SwDriver (gws_ state), parallel across mates.
 		   	// we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
 			for (uint32_t nb=0; nb<batch_parallel_tasks; nb++) {
-			   // These objects are really just work areas
-			   // Could have just created them here, but this way we minimize mallocs
 			   bcWorkerObjs& bcobj = g_bcobjs[nb];
 			   SwAligner &sw = bcobj.sw;
 
@@ -2815,68 +2816,159 @@ static void multiseedSearchWorker() {
 				const uint32_t mate = nb*reads_per_batch + ib;
 				if (mate_idx[mate]>=0 ) { // !done[mate]
 					msWorkerObjs& msobj = g_msobjs[mate];
-					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate]; 
-					const uint16_t interval = intervals[mate];
+					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate];
 					Read& rd = *rds[mate];
 					const size_t rdlen = rd.length();
-					// Initialize the aligner with a new read
 					sw.reset();
 					if (!sw.initRead(
-						rd.patFw,  // fw version of query
-						rd.patRc,  // rc version of query
-						rd.qual,   // fw version of qualities
-						rd.qualRev,// rc version of qualities
-						rdlen,     // off of last char (excl) in 'rd' to consider
-						msconsts->sc)) {     // scoring scheme
-								// Something went terribly wrong (likely read too long)
-								// Bail out
-								mate_idx[mate] = MATE_DONE;
+						rd.patFw,  rd.patRc,
+						rd.qual,   rd.qualRev,
+						rdlen,     msconsts->sc)) {
+						mate_idx[mate] = MATE_DONE;
 					} else {
-						const SeedResults& sh = psrs->getSR(mate);
-
-
-								// Unpaired dynamic programming driver
-								int ret = msobj.sd.extendSeeds(
-										sh,             // seed hits
-										msconsts->ebwtFw,         // bowtie index
-										msconsts->ref,            // packed reference strings
-										sw,                       // dynamic prog aligner
-										msconsts->sc,             // scoring scheme
-										multiseedMms,   // # mms allowed in a seed
-										multiseedLen,   // length of a seed
-										interval,       // interval between seeds
-										minsc[mate],    // minimum score for valid
-										nceil[mate],    // N ceil for anchor
-										msconsts->maxHalf,        // max width on one DP side
-										msconsts->extend,       // extend seed hits
-										msconsts->doEnable8,        // use 8-bit SSE where possible
-										msinkwrap.prm,  // per-read metrics
-										&msinkwrap,     // for organizing hits
-										true,           // report hits once found
-										exhaustive[mate]);
-								assert_gt(ret, 0);
-								if ((ret == EXTEND_EXHAUSTED_CANDIDATES) ||
-								     (ret == EXTEND_EXCEEDED_SOFT_LIMIT) ||
-                                                                     (ret == EXTEND_POLICY_FULFILLED)) {
-									// Not done yet
-									
-									// We don't necessarily have to continue investigating both
-									// mates.  We continue on a mate only if its average
-									// interval length is high (> 1000)
-									if(psrs->getSR(mate).averageHitsPerSeed() < seedBoostThresh) {
-										mate_idx[mate] = MATE_DONE;
-									} else if(msinkwrap.state().doneWithMate(true)) {
-										mate_idx[mate] = MATE_DONE;
-									}
-								} else {
-									mate_idx[mate] = MATE_DONE;
-								}
-
-					} // if initRead
-				} // if mate done
+						int ret = msobj.sd.extendSeedsCollect(
+							msconsts->ebwtFw,
+							msconsts->ref,
+							sw,
+							msconsts->sc,
+							multiseedMms,
+							multiseedLen,
+							intervals[mate],
+							minsc[mate],
+							nceil[mate],
+							msconsts->maxHalf,
+							msinkwrap.prm,
+							msobj.extend_cands
+							);
+						if (ret == EXTEND_PERFECT_SCORE) {
+							mate_idx[mate] = MATE_DONE;
+						}
+					}
+				} // if mate active
 			   } // for ib
 			} // for nb
-		   tmr.next("extendSeeds");
+		   tmr.next("extendSeeds_bwtwalk");
+
+		   // always call ensure_spare from main CPU thread
+#ifdef USE_CUSTOM_ALLOCS
+		   mate_allocs.ensure_spare();
+#endif
+
+		   	// Phase 1b: LRM11Scalar pre-filter — offload kernel over all candidates.
+		   	// profbuf and rf were decoded per-candidate during collect (extendSeeds_bwtwalk).
+		   	// All data lives in USM heap; no copies or data movement needed.
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+		   	{
+		   		// Flatten all candidates across all mates into parallel arrays.
+		   		// Raw pointers let the offload kernel access candidates without
+		   		// going through EList::operator[], which isn't GPU-compiled.
+		   		// With -fopenmp-force-usm all heap is USM; no copies needed.
+		   		EList<ExtendCandidate*> cand_ptrs;
+		   		EList<TAlScore>         cand_minsc;
+		   		for (uint32_t mate = 0; mate < num_parallel_tasks; mate++) {
+		   			if (mate_idx[mate] < 0) continue;
+		   			EList<ExtendCandidate>& cands = g_msobjs[mate].extend_cands;
+		   			for (uint32_t ci = 0; ci < (uint32_t)cands.size(); ci++) {
+		   				cand_ptrs.push_back(&cands[ci]);
+		   				cand_minsc.push_back(minsc[mate]);
+		   			}
+		   		}
+		   		const uint32_t      nslots    = (uint32_t)cand_ptrs.size();
+		   		ExtendCandidate**   ptrs      = cand_ptrs.ptr();
+		   		const TAlScore*     minscs    = cand_minsc.ptr();
+
+		   		fprintf(stderr, "[lrfilter iter=%lu] nslots=%u\n", (unsigned long)repcnt, nslots);
+
+		   		// Divide candidates into npar blocks, each processed by one team.
+		   		static constexpr uint32_t LRFILTER_NPAR = 16384;
+		   		const uint32_t npar   = std::min(nslots, LRFILTER_NPAR);
+		   		const uint32_t elp_pp = (nslots + npar - 1) / npar;
+
+#ifdef OMPGPU
+#pragma omp target teams distribute num_teams(npar)
+		   		for (uint32_t p = 0; p < npar; p++) {
+		   			const uint32_t iend = std::min((p + 1) * elp_pp, nslots);
+#pragma omp parallel for
+		   			for (uint32_t si = p * elp_pp; si < iend; si++) {
+#else
+#pragma omp parallel for schedule(static) default(shared)
+		   		for (uint32_t si = 0; si < nslots; si++) {
+		   		{
+#endif
+		   			ExtendCandidate& cand = *ptrs[si];
+		   			if (!cand.lrm11_ready) { cand.lrm11_passed = true; } // pass-through: not filterable
+		   			else { cand.lrm11_passed = lrm11_filter_cand(cand, minscs[si]); }
+#ifdef OMPGPU
+		   			} // parallel for si
+		   		} // teams distribute p
+#else
+		   		} // dummy scope
+		   		} // parallel for si
+#endif
+		   	}
+		   tmr.next("extendSeeds_lrfilter");
+		   // always call ensure_spare from main CPU thread
+#ifdef USE_CUSTOM_ALLOCS
+		   mate_allocs.ensure_spare();
+#endif
+#endif // PRE_LR_SCALAR && SSE_SCALAR
+
+
+		   	// Phase 2: DP + backtrace — run SSE Smith-Waterman on passing candidates.
+		   	// Each mate's candidates are independent; parallel across mates.
+#pragma omp parallel for default(shared)
+			for (uint32_t nb=0; nb<batch_parallel_tasks; nb++) {
+			   bcWorkerObjs& bcobj = g_bcobjs[nb];
+			   SwAligner &sw = bcobj.sw;
+
+			   for (uint16_t ib=0; ib<reads_per_batch; ib++) {
+				const uint32_t mate = nb*reads_per_batch + ib;
+				if (mate_idx[mate]>=0 ) { // !done[mate]
+					msWorkerObjs& msobj = g_msobjs[mate];
+					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate];
+					Read& rd = *rds[mate];
+					const size_t rdlen = rd.length();
+					// Re-initialize sw for this mate: initRead state is per-worker,
+					// but sw is shared and was last set for whichever mate ran last
+					// in Phase 1 on this worker. Omit reset() to preserve pmat_
+					// layout, avoiding non-deterministic backtrace tie-breaking.
+					if(!sw.initRead(
+						rd.patFw,  rd.patRc,
+						rd.qual,   rd.qualRev,
+						rdlen,     msconsts->sc)) {
+						mate_idx[mate] = MATE_DONE;
+						continue;
+					}
+					int ret = msobj.sd.extendSeedsAlign(
+							msobj.extend_cands,
+							msconsts->ref,
+							sw,
+							msconsts->sc,
+							multiseedMms,
+							multiseedLen,
+							intervals[mate],
+							minsc[mate],
+							msconsts->doEnable8,
+							msinkwrap.prm,
+							&msinkwrap,
+							true,           // report hits once found
+							exhaustive[mate]);
+					assert_gt(ret, 0);
+					if ((ret == EXTEND_EXHAUSTED_CANDIDATES) ||
+					    (ret == EXTEND_EXCEEDED_SOFT_LIMIT)  ||
+					    (ret == EXTEND_POLICY_FULFILLED)) {
+						if(psrs->getSR(mate).averageHitsPerSeed() < seedBoostThresh) {
+							mate_idx[mate] = MATE_DONE;
+						} else if(msinkwrap.state().doneWithMate(true)) {
+							mate_idx[mate] = MATE_DONE;
+						}
+					} else {
+						mate_idx[mate] = MATE_DONE;
+					}
+				} // if mate active
+			   } // for ib
+			} // for nb
+		    tmr.next("extendSeeds_dp+backtrace");
 
 		   // always call ensure_spare from main CPU thread
 #ifdef USE_CUSTOM_ALLOCS

@@ -43,6 +43,8 @@
  */
 
 #include <iostream>
+#include <atomic>
+#include <chrono>
 #include "aligner_cache.h"
 #include "aligner_sw_driver.h"
 #include "pe.h"
@@ -53,6 +55,61 @@
 // -- --
 
 using namespace std;
+
+static std::atomic<uint64_t> g_ns_initRef{0};
+static std::atomic<uint64_t> g_ns_align{0};
+static std::atomic<uint64_t> g_ns_backtrace{0};
+static std::atomic<uint64_t> g_n_initRef{0};
+static std::atomic<uint64_t> g_n_align{0};
+static std::atomic<uint64_t> g_n_backtrace{0};
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+static std::atomic<uint64_t> g_ns_lrfilter_initRef{0};
+static std::atomic<uint64_t> g_n_lrfilter_initRef{0};
+static std::atomic<uint64_t> g_ns_lrfilter{0};
+static std::atomic<uint64_t> g_n_lrfilter_pass{0};
+static std::atomic<uint64_t> g_n_lrfilter_total{0};
+#endif
+
+__attribute__((destructor))
+static void print_extend_timers() {
+	const uint64_t n_initRef   = g_n_initRef.load();
+	const uint64_t n_align     = g_n_align.load();
+	const uint64_t n_backtrace = g_n_backtrace.load();
+	const double ns_initRef   = (double)g_ns_initRef.load();
+	const double ns_align     = (double)g_ns_align.load();
+	const double ns_backtrace = (double)g_ns_backtrace.load();
+	fprintf(stderr, "PROFILE (accumulated CPU-ns across all threads, divide by thread count for wall time)\n");
+	fprintf(stderr, "  initRef:   %12.3f s total  %8.0f ns/call  (%lu calls)\n",
+		ns_initRef * 1e-9,
+		n_initRef   ? ns_initRef   / n_initRef   : 0.0,
+		(unsigned long)n_initRef);
+	fprintf(stderr, "  align:     %12.3f s total  %8.0f ns/call  (%lu calls)\n",
+		ns_align * 1e-9,
+		n_align     ? ns_align     / n_align     : 0.0,
+		(unsigned long)n_align);
+	fprintf(stderr, "  backtrace: %12.3f s total  %8.0f ns/call  (%lu calls)\n",
+		ns_backtrace * 1e-9,
+		n_backtrace ? ns_backtrace / n_backtrace : 0.0,
+		(unsigned long)n_backtrace);
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+	const uint64_t n_lrfilter_initRef = g_n_lrfilter_initRef.load();
+	const uint64_t n_lrfilter_pass    = g_n_lrfilter_pass.load();
+	const uint64_t n_lrfilter_total   = g_n_lrfilter_total.load();
+	const double ns_lrfilter_initRef  = (double)g_ns_lrfilter_initRef.load();
+	const double ns_lrfilter          = (double)g_ns_lrfilter.load();
+	fprintf(stderr, "  lrfilter initRef: %9.3f s total  %8.0f ns/call  (%lu calls)\n",
+		ns_lrfilter_initRef * 1e-9,
+		n_lrfilter_initRef ? ns_lrfilter_initRef / n_lrfilter_initRef : 0.0,
+		(unsigned long)n_lrfilter_initRef);
+	fprintf(stderr, "  lrfilter dp:      %9.3f s total  %8.0f ns/call  (%lu passed, %lu withheld / %lu total, %.1f%% pass rate)\n",
+		ns_lrfilter * 1e-9,
+		n_lrfilter_total ? ns_lrfilter / n_lrfilter_total : 0.0,
+		(unsigned long)n_lrfilter_pass,
+		(unsigned long)(n_lrfilter_total - n_lrfilter_pass),
+		(unsigned long)n_lrfilter_total,
+		n_lrfilter_total ? 100.0 * n_lrfilter_pass / n_lrfilter_total : 0.0);
+#endif
+}
 
 /**
  * Given seed results, set up all of our state for resolving and keeping
@@ -468,6 +525,296 @@ int SwDriver::extendSeeds(
 	assert_eq(neltLeft,0);
 
 	// Short-circuited because a limit, e.g. -k, -m or -M, was exceeded
+	return EXTEND_EXHAUSTED_CANDIDATES;
+}
+
+/*
+ * BWT walk -> collect DP candidates
+ * Ran before running alignment. This looks through BWT and gets the best matches via BWT
+ * then calls adds them to a list before running alignment
+ * (Most is just the first part of extendSeeds() )
+ */
+int SwDriver::extendSeedsCollect(
+	const Ebwt& ebwtFw,
+	const BitPairReference& ref,
+	SwAligner& swa,
+	const Scoring& sc,
+	const int seedmms,
+	const int seedlen,
+	const int seedival,
+	const TAlScore minsc,
+	const int nceil,
+	const size_t maxhalf,
+	PerReadMetrics& prm,
+	EList<ExtendCandidate>& cands
+	)
+{
+	cands.clear();
+
+	const size_t rows    = swa.dpRows();
+	const size_t rdlen   = rows;
+
+	assert_geq(nceil, 0);
+	assert_leq((size_t)nceil, rdlen);
+
+	TAlScore perfectScore = sc.perfectScore(rdlen);
+	if(minsc == perfectScore) {
+		fprintf(stderr, "Warning, internal logical: Found perfect score in extendSeedsCollect\n");
+		return EXTEND_PERFECT_SCORE;
+	}
+	const int readGaps = sc.maxReadGaps(minsc, rdlen);
+	const int refGaps  = sc.maxRefGaps(minsc, rdlen);
+
+	DynProgFramer dpframe(!reportOverhangs);
+	const uint32_t sp_size = satpos_.size();
+
+	for(uint32_t i = 0; i < sp_size; i++) {
+		auto &gws = gws_[0];
+
+		const SATupleAndPos& satpos = satpos_[i];
+		const size_t sat_size  = satpos.sat.size();
+		const bool fw          = satpos.pos.fw;
+		uint32_t rdoff         = satpos.pos.rdoff;
+		uint32_t seedhitlen    = satpos.pos.seedlen;
+
+		if(!fw) {
+			rdoff = (uint32_t)(rdlen - rdoff - seedhitlen);
+		}
+
+		{
+			SARangeWithOffs<TSlice> sa(
+				satpos.sat.topf, satpos.sat.key.len,
+				satpos.sat.offs, satpos.sat.fmap);
+			gws.reset();
+			gws.init(ebwtFw, ref, sa);
+			assert(gws.initialized());
+		}
+
+		for(uint32_t elt = 0; elt < sat_size; elt++) {
+			assert(!gws.done());
+			prm.nExIters++;
+			WalkResult wr;
+			SARangeWithOffs<TSlice> sa(
+				satpos.sat.topf, satpos.sat.key.len,
+				satpos.sat.offs, satpos.sat.fmap);
+			gws.advanceElement((TIndexOffU)elt, ebwtFw, ref, sa, gwstate_, wr, prm);
+			assert_neq(OFF_MASK, wr.toff);
+
+			TIndexOffU tidx = 0, toff = 0, tlen = 0;
+			bool straddled = false;
+			ebwtFw.joinedToTextOff(wr.elt.len, wr.toff, tidx, toff, tlen,
+			                       false, straddled);
+
+			int64_t refoff = (int64_t)toff - rdoff;
+			Coord refcoord(tidx, refoff, fw);
+			if(seenDiags1_.locusPresent(refcoord)) {
+				prm.nRedundants++;
+				continue;
+			}
+
+			DPRect rect;
+			bool found = dpframe.frameSeedExtensionRect(
+				refoff, rows, tlen, readGaps, refGaps,
+				(size_t)nceil, maxhalf, rect);
+			assert(rect.repOk());
+			seenDiags1_.add(Interval(refcoord, 1));
+			if(!found) continue;
+
+			size_t nwindow = 0;
+			if((int64_t)toff >= rect.refl) {
+				nwindow = (size_t)(toff - rect.refl);
+			}
+
+			ExtendCandidate cand;
+			cand.fw       = fw;
+			cand.tidx     = tidx;
+			cand.toff     = toff;
+			cand.tlen     = tlen;
+			cand.refoff   = refoff;
+			cand.rect     = rect;
+			cand.nwindow  = nwindow;
+			cand.refcoord = refcoord;
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+			cand.lrm11_passed = true; // default: pass-through (set by kernel if lrm11_ready)
+			cand.lrm11_ready  = false;
+			if(rows == 151) {
+				size_t nsInLeftShift = 0;
+				bool ok = swa.initRef(
+					fw, tidx, rect, ref,
+					tlen, minsc, true, true,
+					nwindow, nsInLeftShift);
+				if(ok) {
+					swa.fillCandBuffers(cand);
+					cand.lrm11_ready = true;
+				}
+			}
+#endif
+			cands.push_back(cand);
+		}
+	}
+
+	return EXTEND_EXHAUSTED_CANDIDATES; // collect never fulfils policy itself
+}
+
+
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+/*
+ * An optional part to run when splitting up extendSeeds
+ * Since often most alignments do not reach the target score (minsc) we can first run
+ * just calculating the lrfilter and not the full pmat, then rerun in seperate step
+ */
+void SwDriver::extendSeedsLRFilter(
+	EList<ExtendCandidate>& cands,
+	const BitPairReference& ref,
+	SwAligner& swa,
+	const TAlScore minsc,
+	const bool enable8)
+{
+	for(size_t ci = 0; ci < cands.size(); ci++) {
+		ExtendCandidate& cand = cands[ci];
+		size_t nsInLeftShift = 0;
+		auto _t0 = std::chrono::high_resolution_clock::now();
+		bool initOk = swa.initRef(
+			cand.fw, cand.tidx, cand.rect, ref,
+			cand.tlen, minsc, enable8,
+			true,
+			cand.nwindow, nsInLeftShift);
+		g_ns_lrfilter_initRef += (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+			std::chrono::high_resolution_clock::now() - _t0).count();
+		g_n_lrfilter_initRef++;
+		if(!initOk) {
+			cand.lrm11_passed = false;
+			continue;
+		}
+		auto _t1 = std::chrono::high_resolution_clock::now();
+		cand.lrm11_passed = swa.filterLRM11(minsc);
+		g_ns_lrfilter += (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+			std::chrono::high_resolution_clock::now() - _t1).count();
+		g_n_lrfilter_total++;
+		if(cand.lrm11_passed) g_n_lrfilter_pass++;
+	}
+}
+#endif
+
+/*
+ * The alignment step of extendSeeds(), so much of the code is similar
+ * Calculates the full scoring alignments
+ *     Calculates the score of full alignment DP matrix + candidates,
+ *     which is just the behavior of alignNucleotides_*()
+ * And retrieves the backtrace of sequence of the top scorers
+ */
+int SwDriver::extendSeedsAlign(
+	EList<ExtendCandidate>& cands,
+	const BitPairReference& ref,
+	SwAligner& swa,
+	const Scoring& sc,
+	const int seedmms,
+	const int seedlen,
+	const int seedival,
+	const TAlScore minsc,
+	const bool enable8,
+	PerReadMetrics& prm,
+	AlnSinkWrap* msink,
+	bool reportImmediately,
+	bool& exhaustive)
+{
+	assert(!reportImmediately || msink != NULL);
+	assert(!reportImmediately || !msink->maxed());
+
+	for(size_t ci = 0; ci < cands.size(); ci++) {
+		ExtendCandidate& cand = cands[ci];
+
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+		if(!cand.lrm11_passed) continue;
+#endif
+
+		bool initOk;
+		{
+			auto _t0 = std::chrono::high_resolution_clock::now();
+			size_t nsInLeftShift = 0;
+			initOk = swa.initRef(
+				cand.fw, cand.tidx, cand.rect, ref,
+				cand.tlen, minsc, enable8,
+				true,  // seed extension (not mate finding)
+				cand.nwindow, nsInLeftShift);
+			g_n_initRef++;
+			g_ns_initRef += (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::high_resolution_clock::now() - _t0).count();
+		}
+		if(!initOk)
+		{
+			prm.nExDpFails++;
+			prm.nDpFail++;
+			return EXTEND_EXCEEDED_HARD_LIMIT;
+		}
+
+		Interval refival(cand.tidx, 0, cand.fw, 0);
+		cand.rect.initIval(refival); // const_cast-safe: rect is our own copy
+		seenDiags1_.add(refival);
+
+		TAlScore bestCell = std::numeric_limits<TAlScore>::min();
+		bool found;
+		{
+			auto _t0 = std::chrono::high_resolution_clock::now();
+			found = swa.align(bestCell);
+			g_ns_align += (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::high_resolution_clock::now() - _t0).count();
+			g_n_align++;
+		}
+		prm.nExDps++;
+		if(!found) {
+			prm.nExDpFails++;
+			prm.nDpFail++;
+			if(bestCell > std::numeric_limits<TAlScore>::min() &&
+			   bestCell > prm.bestLtMinscMate1) {
+				prm.bestLtMinscMate1 = bestCell;
+			}
+			continue;
+		}
+		prm.nExDpSuccs++;
+		prm.nDpLastSucc = prm.nExDps - 1;
+		if(prm.nDpFail > prm.nDpFailStreak) prm.nDpFailStreak = prm.nDpFail;
+		prm.nDpFail = 0;
+
+		while(true) {
+			resGap_.reset();
+			assert(resGap_.empty());
+			if(swa.done()) break;
+			{
+				auto _t0 = std::chrono::high_resolution_clock::now();
+				swa.nextAlignment(resGap_, minsc);
+				g_ns_backtrace += (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::high_resolution_clock::now() - _t0).count();
+				g_n_backtrace++;
+			}
+			found = !resGap_.empty();
+			if(!found) break;
+
+			SwResult* res = &resGap_;
+			Interval refival2(cand.tidx, 0, cand.fw, cand.tlen);
+			assert_gt(res->alres.refExtent(), 0);
+			if(reportOverhangs &&
+			   !refival2.containsIgnoreOrient(res->alres.refival()))
+			{
+				res->alres.clipOutside(true, 0, cand.tlen);
+				if(res->alres.refExtent() == 0) continue;
+			}
+			if(!refival2.overlapsIgnoreOrient(res->alres.refival())) continue;
+			if(redAnchor_.overlap(res->alres)) continue;
+			redAnchor_.add(res->alres);
+			res->alres.setParams(seedmms, seedlen, seedival, minsc);
+
+			if(reportImmediately) {
+				assert(msink != NULL);
+				assert(res->repOk());
+				assert(!msink->maxed());
+				if(msink->report(0, &res->alres, NULL)) {
+					return EXTEND_POLICY_FULFILLED;
+				}
+			}
+		}
+	}
+
 	return EXTEND_EXHAUSTED_CANDIDATES;
 }
 

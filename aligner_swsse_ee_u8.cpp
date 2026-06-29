@@ -60,6 +60,7 @@
 #ifndef SWSSE_INLINE_ONLY
 
 #include "aligner_sw.h"
+#include "aligner_sw_driver.h"
 
 #else
 
@@ -1722,6 +1723,57 @@ bool SwAligner::alignEnd2EndSseU8(
 	best = score;
 	return !btncand_.empty();
 }
+
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+bool SwAligner::filterLRM11(TAlScore minsc)
+{
+	assert(initedRef() && initedRead());
+	// EEU8_alignNucleotidesLRM11Scalar is compiled for MAX_ITER=151 only.
+	// For other read lengths the profbuf layout doesn't match — pass them through.
+	if(dpRows() != 151) return true;
+	buildQueryProfileEnd2EndSseU8(fw_);
+	auto& d = fw_ ? sseU8fw_ : sseU8rc_;
+	assert(!d.profbuf_.empty());
+	EEU8_TCScore lrmax = EEU8_alignNucleotidesLRM11Scalar<uint16_t>(
+		reinterpret_cast<const uint8_t*>(d.profbuf_.ptr()),
+		rf_, (uint16_t)rflen_,
+		dpRows(),
+		sc_->refGapOpen(), sc_->refGapExtend(),
+		sc_->readGapOpen(), sc_->readGapExtend());
+	TAlScore score = (TAlScore)(lrmax - 0xff);
+	return score >= minsc;
+}
+
+void SwAligner::fillCandBuffers(ExtendCandidate& cand)
+{
+	assert(initedRef() && initedRead());
+	buildQueryProfileEnd2EndSseU8(fw_);
+	const auto& d = fw_ ? sseU8fw_ : sseU8rc_;
+	assert(!d.profbuf_.empty());
+	memcpy(cand.profbuf, reinterpret_cast<const uint8_t*>(d.profbuf_.ptr()), sizeof(cand.profbuf));
+	memcpy(cand.rf, rf_, (size_t)rflen_);
+	cand.rflen   = (uint16_t)rflen_;
+	cand.nrow    = (uint16_t)dpRows();
+	cand.gaps[0] = (int8_t)sc_->refGapOpen();
+	cand.gaps[1] = (int8_t)sc_->refGapExtend();
+	cand.gaps[2] = (int8_t)sc_->readGapOpen();
+	cand.gaps[3] = (int8_t)sc_->readGapExtend();
+}
+
+#ifdef OMPGPU
+#pragma omp declare target
+#endif
+bool lrm11_filter_cand(const ExtendCandidate& cand, TAlScore minsc)
+{
+	EEU8_TCScore lrmax = EEU8_alignNucleotidesLRM11Scalar<uint16_t>(
+		cand.profbuf, cand.rf, cand.rflen, cand.nrow,
+		cand.gaps[0], cand.gaps[1], cand.gaps[2], cand.gaps[3]);
+	return (TAlScore)(lrmax - 0xff) >= minsc;
+}
+#ifdef OMPGPU
+#pragma omp end declare target
+#endif
+#endif
 
 #define MOVE_VEC_PTR_UP(vec, rowvec, rowelt) { \
 	if(rowvec == 0) { \

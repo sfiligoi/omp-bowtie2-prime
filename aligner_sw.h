@@ -66,6 +66,9 @@
 
 #define INLINE_CUPS
 
+// Struct used for better contigous memory in batching, necessary for lrfilter flag speedup
+struct ExtendCandidate;
+
 #include <stdint.h>
 #include <iostream>
 #include <limits>
@@ -288,6 +291,20 @@ public:
 	 */
 	bool align(TAlScore& best);
 	bool alignEnd2EndSseU8(TAlScore& best);
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+	// Runs the LRM11Scalar, which aligns nucleotides but only gets max score
+ // Low memory usage & large batching causes significant speedup
+	// Returns true if the candidate *may* align (score >= minsc), false to skip.
+	// Since often most candidates do not pass, this step is often worth doing
+ // Needs the the current initRef+initRead state, after initRef & buildQueryProfileEnd2EndSseU8.
+	bool filterLRM11(TAlScore minsc);
+
+	// After initRead+initRef, snapshot the query profile and decoded reference
+	// into cand's embedded arrays so the offload kernel needs only the struct.
+ // Although redundant, the contigous memory performs better on the offload
+	void fillCandBuffers(ExtendCandidate& cand);
+
+#endif
 #ifdef ENABLE_I16
 	bool alignEnd2EndSseI16(TAlScore& best);
 #endif

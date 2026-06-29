@@ -211,6 +211,40 @@ struct ExtendRange {
 	size_t sz;  // # of elements in SA range
 };
 
+/**
+ * One DP problem collected during the BWT-walk phase of extendSeedsCollect.
+ * Contains everything needed by extendSeedsAlign to run initRef + align
+ * without touching the BWT index again.
+ * While redudant, it helps performance highly when offloading to GPU cache.
+ */
+struct ExtendCandidate {
+	bool           fw;
+	TIndexOffU     tidx;      // reference sequence index
+	TIndexOffU     toff;      // offset within reference sequence
+	TIndexOffU     tlen;      // length of reference sequence
+	int64_t        refoff;    // ref offset implied by seed (no gaps)
+	DPRect         rect;      // DP bounding rectangle
+	size_t         nwindow;   // left-shift of seed within rect
+	Coord          refcoord;  // seed coordinate (for seenDiags bookkeeping)
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+	// Pre-decoded filter inputs, filled during collect so the GPU kernel
+	// needs nothing but this struct. 
+	bool     lrm11_passed;
+	bool     lrm11_ready;  // false if initRef failed; kernel skips this slot
+	uint16_t rflen;
+	uint16_t nrow;
+	int8_t   gaps[4];
+	uint8_t  profbuf[SSEData<false,ALN_MAX_ROWS,ALN_MAX_COLS>::get_nsses(ALN_MAX_ROWS)];
+	char     rf[ALN_MAX_COLS];
+#endif
+};
+
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+// Run EEU8_alignNucleotidesLRM11Scalar on a pre-filled ExtendCandidate.
+// Called from the offload kernel; takes only the candidate's embedded buffers.
+bool lrm11_filter_cand(const ExtendCandidate& cand, TAlScore minsc);
+#endif
+
 class SwDriver {
 
 public:
@@ -284,6 +318,64 @@ public:
 		AlnSinkWrap* mhs,            // HitSink for multiseed-style aligner
 		bool reportImmediately,      // whether to report hits immediately to mhs
 		bool& exhaustive);
+
+	/**
+	 * Phase 1 of the split extendSeeds pipeline.
+	 * Walks the BWT, resolves reference offsets, frames DP rectangles, and
+	 * collects surviving candidates into `cands`.
+	 * Returns EXTEND_PERFECT_SCORE early if minsc == perfectScore.
+	 */
+	int extendSeedsCollect(
+		const Ebwt& ebwtFw,
+		const BitPairReference& ref,
+		SwAligner& swa,
+		const Scoring& sc,
+		const int seedmms,
+		const int seedlen,
+		const int seedival,
+		const TAlScore minsc,
+		const int nceil,
+		const size_t maxhalf,
+		PerReadMetrics& prm,
+		EList<ExtendCandidate>& cands
+		);
+
+	/**
+	 * Phase 2 of the split extendSeeds pipeline.
+	 * For each candidate collected by extendSeedsCollect, runs initRef +
+	 * align + nextAlignment + report.  `swa` must already have initRead
+	 * called on it.
+	 * Returns EXTEND_POLICY_FULFILLED if a reporting limit is hit, or
+	 * EXTEND_EXHAUSTED_CANDIDATES when all candidates are processed.
+	 */
+	int extendSeedsAlign(
+		EList<ExtendCandidate>& cands,
+		const BitPairReference& ref,
+		SwAligner& swa,
+		const Scoring& sc,
+		const int seedmms,
+		const int seedlen,
+		const int seedival,
+		const TAlScore minsc,
+		const bool enable8,
+		PerReadMetrics& prm,
+		AlnSinkWrap* msink,
+		bool reportImmediately,
+		bool& exhaustive);
+
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+	/**
+	 * Phase 1b: LRM11Scalar pre-filter (scalar only).
+	 * For each candidate, calls initRef + buildQueryProfile + filterLRM11.
+	 * Sets cand.lrm11_passed; extendSeedsAlign skips candidates where it is false.
+	 */
+	void extendSeedsLRFilter(
+		EList<ExtendCandidate>& cands,
+		const BitPairReference& ref,
+		SwAligner& swa,
+		const TAlScore minsc,
+		const bool enable8);
+#endif
 
 #ifdef SUPPORT_PAIRED
 // NOTE: Unsupported, likely does not work
