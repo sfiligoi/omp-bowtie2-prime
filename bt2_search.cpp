@@ -2809,6 +2809,8 @@ static void multiseedSearchWorker() {
 		   	// we can do all of the "mates" in parallel
 #pragma omp parallel for default(shared)
 			for (uint32_t nb=0; nb<batch_parallel_tasks; nb++) {
+			   // These objects are really just work areas
+			   // Could have just created them here, but this way we minimize mallocs
 			   bcWorkerObjs& bcobj = g_bcobjs[nb];
 			   SwAligner &sw = bcobj.sw;
 
@@ -2877,10 +2879,10 @@ static void multiseedSearchWorker() {
 		   		ExtendCandidate**   ptrs      = cand_ptrs.ptr();
 		   		const TAlScore*     minscs    = cand_minsc.ptr();
 
-		   		fprintf(stderr, "[lrfilter iter=%lu] nslots=%u\n", (unsigned long)repcnt, nslots);
-
 		   		// Divide candidates into npar blocks, each processed by one team.
-		   		static constexpr uint32_t LRFILTER_NPAR = 16384;
+				// TODO: Since this is parallelization for GPU and not CPU
+				//       This variable may want to be different than omp
+		   		uint32_t LRFILTER_NPAR = batch_parallel_tasks;
 		   		const uint32_t npar   = std::min(nslots, LRFILTER_NPAR);
 		   		const uint32_t elp_pp = (nslots + npar - 1) / npar;
 
@@ -2906,13 +2908,12 @@ static void multiseedSearchWorker() {
 		   		} // parallel for si
 #endif
 		   	}
-		   tmr.next("extendSeeds_lrfilter");
+		    tmr.next("extendSeeds_lrfilter");
 		   // always call ensure_spare from main CPU thread
 #ifdef USE_CUSTOM_ALLOCS
 		   mate_allocs.ensure_spare();
 #endif
 #endif // PRE_LR_SCALAR && SSE_SCALAR
-
 
 		   	// Phase 2: DP + backtrace — run SSE Smith-Waterman on passing candidates.
 		   	// Each mate's candidates are independent; parallel across mates.
@@ -2968,7 +2969,7 @@ static void multiseedSearchWorker() {
 				} // if mate active
 			   } // for ib
 			} // for nb
-		    tmr.next("extendSeeds_dp+backtrace");
+		   tmr.next("extendSeeds_dp+backtrace");
 
 		   // always call ensure_spare from main CPU thread
 #ifdef USE_CUSTOM_ALLOCS
