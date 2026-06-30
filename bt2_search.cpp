@@ -2821,31 +2821,38 @@ static void multiseedSearchWorker() {
 					AlnSinkWrapOne& msinkwrap = g_msinkwrap[mate];
 					Read& rd = *rds[mate];
 					const size_t rdlen = rd.length();
+					// Initialize the aligner with a new read
 					sw.reset();
 					if (!sw.initRead(
-						rd.patFw,  rd.patRc,
-						rd.qual,   rd.qualRev,
-						rdlen,     msconsts->sc)) {
-						mate_idx[mate] = MATE_DONE;
+						rd.patFw,  // fw version of query
+						rd.patRc,  // rc version of query
+						rd.qual,   // fw version of qualities
+						rd.qualRev,// rc version of qualities
+						rdlen,     // off of last char (excl) in 'rd' to consider
+						msconsts->sc)) {     // scoring scheme
+								// Something went terribly wrong (likely read too long)
+								// Bail out
+								mate_idx[mate] = MATE_DONE;
 					} else {
+						// Unpaired dynamic programming driver
 						int ret = msobj.sd.extendSeedsCollect(
-							msconsts->ebwtFw,
-							msconsts->ref,
-							sw,
-							msconsts->sc,
-							multiseedMms,
-							multiseedLen,
-							intervals[mate],
-							minsc[mate],
-							nceil[mate],
-							msconsts->maxHalf,
-							msinkwrap.prm,
-							msobj.extend_cands
+							msconsts->ebwtFw,         // bowtie index
+							msconsts->ref,            // packed reference strings
+							sw,                       // dynamic prog aligner
+							msconsts->sc,             // scoring scheme
+							multiseedMms,   // # mms allowed in a seed
+							multiseedLen,   // length of a seed
+							intervals[mate],// interval between seeds
+							minsc[mate],    // minimum score for valid
+							nceil[mate],    // N ceil for anchor
+							msconsts->maxHalf,        // max width on one DP side
+							msinkwrap.prm,  // per-read metrics
+							msobj.extend_cands // optional workspace to batch alignment jobs (for -DPRE_LR_FILTER)
 							);
 						if (ret == EXTEND_PERFECT_SCORE) {
 							mate_idx[mate] = MATE_DONE;
 						}
-					}
+					} // if initRead
 				} // if mate active
 			   } // for ib
 			} // for nb
@@ -2934,30 +2941,41 @@ static void multiseedSearchWorker() {
 					// in Phase 1 on this worker. Omit reset() to preserve pmat_
 					// layout, avoiding non-deterministic backtrace tie-breaking.
 					if(!sw.initRead(
-						rd.patFw,  rd.patRc,
-						rd.qual,   rd.qualRev,
-						rdlen,     msconsts->sc)) {
+						rd.patFw,  // fw version of query
+						rd.patRc,  // rc version of query
+						rd.qual,   // fw version of qualities
+						rd.qualRev,// rc version of qualities
+						rdlen,     // off of last char (excl) in 'rd' to consider
+						msconsts->sc)) {     // scoring scheme
+						// Something went terribly wrong (likely read too long)
+						// Bail out
 						mate_idx[mate] = MATE_DONE;
 						continue;
 					}
+					// Unpaired dynamic programming driver
 					int ret = msobj.sd.extendSeedsAlign(
-							msobj.extend_cands,
-							msconsts->ref,
-							sw,
-							msconsts->sc,
-							multiseedMms,
-							multiseedLen,
-							intervals[mate],
-							minsc[mate],
-							msconsts->doEnable8,
-							msinkwrap.prm,
-							&msinkwrap,
+							msobj.extend_cands,       // candidates from collect phase
+							msconsts->ref,            // packed reference strings
+							sw,                       // dynamic prog aligner
+							msconsts->sc,             // scoring scheme
+							multiseedMms,   // # mms allowed in a seed
+							multiseedLen,   // length of a seed
+							intervals[mate],// interval between seeds
+							minsc[mate],    // minimum score for valid
+							msconsts->doEnable8,      // use 8-bit SSE where possible
+							msinkwrap.prm,  // per-read metrics
+							&msinkwrap,     // for organizing hits
 							true,           // report hits once found
 							exhaustive[mate]);
 					assert_gt(ret, 0);
 					if ((ret == EXTEND_EXHAUSTED_CANDIDATES) ||
 					    (ret == EXTEND_EXCEEDED_SOFT_LIMIT)  ||
 					    (ret == EXTEND_POLICY_FULFILLED)) {
+						// Not done yet
+
+						// We don't necessarily have to continue investigating both
+						// mates.  We continue on a mate only if its average
+						// interval length is high (> 1000)
 						if(psrs->getSR(mate).averageHitsPerSeed() < seedBoostThresh) {
 							mate_idx[mate] = MATE_DONE;
 						} else if(msinkwrap.state().doneWithMate(true)) {
