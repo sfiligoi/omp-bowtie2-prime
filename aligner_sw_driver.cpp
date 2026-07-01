@@ -471,6 +471,280 @@ int SwDriver::extendSeeds(
 	return EXTEND_EXHAUSTED_CANDIDATES;
 }
 
+/*
+ * BWT walk -> collect DP candidates
+ * Ran before running alignment. This looks through BWT and gets the best matches via BWT
+ * then calls adds them to a list before running alignment
+ * (Most is just the first part of extendSeeds() )
+ */
+int SwDriver::extendSeedsCollect(
+	const Ebwt& ebwtFw,
+	const BitPairReference& ref,
+	SwAligner& swa,
+	const Scoring& sc,
+	const int seedmms,
+	const int seedlen,
+	const int seedival,
+	const TAlScore minsc,
+	const int nceil,
+	const size_t maxhalf,
+	PerReadMetrics& prm,
+	EList<ExtendCandidate>& cands
+	)
+{
+	cands.clear();
+
+	const size_t rows    = swa.dpRows();
+	const size_t rdlen   = rows;
+
+	assert_geq(nceil, 0);
+	assert_leq((size_t)nceil, rdlen);
+
+	TAlScore perfectScore = sc.perfectScore(rdlen);
+	if(minsc == perfectScore) {
+		fprintf(stderr, "Warning, internal logical: Found perfect score in extendSeedsCollect\n");
+		return EXTEND_PERFECT_SCORE;
+	}
+	const int readGaps = sc.maxReadGaps(minsc, rdlen);
+	const int refGaps  = sc.maxRefGaps(minsc, rdlen);
+
+	DynProgFramer dpframe(!reportOverhangs);
+	const uint32_t sp_size = satpos_.size();
+
+	for(uint32_t i = 0; i < sp_size; i++) {
+		auto &gws = gws_[0];
+
+		const SATupleAndPos& satpos = satpos_[i];
+		const size_t sat_size  = satpos.sat.size();
+		const bool fw          = satpos.pos.fw;
+		uint32_t rdoff         = satpos.pos.rdoff;
+		uint32_t seedhitlen    = satpos.pos.seedlen;
+
+		if(!fw) {
+			rdoff = (uint32_t)(rdlen - rdoff - seedhitlen);
+		}
+
+		{
+			SARangeWithOffs<TSlice> sa(
+				satpos.sat.topf, satpos.sat.key.len,
+				satpos.sat.offs, satpos.sat.fmap);
+			gws.reset();
+			gws.init(ebwtFw, ref, sa);
+			assert(gws.initialized());
+		}
+
+		for(uint32_t elt = 0; elt < sat_size; elt++) {
+			assert(!gws.done());
+			prm.nExIters++;
+			WalkResult wr;
+			SARangeWithOffs<TSlice> sa(
+				satpos.sat.topf, satpos.sat.key.len,
+				satpos.sat.offs, satpos.sat.fmap);
+			gws.advanceElement((TIndexOffU)elt, ebwtFw, ref, sa, gwstate_, wr, prm);
+			assert_neq(OFF_MASK, wr.toff);
+
+			TIndexOffU tidx = 0, toff = 0, tlen = 0;
+			bool straddled = false;
+			ebwtFw.joinedToTextOff(wr.elt.len, wr.toff, tidx, toff, tlen,
+			                       false, straddled);
+
+			int64_t refoff = (int64_t)toff - rdoff;
+			Coord refcoord(tidx, refoff, fw);
+			if(seenDiags1_.locusPresent(refcoord)) {
+				prm.nRedundants++;
+				continue;
+			}
+
+			DPRect rect;
+			bool found = dpframe.frameSeedExtensionRect(
+				refoff, rows, tlen, readGaps, refGaps,
+				(size_t)nceil, maxhalf, rect);
+			assert(rect.repOk());
+			seenDiags1_.add(Interval(refcoord, 1));
+			if(!found) continue;
+
+			size_t nwindow = 0;
+			if((int64_t)toff >= rect.refl) {
+				nwindow = (size_t)(toff - rect.refl);
+			}
+
+			ExtendCandidate cand;
+			cand.fw       = fw;
+			cand.tidx     = tidx;
+			cand.toff     = toff;
+			cand.tlen     = tlen;
+			cand.refoff   = refoff;
+			cand.rect     = rect;
+			cand.nwindow  = nwindow;
+			cand.refcoord = refcoord;
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+			cand.lrm11_passed = true; // default: pass-through (set by kernel if lrm11_ready)
+			cand.lrm11_ready  = false;
+			if(rows == 151) {
+				size_t nsInLeftShift = 0;
+				bool ok = swa.initRef(
+					fw, tidx, rect, ref,
+					tlen, minsc, true, true,
+					nwindow, nsInLeftShift);
+				if(ok) {
+					swa.fillCandBuffers(cand);
+					cand.lrm11_ready = true;
+				}
+			}
+#endif
+			cands.push_back(cand);
+		}
+	}
+
+	return EXTEND_EXHAUSTED_CANDIDATES; // collect never fulfils policy itself
+}
+
+
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+/*
+ * An optional part to run when splitting up extendSeeds
+ * Since often most alignments do not reach the target score (minsc) we can first run
+ * just calculating the lrfilter and not the full pmat, then rerun in seperate step
+ */
+void SwDriver::extendSeedsLRFilter(
+	EList<ExtendCandidate>& cands,
+	const BitPairReference& ref,
+	SwAligner& swa,
+	const TAlScore minsc,
+	const bool enable8)
+{
+	for(size_t ci = 0; ci < cands.size(); ci++) {
+		ExtendCandidate& cand = cands[ci];
+		size_t nsInLeftShift = 0;
+		bool initOk = swa.initRef(
+			cand.fw, cand.tidx, cand.rect, ref,
+			cand.tlen, minsc, enable8,
+			true,
+			cand.nwindow, nsInLeftShift);
+		if(!initOk) {
+			cand.lrm11_passed = false;
+			continue;
+		}
+		cand.lrm11_passed = swa.filterLRM11(minsc);
+	}
+}
+#endif
+
+/*
+ * The alignment step of extendSeeds(), so much of the code is similar
+ * Calculates the full scoring alignments
+ *     Calculates the score of full alignment DP matrix + candidates,
+ *     which is just the behavior of alignNucleotides_*()
+ * And retrieves the backtrace of sequence of the top scorers
+ */
+int SwDriver::extendSeedsAlign(
+	EList<ExtendCandidate>& cands,
+	const BitPairReference& ref,
+	SwAligner& swa,
+	const Scoring& sc,
+	const int seedmms,
+	const int seedlen,
+	const int seedival,
+	const TAlScore minsc,
+	const bool enable8,
+	PerReadMetrics& prm,
+	AlnSinkWrap* msink,
+	bool reportImmediately,
+	bool& exhaustive)
+{
+	assert(!reportImmediately || msink != NULL);
+	assert(!reportImmediately || !msink->maxed());
+
+	for(size_t ci = 0; ci < cands.size(); ci++) {
+		ExtendCandidate& cand = cands[ci];
+
+#if defined(PRE_LR_SCALAR) && defined(SSE_SCALAR)
+		if(!cand.lrm11_passed) continue;
+#endif
+
+		size_t nsInLeftShift = 0;
+		bool initOk = swa.initRef(
+			cand.fw, cand.tidx, cand.rect, ref,
+			cand.tlen, minsc, enable8,
+			true,  // seed extension (not mate finding)
+			cand.nwindow, nsInLeftShift);
+		if(!initOk) {
+			// Something went terribly wrong (likely ncols too long)
+			// Just bail out
+			prm.nExDpFails++;
+			prm.nDpFail++;
+			return EXTEND_EXCEEDED_HARD_LIMIT;
+		}
+		// Because of how we framed the problem, we can say that we've
+		// exhaustively scored the seed diagonal as well as maxgaps
+		// diagonals on either side
+		Interval refival(cand.tidx, 0, cand.fw, 0);
+		cand.rect.initIval(refival); // const_cast-safe: rect is our own copy
+		seenDiags1_.add(refival);
+		// Now fill the dynamic programming matrix and return true iff
+		// there is at least one valid alignment
+		TAlScore bestCell = std::numeric_limits<TAlScore>::min();
+		bool found = swa.align(bestCell);
+		prm.nExDps++;
+		if(!found) {
+			prm.nExDpFails++;
+			prm.nDpFail++;
+			if(bestCell > std::numeric_limits<TAlScore>::min() &&
+			   bestCell > prm.bestLtMinscMate1) {
+				prm.bestLtMinscMate1 = bestCell;
+			}
+			continue; // Look for more anchor alignments
+		} else {
+			prm.nExDpSuccs++;
+			prm.nDpLastSucc = prm.nExDps - 1;
+			if(prm.nDpFail > prm.nDpFailStreak) prm.nDpFailStreak = prm.nDpFail;
+			prm.nDpFail = 0;
+		}
+
+		while(true) {
+			assert(found);
+			resGap_.reset();
+			assert(resGap_.empty());
+			if(swa.done()) break;
+			swa.nextAlignment(resGap_, minsc);
+			found = !resGap_.empty();
+			if(!found) break;
+
+			SwResult* res = &resGap_;
+			Interval refival2(cand.tidx, 0, cand.fw, cand.tlen);
+			assert_gt(res->alres.refExtent(), 0);
+			if(reportOverhangs &&
+			   !refival2.containsIgnoreOrient(res->alres.refival()))
+			{
+				res->alres.clipOutside(true, 0, cand.tlen);
+				if(res->alres.refExtent() == 0) continue;
+			}
+			// Did the alignment fall entirely outside the reference?
+			if(!refival2.overlapsIgnoreOrient(res->alres.refival())) continue;
+			// Is this alignment redundant with one we've seen previously?
+			if(redAnchor_.overlap(res->alres)) continue;
+			redAnchor_.add(res->alres);
+			// Annotate the AlnRes object with some key parameters
+			// that were used to obtain the alignment.
+			res->alres.setParams(seedmms, seedlen, seedival, minsc);
+
+			if(reportImmediately) {
+				assert(msink != NULL);
+				assert(res->repOk());
+				// Report an unpaired alignment
+				assert(!msink->maxed());
+				if(msink->report(0, &res->alres, NULL)) {
+					// Short-circuited because a limit, e.g. -k, -m or
+					// -M, was exceeded
+					return EXTEND_POLICY_FULFILLED;
+				}
+			}
+		}
+	}
+
+	return EXTEND_EXHAUSTED_CANDIDATES;
+}
+
 #ifdef SUPPORT_PAIRED
 // NOTE: Unsupported, likely does not work
 
